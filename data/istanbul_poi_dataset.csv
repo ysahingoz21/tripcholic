@@ -1,0 +1,100 @@
+name,category,lat,lng,avg_duration_min,budget,opening_hours
+Ayasofya Camii,historical,41.008583,28.980175,90,low,09:00-18:00
+Topkapı Sarayı Müzesi,historical,41.011520,28.983379,120,medium,09:00-18:00
+Yerebatan Sarnıcı,historical,41.008384,28.977878,60,medium,09:00-18:00
+Sultan Ahmet Camii,historical,41.005410,28.976814,45,low,09:00-18:00
+Sultanahmet Meydanı,historical,41.006329,28.975705,45,low,00:00-23:59
+Dolmabahçe Sarayı,historical,41.039164,29.000459,120,high,09:00-18:00
+Galata Kulesi,historical,41.025569,28.974129,45,medium,09:00-18:00
+İstanbul Boğazı,scenic,41.221313,29.129016,120,low,00:00-23:59
+Kız Kulesi,historical,41.021141,29.004131,60,medium,09:00-18:00
+Kapalı Çarşı (Grand Bazaar),shopping,41.010685,28.968068,90,medium,10:00-22:00
+Eminönü,neighborhood,41.014936,28.965977,60,low,00:00-23:59
+Mısır Çarşısı,shopping,41.016500,28.970519,60,medium,10:00-22:00
+Taksim Meydanı,entertainment,41.037002,28.985092,60,low,00:00-23:59
+Aya İrini Müzesi,historical,41.009610,28.981183,45,medium,09:00-18:00
+Rahmi M. Koç Müzesi,entertainment,41.042539,28.949184,90,medium,10:00-20:00
+Süleymaniye Camii,historical,41.016047,28.963971,45,low,09:00-18:00
+Gülhane Parkı,nature,41.013308,28.981510,90,low,00:00-23:59
+Ortaköy Camii,historical,41.047215,29.026948,45,low,09:00-18:00
+Yıldız Sarayı,historical,41.050021,29.011557,90,medium,09:00-18:00
+Fatih Camii,historical,41.019653,28.949919,45,low,09:00-18:00
+Yeni Camii,historical,41.016986,28.971959,30,low,09:00-18:00
+Ahrida Sinagogu,historical,41.032883,28.945730,30,low,09:00-18:00
+Eyüp Sultan Camii,historical,41.047849,28.933759,45,low,09:00-18:00
+Pierre Loti Tepesi,scenic,41.054328,28.933408,60,low,00:00-23:59
+Miniatürk,entertainment,41.058993,28.949219,90,medium,10:00-20:00
+İstanbul Oyuncak Müzesi,entertainment,40.975973,29.070712,60,medium,10:00-20:00
+Türk ve İslam Eserleri Müzesi,entertainment,41.006224,28.974720,75,medium,10:00-20:00
+Pera Müzesi,entertainment,41.031854,28.975058,75,medium,10:00-20:00
+Sakıp Sabancı Müzesi,entertainment,41.105556,29.056944,90,medium,10:00-20:00
+Emirgan Korusu,nature,41.108650,29.053112,120,low,00:00-23:59
+Atatürk Arboretumu,nature,41.176626,28.985378,120,low,00:00-23:59
+Belgrad Ormanı,nature,41.184012,28.988502,180,low,00:00-23:59
+Maçka Demokrasi Parkı,nature,41.044794,28.993057,90,low,00:00-23:59
+Polonezköy Tabiat Parkı,nature,41.110617,29.204458,180,low,00:00-23:59
+Fenerbahçe Parkı,nature,40.969042,29.036065,90,low,00:00-23:59
+Nezahat Gökyiğit Botanik Bahçesi,nature,40.998714,29.120176,90,low,00:00-23:59
+Nişantaşı,shopping,41.049464,28.992018,120,high,10:00-22:00
+Bebek,scenic,41.077744,29.041629,90,medium,00:00-23:59
+Balat,neighborhood,41.029211,28.948498,120,low,00:00-23:59
+Rumeli Hisarı,historical,41.084822,29.056698,60,medium,09:00-18:00
+Beylerbeyi Sarayı,historical,41.042645,29.039905,90,medium,09:00-18:00
+Garipçe,scenic,41.210072,29.106903,90,low,00:00-23:59
+Çamlıca Tepesi,scenic,41.028244,29.069162,90,low,00:00-23:59
+Anadolu Kavağı,neighborhood,41.173816,29.088682,120,medium,00:00-23:59
+Mihrabat Korusu,nature,41.096771,29.068753,90,low,00:00-23:59
+Büyükada,scenic,40.856040,29.118710,180,medium,00:00-23:59
+Heybeliada,scenic,40.873336,29.089627,180,medium,00:00-23:59
+Kınalıada,scenic,40.908056,29.052222,150,medium,00:00-23:59
+Burgazada,scenic,40.880000,29.066944,150,medium,00:00-23:59
+Küçüksu Kasrı,historical,41.078418,29.064879,60,medium,09:00-18:00
+Adile Sultan Sarayı,historical,41.070951,29.057289,90,high,09:00-18:00
+Caddebostan Sahili,scenic,40.962217,29.062227,90,low,00:00-23:59
+Moda Sahili,scenic,40.980008,29.022831,90,low,00:00-23:59
+Kadıköy Boğa Heykeli,neighborhood,40.990468,29.029171,30,low,00:00-23:59
+Bağdat Caddesi,shopping,40.958840,29.083769,120,high,10:00-22:00
+Kanlıca,neighborhood,41.099008,29.073629,90,medium,00:00-23:59
+Kuzguncuk,neighborhood,41.036122,29.037264,90,medium,00:00-23:59
+Gözdağı Korusu,nature,40.890641,29.253609,90,low,00:00-23:59
+Çubuklu Korusu,nature,41.101984,29.083810,90,low,00:00-23:59
+Otağtepe Parkı,nature,41.090137,29.071269,60,low,00:00-23:59
+Haydarpaşa Garı,historical,40.996825,29.019294,45,low,09:00-18:00
+Çinili Camii,historical,41.019924,29.029190,30,low,09:00-18:00
+Çemberlitaş Hamamı,historical,41.008533,28.971600,90,high,09:00-18:00
+Cağaloğlu Hamamı,historical,41.010594,28.975337,90,high,09:00-18:00
+Kılıç Ali Paşa Hamamı,historical,41.026191,28.980632,90,high,09:00-18:00
+Yedikule Zindanları,historical,40.993485,28.922740,60,medium,09:00-18:00
+Panorama 1453 Tarih Müzesi,entertainment,41.018277,28.920391,75,medium,10:00-20:00
+Anadolu Hisarı,historical,41.085932,29.070720,45,low,09:00-18:00
+Tarihi Çınaraltı Çay Bahçesi,food,41.050281,29.052401,60,low,08:00-23:00
+Deniz Müzesi,entertainment,41.041464,29.005435,75,medium,10:00-20:00
+Masumiyet Müzesi,entertainment,41.030849,28.979854,60,medium,10:00-20:00
+Florya Atatürk Deniz Köşkü,historical,40.973797,28.783353,60,medium,09:00-18:00
+Çamlıca Kulesi,entertainment,41.016699,29.065992,60,medium,10:00-20:00
+Ağva,scenic,41.138653,29.856061,180,medium,00:00-23:59
+Şile,scenic,41.102730,29.653418,180,medium,00:00-23:59
+Dragos Tepesi,scenic,40.901348,29.146660,60,low,00:00-23:59
+Selimiye Kışlası,historical,41.008215,29.015883,30,low,09:00-18:00
+Göztepe 60. Yıl Parkı,nature,40.969968,29.057860,90,low,00:00-23:59
+İsfanbul,entertainment,41.074267,28.924014,180,high,10:00-20:00
+Mihrimah Sultan Cami,historical,41.026779,29.015982,30,low,09:00-18:00
+Galatasaray Hamamı,historical,41.032831,28.979890,90,high,09:00-18:00
+İstanbul Arkeoloji Müzeleri,entertainment,41.011686,28.981331,90,medium,10:00-20:00
+İstanbul Modern Sanat Müzesi,entertainment,41.025920,28.982838,90,medium,10:00-20:00
+Boğaz Turu,entertainment,41.079257,29.046922,120,medium,10:00-20:00
+Beşiktaş İskelesi,neighborhood,41.041212,29.007308,30,low,00:00-23:59
+Fişekhane,entertainment,40.983048,28.905100,120,medium,10:00-20:00
+Kanlıca İskelesi,neighborhood,41.100224,29.065385,30,low,00:00-23:59
+Arasta Çarşısı,shopping,41.005329,28.978202,45,medium,10:00-22:00
+Galataport,shopping,41.027352,28.985484,120,high,10:00-22:00
+Çemberlitaş,historical,41.009180,28.970169,20,low,00:00-23:59
+Kumkapı,food,41.004260,28.964697,90,medium,08:00-23:00
+Kanlıca Yoğurtçu Parkı,nature,41.099008,29.073629,60,low,00:00-23:59
+Asmalımescit,food,41.030909,28.975060,120,medium,08:00-23:00
+Vefa Bozacısı,food,41.015318,28.958420,30,low,08:00-23:00
+Yıldız Parkı,nature,41.049143,29.015263,90,low,00:00-23:59
+Ayasofya Hürrem Sultan Hamamı,historical,41.007258,28.979137,90,high,09:00-18:00
+Arnavutköy,neighborhood,41.186394,28.738889,90,medium,00:00-23:59
+Yeşilköy Rum Ortodoks Kilisesi,historical,40.977648,28.818895,30,low,09:00-18:00
+Turkcell Platinum Park,nature,41.115306,28.993554,60,low,00:00-23:59
