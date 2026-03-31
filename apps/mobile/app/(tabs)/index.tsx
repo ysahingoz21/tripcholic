@@ -1,98 +1,121 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
-
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import ScreenContainer from '@/components/ui/ScreenContainer';
+import SectionTitle from '@/components/ui/SectionTitle';
+import InfoCard from '@/components/ui/InfoCard';
+import AppButton from '@/components/ui/AppButton';
+import { theme } from '@/constants/theme';
 
 export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+  const router = useRouter();
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
-  );
-}
+  return (
+    <ScreenContainer>
+      <ScrollView showsVerticalScrollIndicator={false}>
+        <View style={styles.heroCard}>
+          <Text style={styles.badge}>Tripcholic</Text>
+          <Text style={styles.heroTitle}>Smarter Istanbul trips, planned around you.</Text>
+          <Text style={styles.heroSubtitle}>
+            Build feasible single-day routes with preference-based planning,
+            natural language input, and optimization-aware suggestions.
+          </Text>
+
+          <View style={styles.heroButtons}>
+            <AppButton title="Start Planning" onPress={() => router.push('/(tabs)/planner')} />
+          </View>
+        </View>
+
+      <SectionTitle
+        title="What makes it different?"
+        subtitle="A modular planning experience designed around real travel constraints."
+      />
+
+      <InfoCard
+        icon="map"
+        title="Constraint-Aware Planning"
+        description="Routes are designed around time, budget, travel duration, and venue availability."
+      />
+      <InfoCard
+        icon="chatbubbles"
+        title="Natural Language Input"
+        description='Describe your trip naturally, like "a relaxed afternoon with good food and culture."'
+      />
+      <InfoCard
+        icon="partly-sunny"
+        title="Weather-Aware Suggestions"
+        description="Get context-driven route updates and human-readable plan explanations."
+      />
+      <InfoCard
+        icon="people"
+        title="Community Discovery"
+        description="Browse public routes, duplicate plans, and discover popular itineraries."
+      />
+
+              <SectionTitle
+                title="Quick actions"
+                subtitle="Jump into the core product flow."
+              />
+
+              <InfoCard
+                title="Plan a new trip"
+                description="Start a personalized route using form-based inputs or natural language."
+                rightContent={
+                  <Text style={styles.linkText} onPress={() => router.push('/(tabs)/planner')}>
+                    Open
+                  </Text>
+                }
+              />
+              <InfoCard
+                title="Explore shared plans"
+                description="Browse community-created public routes and inspiration."
+                rightContent={
+                  <Text style={styles.linkText} onPress={() => router.push('/(tabs)/explore')}>
+                    Browse
+                  </Text>
+                }
+              />
+            </ScrollView>
+          </ScreenContainer>
+        );
+      }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  heroCard: {
+    backgroundColor: theme.colors.primaryDark,
+    borderRadius: theme.radius.xl,
+    padding: theme.spacing.xl,
+    marginBottom: theme.spacing.xl,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  badge: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    color: theme.colors.white,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: theme.spacing.md,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  heroTitle: {
+    color: theme.colors.white,
+    fontSize: 30,
+    fontWeight: '800',
+    lineHeight: 38,
+    marginBottom: theme.spacing.sm,
+  },
+  heroSubtitle: {
+    color: '#D7E6EC',
+    fontSize: 15,
+    lineHeight: 22,
+    marginBottom: theme.spacing.lg,
+  },
+  heroButtons: {
+    marginTop: 4,
+  },
+  linkText: {
+    color: theme.colors.primary,
+    fontWeight: '700',
+    fontSize: 14,
   },
 });
