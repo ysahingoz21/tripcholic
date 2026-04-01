@@ -31,6 +31,15 @@ async function bootstrap() {
     .setTitle('Tripcholic Backend API')
     .setDescription('Central orchestration API for mobile clients and the optimizer service.')
     .setVersion('1.0.0')
+    .addBearerAuth(
+      {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        description: 'Paste the JWT access token returned by /api/auth/login.',
+      },
+      'bearer',
+    )
     .build();
 
   const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);

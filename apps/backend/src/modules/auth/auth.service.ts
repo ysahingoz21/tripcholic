@@ -1,14 +1,19 @@
 import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
-import { hash } from 'bcryptjs';
+import { JwtService } from '@nestjs/jwt';
+import { compare, hash } from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { type JwtAccessTokenPayload } from './types/authenticated-user.type';
 
 const BCRYPT_ROUNDS = 10;
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly jwtService: JwtService,
+  ) {}
 
   async register(payload: RegisterDto) {
     const client = await this.prisma.getClient();
@@ -42,8 +47,45 @@ export class AuthService {
     };
   }
 
-  login(_payload: LoginDto) {
-    // Credential verification and JWT issuing will be added in a follow-up step.
-    throw new UnauthorizedException('Login not yet implemented');
+  async login(payload: LoginDto) {
+    const client = await this.prisma.getClient();
+
+    const user = await client.user.findUnique({
+      where: { email: payload.email },
+      select: {
+        id: true,
+        email: true,
+        passwordHash: true,
+        createdAt: true,
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const isPasswordValid = await compare(payload.password, user.passwordHash);
+
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const tokenPayload: JwtAccessTokenPayload = {
+      sub: user.id,
+      email: user.email,
+    };
+
+    const accessToken = await this.jwtService.signAsync(tokenPayload);
+
+    return {
+      message: 'Login successful',
+      accessToken,
+      tokenType: 'Bearer',
+      user: {
+        id: user.id,
+        email: user.email,
+        createdAt: user.createdAt,
+      },
+    };
   }
 }
