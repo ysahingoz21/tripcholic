@@ -1,57 +1,111 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
 import { CreateTripDto } from './dto/create-trip.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
 
 @Injectable()
 export class TripsService {
-  create(payload: CreateTripDto) {
-    return {
-      status: 'pending_implementation' as const,
-      message:
-        'Trip creation contract is in place, but persistence and route generation orchestration will be completed after Prisma business models are finalized.',
-      submitted: payload,
-      nextStep: 'Finalize trip-related Prisma models and orchestration flow.',
-    };
+  constructor(private readonly prisma: PrismaService) {}
+
+  async create(payload: CreateTripDto) {
+    const client = await this.prisma.getClient();
+
+    const trip = await client.trip.create({
+      data: {
+        // userId is intentionally null until JWT auth is wired.
+        // Once auth is in place, extract userId from the request token here.
+        title:             payload.title,
+        description:       payload.description ?? null,
+        date:              new Date(payload.date),
+        timeStart:         payload.startTime ?? null,
+        timeEnd:           payload.endTime ?? null,
+        budgetTl:          payload.budgetTl ?? null,
+        categories:        payload.interests ?? [],
+        weather:           payload.weather ?? null,
+        walkingToleranceKm: payload.maxWalkingDistanceKm ?? null,
+        maxPois:           payload.maxStops ?? null,
+      },
+    });
+
+    return trip;
   }
 
-  findAll() {
-    return {
-      status: 'pending_implementation' as const,
-      message:
-        'Trip listing endpoint is reserved and stable, but trip persistence has not been implemented yet.',
-      items: [],
-      nextStep: 'Back this endpoint with Prisma once trip models are approved.',
-    };
+  async findAll() {
+    const client = await this.prisma.getClient();
+
+    const trips = await client.trip.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: { _count: { select: { stops: true } } },
+    });
+
+    return trips;
   }
 
-  findOne(id: string) {
-    return {
-      status: 'pending_implementation' as const,
-      message:
-        'Trip detail endpoint is reserved and stable, but trip persistence has not been implemented yet.',
-      tripId: id,
-      nextStep: 'Back this endpoint with Prisma once trip models are approved.',
-    };
+  async findOne(id: string) {
+    const client = await this.prisma.getClient();
+
+    const trip = await client.trip.findUnique({
+      where: { id },
+      include: {
+        stops: {
+          orderBy: { order: 'asc' },
+          include: { poi: true },
+        },
+      },
+    });
+
+    if (!trip) {
+      throw new NotFoundException(`Trip not found: "${id}"`);
+    }
+
+    return trip;
   }
 
-  update(id: string, payload: UpdateTripDto) {
-    return {
-      status: 'pending_implementation' as const,
-      message:
-        'Trip update contract is in place, but persistence and optimistic concurrency rules will be added after Prisma business models are finalized.',
-      tripId: id,
-      submitted: payload,
-      nextStep: 'Back this endpoint with Prisma once trip models are approved.',
-    };
+  async update(id: string, payload: UpdateTripDto) {
+    const client = await this.prisma.getClient();
+
+    const existing = await client.trip.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+
+    if (!existing) {
+      throw new NotFoundException(`Trip not found: "${id}"`);
+    }
+
+    const trip = await client.trip.update({
+      where: { id },
+      data: {
+        ...(payload.title !== undefined           && { title: payload.title }),
+        ...(payload.description !== undefined     && { description: payload.description }),
+        ...(payload.date !== undefined            && { date: new Date(payload.date) }),
+        ...(payload.startTime !== undefined       && { timeStart: payload.startTime }),
+        ...(payload.endTime !== undefined         && { timeEnd: payload.endTime }),
+        ...(payload.budgetTl !== undefined        && { budgetTl: payload.budgetTl }),
+        ...(payload.interests !== undefined       && { categories: payload.interests }),
+        ...(payload.weather !== undefined         && { weather: payload.weather }),
+        ...(payload.maxWalkingDistanceKm !== undefined && { walkingToleranceKm: payload.maxWalkingDistanceKm }),
+        ...(payload.maxStops !== undefined        && { maxPois: payload.maxStops }),
+      },
+    });
+
+    return trip;
   }
 
-  remove(id: string) {
-    return {
-      status: 'pending_implementation' as const,
-      message:
-        'Trip deletion endpoint is reserved and stable, but persistence has not been implemented yet.',
-      tripId: id,
-      nextStep: 'Back this endpoint with Prisma once trip models are approved.',
-    };
+  async remove(id: string) {
+    const client = await this.prisma.getClient();
+
+    const existing = await client.trip.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+
+    if (!existing) {
+      throw new NotFoundException(`Trip not found: "${id}"`);
+    }
+
+    await client.trip.delete({ where: { id } });
+
+    return { deleted: true, id };
   }
 }
