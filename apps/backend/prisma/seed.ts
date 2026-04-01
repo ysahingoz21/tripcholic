@@ -11,16 +11,17 @@
 import 'dotenv/config';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
+import { access } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
 import { resolve } from 'node:path';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 
-// ── Path helpers ──────────────────────────────────────────────────────────────
-
-// process.cwd() is apps/backend/ when run via npm script — go up two levels
-// to reach the monorepo root where data/ lives.
-const MONOREPO_ROOT = resolve(process.cwd(), '../..');
+const DATASET_PATH_CANDIDATES = [
+  resolve(process.cwd(), '../../data/istanbul_poi_dataset.csv'),
+  resolve(process.cwd(), '../data/istanbul_poi_dataset.csv'),
+  resolve(process.cwd(), 'data/istanbul_poi_dataset.csv'),
+];
 
 // ── UUID5 ─────────────────────────────────────────────────────────────────────
 // Matches Python: uuid.uuid5(uuid.NAMESPACE_DNS, f"tripcholic.poi.{name}")
@@ -77,6 +78,21 @@ async function readCsv(filePath: string): Promise<Record<string, string>[]> {
   });
 }
 
+async function resolveDatasetPath(): Promise<string> {
+  for (const candidate of DATASET_PATH_CANDIDATES) {
+    try {
+      await access(candidate);
+      return candidate;
+    } catch {
+      continue;
+    }
+  }
+
+  throw new Error(
+    `Dataset file not found. Tried: ${DATASET_PATH_CANDIDATES.join(', ')}`,
+  );
+}
+
 // ── Field mappers ─────────────────────────────────────────────────────────────
 
 // Prisma enum values are strings at runtime — using string literals avoids
@@ -97,6 +113,25 @@ const BUDGET_MAP: Record<string, string> = {
   high:   'HIGH',
 };
 
+const BUDGET_RANGE_MAP: Record<
+  string,
+  { min: number; max: number }
+> = {
+  low: { min: 0, max: 2000 },
+  medium: { min: 2000, max: 6000 },
+  high: { min: 6000, max: 20000 },
+};
+
+type CsvPoiRow = {
+  name: string;
+  category: string;
+  lat: string;
+  lng: string;
+  avg_duration_min: string;
+  budget: string;
+  opening_hours: string;
+};
+
 function parseCategory(raw: string): string {
   const mapped = CATEGORY_MAP[raw.toLowerCase()];
   if (!mapped) throw new Error(`Unknown category: "${raw}"`);
@@ -109,6 +144,16 @@ function parseBudget(raw: string): string {
   return mapped;
 }
 
+function parseBudgetRange(raw: string): { estimatedMinCostTl: number; estimatedMaxCostTl: number } {
+  const mapped = BUDGET_RANGE_MAP[raw.toLowerCase()];
+  if (!mapped) throw new Error(`Unknown budget range: "${raw}"`);
+
+  return {
+    estimatedMinCostTl: mapped.min,
+    estimatedMaxCostTl: mapped.max,
+  };
+}
+
 function parseOpeningHours(raw: string): { open: string; close: string } {
   const dash = raw.indexOf('-');
   if (dash === -1) throw new Error(`Cannot parse opening_hours: "${raw}"`);
@@ -118,47 +163,95 @@ function parseOpeningHours(raw: string): { open: string; close: string } {
   };
 }
 
+function parseFloatField(raw: string, fieldName: string): number {
+  const value = Number.parseFloat(raw);
+  if (Number.isNaN(value)) {
+    throw new Error(`Invalid float for ${fieldName}: "${raw}"`);
+  }
+  return value;
+}
+
+function parseIntField(raw: string, fieldName: string): number {
+  const value = Number.parseInt(raw, 10);
+  if (Number.isNaN(value)) {
+    throw new Error(`Invalid integer for ${fieldName}: "${raw}"`);
+  }
+  return value;
+}
+
+function mapCsvRowToPoi(row: CsvPoiRow) {
+  const hours = parseOpeningHours(row.opening_hours);
+  const costs = parseBudgetRange(row.budget);
+
+  return {
+    id: poiUuid(row.name),
+    name: row.name,
+    category: parseCategory(row.category) as never,
+    description: null,
+    district: null,
+    address: null,
+    imageUrl: null,
+    source: 'istanbul_poi_dataset.csv',
+    lat: parseFloatField(row.lat, 'lat'),
+    lng: parseFloatField(row.lng, 'lng'),
+    avgDurationMin: parseIntField(row.avg_duration_min, 'avg_duration_min'),
+    budgetLevel: parseBudget(row.budget) as never,
+    estimatedMinCostTl: costs.estimatedMinCostTl,
+    estimatedMaxCostTl: costs.estimatedMaxCostTl,
+    openingHoursOpen: hours.open,
+    openingHoursClose: hours.close,
+  };
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
-  const csvPath = resolve(MONOREPO_ROOT, 'data/istanbul_poi_dataset.csv');
-  console.log(`[seed] Reading: ${csvPath}`);
+  if (!process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL is required to run the seed script');
+  }
 
-  const rows = await readCsv(csvPath);
+  const datasetPath = await resolveDatasetPath();
+  console.log(`[seed] Reading: ${datasetPath}`);
+
+  const rows = (await readCsv(datasetPath)) as CsvPoiRow[];
   console.log(`[seed] ${rows.length} rows found`);
 
   let upserted = 0;
   let skipped = 0;
 
   for (const row of rows) {
-    const name = row['name'];
+    const name = row.name;
     if (!name) {
       skipped++;
       continue;
     }
 
     try {
-      const hours = parseOpeningHours(row['opening_hours']);
-      const id    = poiUuid(name);
-
-      const data = {
-        name,
-        category:          parseCategory(row['category']) as never,
-        lat:               parseFloat(row['lat']),
-        lng:               parseFloat(row['lng']),
-        avgDurationMin:    parseInt(row['avg_duration_min'], 10),
-        budgetLevel:       parseBudget(row['budget']) as never,
-        openingHoursOpen:  hours.open,
-        openingHoursClose: hours.close,
-      };
+      const mapped = mapCsvRowToPoi(row);
 
       await prisma.pointOfInterest.upsert({
-        where:  { id },
-        create: { id, ...data },
-        update: data,
+        where: { id: mapped.id },
+        create: mapped as never,
+        update: {
+          name: mapped.name,
+          category: mapped.category,
+          description: mapped.description,
+          district: mapped.district,
+          address: mapped.address,
+          imageUrl: mapped.imageUrl,
+          source: mapped.source,
+          lat: mapped.lat,
+          lng: mapped.lng,
+          avgDurationMin: mapped.avgDurationMin,
+          budgetLevel: mapped.budgetLevel,
+          estimatedMinCostTl: mapped.estimatedMinCostTl,
+          estimatedMaxCostTl: mapped.estimatedMaxCostTl,
+          openingHoursOpen: mapped.openingHoursOpen,
+          openingHoursClose: mapped.openingHoursClose,
+        } as never,
       });
 
       upserted++;

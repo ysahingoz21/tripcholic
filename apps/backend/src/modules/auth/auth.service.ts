@@ -37,7 +37,7 @@ export class AuthService {
     });
 
     return {
-      message: 'Registration successful',
+      message: 'User registered successfully',
       user,
     };
   }

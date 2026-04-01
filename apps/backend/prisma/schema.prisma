@@ -1,7 +1,3 @@
-// Tripcholic – Prisma schema v1 (MVP)
-// Source of truth for database structure.
-// Do not add community/rating/comment models here until explicitly needed.
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,8 +5,6 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
-
-// ── Enums ─────────────────────────────────────────────────────────────────────
 
 enum POICategory {
   HISTORICAL
@@ -34,12 +28,11 @@ enum TripStatus {
   FAILED
 }
 
-// ── Models ────────────────────────────────────────────────────────────────────
-
 model User {
   id           String   @id @default(uuid())
   email        String   @unique
   passwordHash String
+  displayName  String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -50,33 +43,25 @@ model User {
 
 model Trip {
   id     String  @id @default(uuid())
-  userId String? // nullable until auth is fully wired
+  userId String?
 
-  // User-facing identity
-  title       String   // required — matches CreateTripDto
+  title       String
   description String?
-
-  // Planning fields (single-day)
-  date      DateTime
-  timeStart String?  // HH:MM — optional, matches CreateTripDto.startTime
-  timeEnd   String?  // HH:MM — optional, matches CreateTripDto.endTime
-
-  // Preferences stored inline — no separate preferences table for MVP
-  budgetTl           Float?   // optional, matches CreateTripDto.budgetTl
-  categories         String[] // POICategory values as strings
-  weather            String?  // "clear" | "cloudy" | "rainy"
+  date        DateTime
+  timeStart   String?
+  timeEnd     String?
+  budgetTl    Float?
+  categories  String[]
+  weather     String?
   walkingToleranceKm Float?
-  maxPois            Int?
-
-  status TripStatus @default(PENDING)
-
-  // Populated by the optimizer after a successful route generation.
-  // total_distance_km cannot be recomputed from stops — must be stored.
-  // total_duration_minutes is stored to avoid recalculating across stops at read time.
-  // algorithm_used tracks which optimizer version produced this route.
-  routeTotalDistanceKm    Float?
-  routeTotalDurationMin   Int?
-  routeAlgorithmUsed      String?
+  maxPois    Int?
+  status     TripStatus @default(PENDING)
+  routeName            String?
+  routeTotalDistanceKm Float?
+  routeTotalDurationMin Int?
+  routeTotalCostTl     Float?
+  routeAlgorithmUsed   String?
+  optimizedAt          DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -84,6 +69,8 @@ model Trip {
   user  User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
   stops TripStop[]
 
+  @@index([userId])
+  @@index([date])
   @@map("trips")
 }
 
@@ -92,36 +79,44 @@ model TripStop {
   tripId String
   poiId  String
 
-  order                 Int    // stop sequence (0-based)
-  arrivalTime           String // HH:MM
-  departureTime         String // HH:MM
-  travelTimeToNextMin   Int?   // null for the last stop
-  estimatedCostTl       Float
+  order               Int
+  title               String
+  arrivalTime         String
+  departureTime       String
+  travelTimeToNextMin Int?
+  estimatedCostTl     Float
 
-  trip Trip             @relation(fields: [tripId], references: [id], onDelete: Cascade)
-  poi  PointOfInterest  @relation(fields: [poiId], references: [id])
+  trip Trip            @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  poi  PointOfInterest @relation(fields: [poiId], references: [id], onDelete: Restrict)
 
   @@unique([tripId, order])
+  @@index([poiId])
   @@map("trip_stops")
 }
 
 model PointOfInterest {
-  id       String      @id  // UUID5 derived from name — matches optimizer poi_id
+  id       String      @id
   name     String      @unique
   category POICategory
-  lat      Float
-  lng      Float
-
-  avgDurationMin  Int
-  budgetLevel     BudgetLevel
-
-  // Opening hours stored as HH:MM strings, matching the CSV format
+  description String?
+  district    String?
+  address     String?
+  imageUrl    String?
+  source      String?
+  lat         Float
+  lng         Float
+  avgDurationMin    Int
+  budgetLevel       BudgetLevel
+  estimatedMinCostTl Float?
+  estimatedMaxCostTl Float?
   openingHoursOpen  String
   openingHoursClose String
-
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   stops TripStop[]
 
+  @@index([category])
+  @@index([name])
   @@map("points_of_interest")
 }
