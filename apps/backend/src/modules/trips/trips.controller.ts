@@ -10,38 +10,38 @@ export class TripsController {
   constructor(private readonly tripsService: TripsService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Create a trip placeholder endpoint' })
+  @ApiOperation({ summary: 'Create a trip' })
   @ApiBody({ type: CreateTripDto })
-  @ApiOkResponse({ description: 'Temporary trip creation response.' })
+  @ApiOkResponse({ description: 'Trip created successfully.' })
   create(@Body() body: CreateTripDto) {
     return this.tripsService.create(body);
   }
 
   @Get()
-  @ApiOperation({ summary: 'List trips placeholder endpoint' })
-  @ApiOkResponse({ description: 'Temporary trip list response.' })
+  @ApiOperation({ summary: 'List trips' })
+  @ApiOkResponse({ description: 'Trip list returned successfully.' })
   findAll() {
     return this.tripsService.findAll();
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get trip placeholder endpoint' })
-  @ApiOkResponse({ description: 'Temporary trip detail response.' })
+  @ApiOperation({ summary: 'Get a single trip' })
+  @ApiOkResponse({ description: 'Trip detail returned successfully.' })
   findOne(@Param('id') id: string) {
     return this.tripsService.findOne(id);
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Update trip placeholder endpoint' })
+  @ApiOperation({ summary: 'Update a trip' })
   @ApiBody({ type: UpdateTripDto })
-  @ApiOkResponse({ description: 'Temporary trip update response.' })
+  @ApiOkResponse({ description: 'Trip updated successfully.' })
   update(@Param('id') id: string, @Body() body: UpdateTripDto) {
     return this.tripsService.update(id, body);
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Delete trip placeholder endpoint' })
-  @ApiOkResponse({ description: 'Temporary trip delete response.' })
+  @ApiOperation({ summary: 'Delete a trip' })
+  @ApiOkResponse({ description: 'Trip deleted successfully.' })
   remove(@Param('id') id: string) {
     return this.tripsService.remove(id);
   }

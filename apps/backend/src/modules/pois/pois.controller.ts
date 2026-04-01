@@ -10,21 +10,21 @@ export class PoisController {
 
   @Get()
   @ApiOperation({
-    summary: 'List POIs from the temporary Istanbul dataset source',
+    summary: 'List POIs from the database',
   })
   @ApiQuery({ name: 'category', required: false })
   @ApiQuery({ name: 'search', required: false })
   @ApiQuery({ name: 'limit', required: false })
-  @ApiOkResponse({ description: 'Temporary POI list response.' })
+  @ApiOkResponse({ description: 'Database-backed POI list response.' })
   findAll(@Query() query: ListPoisQueryDto) {
     return this.poisService.findAll(query);
   }
 
   @Get(':id')
   @ApiOperation({
-    summary: 'Get a single POI from the temporary Istanbul dataset source',
+    summary: 'Get a single POI from the database',
   })
-  @ApiOkResponse({ description: 'Temporary POI detail response.' })
+  @ApiOkResponse({ description: 'Database-backed POI detail response.' })
   findOne(@Param('id') id: string) {
     return this.poisService.findOne(id);
   }

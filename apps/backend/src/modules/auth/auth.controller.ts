@@ -11,13 +11,13 @@ export class AuthController {
 
   @Post('register')
   @ApiOperation({
-    summary: 'Temporary registration endpoint scaffold',
+    summary: 'Register a new user',
     description:
-      'Validates registration input and returns a temporary response until Prisma user models and auth persistence are finalized.',
+      'Validates input, checks for duplicate email, hashes the password, and creates a user record in the database.',
   })
   @ApiBody({ type: RegisterDto })
   @ApiOkResponse({
-    description: 'Temporary registration response.',
+    description: 'User registration response.',
   })
   register(@Body() body: RegisterDto) {
     return this.authService.register(body);
