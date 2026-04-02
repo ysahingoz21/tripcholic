@@ -14,70 +14,82 @@ export default function HomeScreen() {
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={styles.heroCard}>
           <Text style={styles.badge}>Tripcholic</Text>
-          <Text style={styles.heroTitle}>Smarter Istanbul trips, planned around you.</Text>
+          <Text style={styles.heroTitle}>
+            Smarter Istanbul trips, planned around you.
+          </Text>
           <Text style={styles.heroSubtitle}>
             Build feasible single-day routes with preference-based planning,
             natural language input, and optimization-aware suggestions.
           </Text>
 
           <View style={styles.heroButtons}>
-            <AppButton title="Start Planning" onPress={() => router.push('/(tabs)/planner')} />
+            <AppButton
+              title="Start Planning"
+              onPress={() => router.push('/(tabs)/planner')}
+            />
           </View>
         </View>
 
-      <SectionTitle
-        title="What makes it different?"
-        subtitle="A modular planning experience designed around real travel constraints."
-      />
+        <SectionTitle
+          title="What makes it different?"
+          subtitle="A modular planning experience designed around real travel constraints."
+        />
 
-      <InfoCard
-        icon="map"
-        title="Constraint-Aware Planning"
-        description="Routes are designed around time, budget, travel duration, and venue availability."
-      />
-      <InfoCard
-        icon="chatbubbles"
-        title="Natural Language Input"
-        description='Describe your trip naturally, like "a relaxed afternoon with good food and culture."'
-      />
-      <InfoCard
-        icon="partly-sunny"
-        title="Weather-Aware Suggestions"
-        description="Get context-driven route updates and human-readable plan explanations."
-      />
-      <InfoCard
-        icon="people"
-        title="Community Discovery"
-        description="Browse public routes, duplicate plans, and discover popular itineraries."
-      />
+        <InfoCard
+          icon="map"
+          title="Constraint-Aware Planning"
+          description="Routes are designed around time, budget, travel duration, and venue availability."
+        />
+        <InfoCard
+          icon="chatbubbles"
+          title="Natural Language Input"
+          description='Describe your trip naturally, like "a relaxed afternoon with good food and culture."'
+        />
+        <InfoCard
+          icon="partly-sunny"
+          title="Weather-Aware Suggestions"
+          description="Get context-driven route updates and human-readable plan explanations."
+        />
+        <InfoCard
+          icon="people"
+          title="Community Discovery"
+          description="Browse public routes, duplicate plans, and discover popular itineraries."
+        />
 
-              <SectionTitle
-                title="Quick actions"
-                subtitle="Jump into the core product flow."
-              />
+        <SectionTitle
+          title="Quick actions"
+          subtitle="Jump into the core product flow."
+        />
 
-              <InfoCard
-                title="Plan a new trip"
-                description="Start a personalized route using form-based inputs or natural language."
-                rightContent={
-                  <Text style={styles.linkText} onPress={() => router.push('/(tabs)/planner')}>
-                    Open
-                  </Text>
-                }
-              />
-              <InfoCard
-                title="Explore shared plans"
-                description="Browse community-created public routes and inspiration."
-                rightContent={
-                  <Text style={styles.linkText} onPress={() => router.push('/(tabs)/explore')}>
-                    Browse
-                  </Text>
-                }
-              />
-            </ScrollView>
-          </ScreenContainer>
-        );
-      }
+        <InfoCard
+          title="Plan a new trip"
+          description="Start a personalized route using form-based inputs or natural language."
+          rightContent={
+            <Text
+              style={styles.linkText}
+              onPress={() => router.push('/(tabs)/planner')}
+            >
+              Open
+            </Text>
+          }
+        />
+
+        <InfoCard
+          title="Explore shared plans"
+          description="Browse community-created public routes and inspiration."
+          rightContent={
+            <Text
+              style={styles.linkText}
+              onPress={() => router.push('/(tabs)/explore')}
+            >
+              Browse
+            </Text>
+          }
+        />
+      </ScrollView>
+    </ScreenContainer>
+  );
+}
 
 const styles = StyleSheet.create({
   heroCard: {
