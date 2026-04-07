@@ -41,10 +41,13 @@ export default function ProfileScreen() {
 
         <SectionTitle
           title="Your Space"
-          subtitle="Manage saved plans, favorites, and account preferences."
+          subtitle="Account surfaces beyond the core trip flow are still limited in the current MVP."
         />
 
-        <InfoCard title="Saved Trips" description="Access previously generated or duplicated routes." />
+        <InfoCard
+          title="Saved Trips"
+          description="Bookmarking or saving trips is a future feature and is not connected yet."
+        />
         <InfoCard title="Favorites" description="Review your liked places and bookmarked plans." />
         <InfoCard title="Shared Routes" description="Manage routes you published to the community." />
         <InfoCard title="Settings" description="Update account, privacy, and notification preferences." />
