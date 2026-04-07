@@ -68,7 +68,7 @@ export class CreateTripDto {
   @IsOptional()
   @IsArray()
   @IsIn(TRIP_CATEGORY_VALUES, { each: true })
-  interests?: Array<(typeof TRIP_CATEGORY_VALUES)[number]>;
+  categories?: Array<(typeof TRIP_CATEGORY_VALUES)[number]>;
 
   @ApiPropertyOptional({ example: 3000 })
   @IsOptional()
