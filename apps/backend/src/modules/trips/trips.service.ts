@@ -68,14 +68,14 @@ export class TripsService {
         timeStart:         payload.startTime ?? null,
         timeEnd:           payload.endTime ?? null,
         budgetTl:          payload.budgetTl ?? null,
-        categories:        payload.interests ?? [],
+        categories:        payload.categories ?? [],
         weather:           payload.weather ?? null,
         walkingToleranceKm: payload.maxWalkingDistanceKm ?? null,
         maxPois:           payload.maxStops ?? null,
       },
     });
 
-    return trip;
+    return this.findOne(userId, trip.id);
   }
 
   async findAll(userId: string) {
@@ -117,7 +117,7 @@ export class TripsService {
         ...(payload.startTime !== undefined       && { timeStart: payload.startTime }),
         ...(payload.endTime !== undefined         && { timeEnd: payload.endTime }),
         ...(payload.budgetTl !== undefined        && { budgetTl: payload.budgetTl }),
-        ...(payload.interests !== undefined       && { categories: payload.interests }),
+        ...(payload.categories !== undefined      && { categories: payload.categories }),
         ...(payload.weather !== undefined         && { weather: payload.weather }),
         ...(payload.maxWalkingDistanceKm !== undefined && { walkingToleranceKm: payload.maxWalkingDistanceKm }),
         ...(payload.maxStops !== undefined        && { maxPois: payload.maxStops }),
