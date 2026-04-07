@@ -1,6 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { PointOfInterest, Prisma } from '@prisma/client';
 import { OptimizerService } from '../optimizer/optimizer.service';
-import { OptimizerOptimizeResponse } from '../optimizer/optimizer.types';
+import {
+  OptimizerOptimizeRequest,
+  OptimizerOptimizeResponse,
+} from '../optimizer/optimizer.types';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTripDto } from './dto/create-trip.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
@@ -28,6 +32,23 @@ const BUDGET_LEVEL_TO_TL: Record<string, number> = {
   high: 20000,
 };
 
+const DEFAULT_OPTIMIZER_TIME_START = '09:00';
+const DEFAULT_OPTIMIZER_TIME_END = '21:00';
+const DEFAULT_OPTIMIZER_WALKING_TOLERANCE_KM = 3.0;
+const DEFAULT_OPTIMIZER_MAX_POIS = 6;
+const DEFAULT_OPTIMIZER_BUDGET_TL = 6000;
+const MAX_CANDIDATE_POIS = 50;
+
+type TripDetailRecord = Prisma.TripGetPayload<{
+  include: {
+    stops: {
+      include: {
+        poi: true;
+      };
+    };
+  };
+}>;
+
 @Injectable()
 export class TripsService {
   constructor(
@@ -35,13 +56,12 @@ export class TripsService {
     private readonly optimizerService: OptimizerService,
   ) {}
 
-  async create(payload: CreateTripDto) {
+  async create(userId: string, payload: CreateTripDto) {
     const client = await this.prisma.getClient();
 
     const trip = await client.trip.create({
       data: {
-        // userId is intentionally null until JWT auth is wired.
-        // Once auth is in place, extract userId from the request token here.
+        userId,
         title:             payload.title,
         description:       payload.description ?? null,
         date:              new Date(payload.date),
@@ -58,10 +78,11 @@ export class TripsService {
     return trip;
   }
 
-  async findAll() {
+  async findAll(userId: string) {
     const client = await this.prisma.getClient();
 
     const trips = await client.trip.findMany({
+      where: { userId },
       orderBy: { createdAt: 'desc' },
       include: { _count: { select: { stops: true } } },
     });
@@ -69,37 +90,23 @@ export class TripsService {
     return trips;
   }
 
-  async findOne(id: string) {
+  async findOne(userId: string, id: string) {
     const client = await this.prisma.getClient();
 
-    const trip = await client.trip.findUnique({
-      where: { id },
-      include: {
-        stops: {
-          orderBy: { order: 'asc' },
-          include: { poi: true },
-        },
+    const trip = (await this.getOwnedTripOrThrow(client, userId, id, {
+      stops: {
+        orderBy: { order: 'asc' },
+        include: { poi: true },
       },
-    });
+    })) as TripDetailRecord;
 
-    if (!trip) {
-      throw new NotFoundException(`Trip not found: "${id}"`);
-    }
-
-    return trip;
+    return this.toTripDetailResponse(trip);
   }
 
-  async update(id: string, payload: UpdateTripDto) {
+  async update(userId: string, id: string, payload: UpdateTripDto) {
     const client = await this.prisma.getClient();
 
-    const existing = await client.trip.findUnique({
-      where: { id },
-      select: { id: true },
-    });
-
-    if (!existing) {
-      throw new NotFoundException(`Trip not found: "${id}"`);
-    }
+    await this.getOwnedTripOrThrow(client, userId, id);
 
     const trip = await client.trip.update({
       where: { id },
@@ -120,144 +127,274 @@ export class TripsService {
     return trip;
   }
 
-  async remove(id: string) {
+  async remove(userId: string, id: string) {
     const client = await this.prisma.getClient();
 
-    const existing = await client.trip.findUnique({
-      where: { id },
-      select: { id: true },
-    });
-
-    if (!existing) {
-      throw new NotFoundException(`Trip not found: "${id}"`);
-    }
+    await this.getOwnedTripOrThrow(client, userId, id);
 
     await client.trip.delete({ where: { id } });
 
     return { deleted: true, id };
   }
 
-  private affordableBudgetLevels(budgetTl: number): never[] {
+  private affordableBudgetLevels(budgetTl: number): string[] {
     // Always include LOW. Add MEDIUM if budget >= 2000, HIGH if >= 6000.
     const levels: string[] = ['LOW'];
     if (budgetTl >= 2000) levels.push('MEDIUM');
     if (budgetTl >= 6000) levels.push('HIGH');
-    return levels as never[];
+    return levels;
   }
 
-  async optimize(id: string) {
+  async optimize(userId: string, id: string) {
     const client = await this.prisma.getClient();
 
-    // 1. Load the trip
-    const trip = await client.trip.findUnique({ where: { id } });
-    if (!trip) throw new NotFoundException(`Trip not found: "${id}"`);
-
-    // 2. Resolve which optimizer categories to query
-    const optimizerCategories = [
-      ...new Set(
-        (trip.categories as string[]).flatMap(
-          (c) => CATEGORY_MAP[c] ?? [c],
-        ),
-      ),
-    ];
-
-    const dbCategories = optimizerCategories.map(
-      (c) => c.toUpperCase() as never,
-    );
-
-    // 3. Select candidate POIs from DB filtered by category + affordable budget level
-    //    This keeps the candidate set small so CP-SAT solves fast.
+    const trip = await this.getOwnedTripOrThrow(client, userId, id);
+    const optimizerCategories = this.normalizeTripCategories(trip.categories);
+    const dbCategories = this.toDbCategories(optimizerCategories);
     const affordableLevels = trip.budgetTl
       ? this.affordableBudgetLevels(trip.budgetTl)
-      : (['LOW', 'MEDIUM', 'HIGH'] as never[]);
+      : ['LOW', 'MEDIUM', 'HIGH'];
+
+    const poiWhere: Prisma.PointOfInterestWhereInput = {
+      ...(dbCategories.length > 0 && { category: { in: dbCategories as never[] } }),
+      budgetLevel: { in: affordableLevels as never[] },
+    };
 
     const pois = await client.pointOfInterest.findMany({
-      where: {
-        category: { in: dbCategories },
-        budgetLevel: { in: affordableLevels },
-      },
-      take: 50,
+      where: poiWhere,
+      orderBy: [{ category: 'asc' }, { avgDurationMin: 'asc' }, { name: 'asc' }],
+      take: MAX_CANDIDATE_POIS,
     });
 
-    if (pois.length === 0) {
-      throw new NotFoundException(
-        'No POIs found for the requested categories.',
-      );
-    }
-
-    // 4. Resolve budget — use trip value or fall back to budget level of POIs
-    const budgetTl =
-      trip.budgetTl ??
-      BUDGET_LEVEL_TO_TL[
-        pois[0].budgetLevel.toLowerCase() as keyof typeof BUDGET_LEVEL_TO_TL
-      ] ??
-      6000;
-
-    // 5. Build optimizer request
-    const optimizerRequest = {
+    const candidatePois = pois.map((poi) => this.mapPoiToOptimizerCandidate(poi));
+    const effectiveBudgetTl = this.resolveOptimizerBudgetTl(
+      trip.budgetTl,
+      affordableLevels,
+    );
+    const optimizerRequest: OptimizerOptimizeRequest = {
       trip_id: trip.id,
       date: trip.date.toISOString().split('T')[0],
       preferences: {
         categories: optimizerCategories,
-        time_start: trip.timeStart ?? '09:00',
-        time_end: trip.timeEnd ?? '21:00',
-        budget_tl: budgetTl,
-        walking_tolerance_km: trip.walkingToleranceKm ?? 3.0,
-        max_pois: trip.maxPois ?? 6,
-        weather: (trip.weather as 'clear' | 'cloudy' | 'rainy') ?? undefined,
+        time_start: trip.timeStart ?? DEFAULT_OPTIMIZER_TIME_START,
+        time_end: trip.timeEnd ?? DEFAULT_OPTIMIZER_TIME_END,
+        budget_tl: effectiveBudgetTl,
+        walking_tolerance_km:
+          trip.walkingToleranceKm ?? DEFAULT_OPTIMIZER_WALKING_TOLERANCE_KM,
+        max_pois: trip.maxPois ?? DEFAULT_OPTIMIZER_MAX_POIS,
+        weather: this.normalizeWeather(trip.weather),
       },
-      candidate_pois: pois.map((poi) => ({
-        poi_id: poi.id,
-        name: poi.name,
-        location: { lat: poi.lat, lng: poi.lng },
-        category: poi.category.toLowerCase(),
-        opening_hours: {
-          open: poi.openingHoursOpen,
-          close: poi.openingHoursClose,
-        },
-        budget: {
-          min_tl: poi.estimatedMinCostTl ?? 0,
-          max_tl: poi.estimatedMaxCostTl ?? poi.estimatedMinCostTl ?? 500,
-        },
-        visit_duration_minutes: poi.avgDurationMin,
-      })),
+      candidate_pois: candidatePois,
     };
 
-    // 6. Call optimizer
-    const result = await this.optimizerService.callOptimize(optimizerRequest);
+    const optimizerResult =
+      candidatePois.length > 0
+        ? await this.optimizerService.callOptimize(optimizerRequest)
+        : this.buildNoFeasibleRouteResult(optimizerRequest, 'backend_no_candidates');
 
-    // 7. Persist result — delete old stops, write new ones, update trip metadata
     await client.$transaction(async (tx) => {
-      await tx.tripStop.deleteMany({ where: { tripId: id } });
-
-      await tx.tripStop.createMany({
-        data: result.route.stops.map((stop: OptimizerOptimizeResponse['route']['stops'][number], index: number) => ({
-          tripId: id,
-          poiId: stop.poi_id,
-          order: index + 1,
-          title: stop.name,
-          arrivalTime: stop.arrival_time,
-          departureTime: stop.departure_time,
-          travelTimeToNextMin: stop.travel_time_to_next_minutes ?? null,
-          estimatedCostTl: stop.estimated_cost_tl,
-        })),
+      await tx.tripStop.deleteMany({
+        where: { tripId: trip.id },
       });
 
+      if (optimizerResult.route.stops.length > 0) {
+        await tx.tripStop.createMany({
+          data: optimizerResult.route.stops.map((stop, index) => ({
+            tripId: trip.id,
+            poiId: stop.poi_id,
+            order: index + 1,
+            title: stop.name,
+            arrivalTime: stop.arrival_time,
+            departureTime: stop.departure_time,
+            travelTimeToNextMin: stop.travel_time_to_next_minutes ?? null,
+            estimatedCostTl: stop.estimated_cost_tl,
+          })),
+        });
+      }
+
       await tx.trip.update({
-        where: { id },
+        where: { id: trip.id },
         data: {
-          status: 'OPTIMIZED',
-          routeName: result.route.route_name,
-          routeTotalDistanceKm: result.route.total_distance_km,
-          routeTotalDurationMin: result.route.total_duration_minutes,
-          routeTotalCostTl: result.route.total_cost_tl,
-          routeAlgorithmUsed: result.algorithm_used,
-          optimizedAt: new Date(),
+          status: optimizerResult.route.stops.length > 0 ? 'OPTIMIZED' : 'FAILED',
+          optimizedAt: new Date(optimizerResult.generated_at),
+          routeName: optimizerResult.route.route_name,
+          routeTotalDistanceKm: optimizerResult.route.total_distance_km,
+          routeTotalDurationMin: optimizerResult.route.total_duration_minutes,
+          routeTotalCostTl: optimizerResult.route.total_cost_tl,
+          routeAlgorithmUsed: optimizerResult.algorithm_used,
         },
       });
     });
 
-    // 8. Return the full trip with stops
-    return this.findOne(id);
+    return this.findOne(userId, trip.id);
+  }
+
+  private async getOwnedTripOrThrow(
+    client: Awaited<ReturnType<PrismaService['getClient']>>,
+    userId: string,
+    tripId: string,
+    include?: Prisma.TripInclude,
+  ) {
+    const trip = await client.trip.findFirst({
+      where: {
+        id: tripId,
+        userId,
+      },
+      include,
+    });
+
+    if (!trip) {
+      throw new NotFoundException(`Trip not found: "${tripId}"`);
+    }
+
+    return trip;
+  }
+
+  private normalizeTripCategories(categories: string[]): string[] {
+    return [
+      ...new Set(
+        categories.flatMap((category) => CATEGORY_MAP[category] ?? [category]),
+      ),
+    ];
+  }
+
+  private toDbCategories(categories: string[]): string[] {
+    return categories.map((category) => category.toUpperCase());
+  }
+
+  private resolveOptimizerBudgetTl(
+    tripBudgetTl: number | null,
+    affordableLevels: string[],
+  ): number {
+    if (tripBudgetTl !== null) {
+      return tripBudgetTl;
+    }
+
+    const highestAffordableLevel = affordableLevels[affordableLevels.length - 1];
+    if (highestAffordableLevel) {
+      return (
+        BUDGET_LEVEL_TO_TL[
+          highestAffordableLevel.toLowerCase() as keyof typeof BUDGET_LEVEL_TO_TL
+        ] ?? DEFAULT_OPTIMIZER_BUDGET_TL
+      );
+    }
+
+    return DEFAULT_OPTIMIZER_BUDGET_TL;
+  }
+
+  private mapPoiToOptimizerCandidate(poi: PointOfInterest) {
+    return {
+      poi_id: poi.id,
+      name: poi.name,
+      location: {
+        lat: poi.lat,
+        lng: poi.lng,
+      },
+      category: poi.category.toLowerCase(),
+      opening_hours: {
+        open: poi.openingHoursOpen,
+        close: poi.openingHoursClose,
+      },
+      budget: {
+        min_tl: poi.estimatedMinCostTl ?? 0,
+        max_tl: poi.estimatedMaxCostTl ?? poi.estimatedMinCostTl ?? 500,
+      },
+      visit_duration_minutes: poi.avgDurationMin,
+    };
+  }
+
+  private normalizeWeather(
+    weather: string | null,
+  ): OptimizerOptimizeRequest['preferences']['weather'] {
+    if (weather === 'clear' || weather === 'cloudy' || weather === 'rainy') {
+      return weather;
+    }
+
+    return undefined;
+  }
+
+  private buildNoFeasibleRouteResult(
+    request: OptimizerOptimizeRequest,
+    algorithmUsed: string,
+  ): OptimizerOptimizeResponse {
+    return {
+      trip_id: request.trip_id,
+      date: request.date,
+      route: {
+        route_name: `No feasible route for ${request.date}`,
+        total_distance_km: 0,
+        total_cost_tl: 0,
+        total_duration_minutes: 0,
+        stops: [],
+      },
+      algorithm_used: algorithmUsed,
+      generated_at: new Date().toISOString(),
+    };
+  }
+
+  private toTripDetailResponse(trip: TripDetailRecord) {
+    const stops = trip.stops.map((stop) => ({
+      id: stop.id,
+      order: stop.order,
+      title: stop.title,
+      arrivalTime: stop.arrivalTime,
+      departureTime: stop.departureTime,
+      travelTimeToNextMin: stop.travelTimeToNextMin,
+      estimatedCostTl: stop.estimatedCostTl,
+      poi: {
+        id: stop.poi.id,
+        title: stop.poi.name,
+        category: stop.poi.category.toLowerCase(),
+        description: stop.poi.description,
+        district: stop.poi.district,
+        address: stop.poi.address,
+        imageUrl: stop.poi.imageUrl,
+        source: stop.poi.source,
+        coordinates: {
+          lat: stop.poi.lat,
+          lng: stop.poi.lng,
+        },
+        suggestedVisitDurationMinutes: stop.poi.avgDurationMin,
+        pricing: {
+          budgetLevel: stop.poi.budgetLevel.toLowerCase(),
+          minTl: stop.poi.estimatedMinCostTl,
+          maxTl: stop.poi.estimatedMaxCostTl,
+        },
+        openingHours: {
+          open: stop.poi.openingHoursOpen,
+          close: stop.poi.openingHoursClose,
+        },
+      },
+    }));
+
+    return {
+      trip: {
+        id: trip.id,
+        title: trip.title,
+        description: trip.description,
+        date: trip.date,
+        timeStart: trip.timeStart,
+        timeEnd: trip.timeEnd,
+        budgetTl: trip.budgetTl,
+        categories: trip.categories,
+        weather: trip.weather,
+        walkingToleranceKm: trip.walkingToleranceKm,
+        maxPois: trip.maxPois,
+        status: trip.status,
+        createdAt: trip.createdAt,
+        updatedAt: trip.updatedAt,
+      },
+      optimization: {
+        optimizedAt: trip.optimizedAt,
+        routeName: trip.routeName,
+        routeTotalDistanceKm: trip.routeTotalDistanceKm,
+        routeTotalDurationMin: trip.routeTotalDurationMin,
+        routeTotalCostTl: trip.routeTotalCostTl,
+        routeAlgorithmUsed: trip.routeAlgorithmUsed,
+        stopCount: stops.length,
+        isOptimized: trip.status === 'OPTIMIZED',
+      },
+      stops,
+    };
   }
 }
