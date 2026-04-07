@@ -74,6 +74,33 @@ export type TripDetailResponse = {
   }>;
 };
 
+export type TripListItem = {
+  id: string;
+  userId: string | null;
+  title: string;
+  description: string | null;
+  date: string;
+  timeStart: string | null;
+  timeEnd: string | null;
+  budgetTl: number | null;
+  categories: string[];
+  weather: string | null;
+  walkingToleranceKm: number | null;
+  maxPois: number | null;
+  status: string;
+  routeName: string | null;
+  routeTotalDistanceKm: number | null;
+  routeTotalDurationMin: number | null;
+  routeTotalCostTl: number | null;
+  routeAlgorithmUsed: string | null;
+  optimizedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  _count: {
+    stops: number;
+  };
+};
+
 export type CreateTripPayload = {
   title: string;
   description?: string;
@@ -164,4 +191,15 @@ export async function getTrip(token: string, tripId: string) {
   });
 
   return parseApiResponse<TripDetailResponse>(response, 'Failed to load trip');
+}
+
+export async function getTrips(token: string) {
+  const response = await fetch(`${API_BASE_URL}/trips`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  return parseApiResponse<TripListItem[]>(response, 'Failed to load trips');
 }
