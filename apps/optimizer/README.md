@@ -9,7 +9,7 @@ Python FastAPI microservice that models single-day trip planning as a constraine
 ```bash
 cd apps/optimizer
 source venv/bin/activate
-uvicorn main:app --reload
+uvicorn main:app --host 0.0.0.0 --reload
 ```
 
 Or directly:

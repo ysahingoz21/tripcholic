@@ -5,16 +5,38 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { type AppConfig } from './modules/config/app.config';
 
+const DEVELOPMENT_ALLOWED_ORIGINS = new Set([
+  'http://localhost:8081',
+  'http://localhost:19006',
+  'http://127.0.0.1:8081',
+  'http://127.0.0.1:19006',
+]);
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
   const config = configService.getOrThrow<AppConfig>('app', {
     infer: true,
   });
+  const configuredOrigins = new Set(
+    config.CORS_ORIGIN.split(',').map((origin) => origin.trim()).filter(Boolean),
+  );
 
   app.setGlobalPrefix('api');
   app.enableCors({
-    origin: config.CORS_ORIGIN.split(',').map((origin) => origin.trim()),
+    origin: (origin, callback) => {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+
+      const isConfiguredOrigin = configuredOrigins.has(origin);
+      const isDevelopmentOrigin =
+        config.NODE_ENV === 'development' &&
+        DEVELOPMENT_ALLOWED_ORIGINS.has(origin);
+
+      callback(null, isConfiguredOrigin || isDevelopmentOrigin);
+    },
     credentials: true,
   });
   app.useGlobalPipes(
@@ -49,7 +71,7 @@ async function bootstrap() {
     },
   });
 
-  await app.listen(config.PORT);
+  await app.listen(config.PORT, '0.0.0.0');
 }
 
 void bootstrap();

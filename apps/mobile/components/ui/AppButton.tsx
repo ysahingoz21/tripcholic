@@ -4,11 +4,16 @@ import { theme } from '@/constants/theme';
 type Props = {
   title: string;
   onPress?: () => void;
+  disabled?: boolean;
 };
 
-export default function AppButton({ title, onPress }: Props) {
+export default function AppButton({ title, onPress, disabled = false }: Props) {
   return (
-    <Pressable style={styles.button} onPress={onPress}>
+    <Pressable
+      style={[styles.button, disabled && styles.buttonDisabled]}
+      onPress={onPress}
+      disabled={disabled}
+    >
       <Text style={styles.text}>{title}</Text>
     </Pressable>
   );
@@ -21,6 +26,9 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  buttonDisabled: {
+    opacity: 0.6,
   },
   text: {
     color: theme.colors.white,

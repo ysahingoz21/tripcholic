@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import ScreenContainer from '../../components/ui/ScreenContainer';
 import SectionTitle from '../../components/ui/SectionTitle';
 import AppButton from '../../components/ui/AppButton';
 import InterestChip from '../../components/ui/InterestChip';
 import { theme } from '../../constants/theme';
+import { useAuth } from '@/context/AuthContext';
+import { createTrip, optimizeTrip, type CreateTripPayload } from '@/services/trips';
 
 const interestOptions = [
   'Culture',
@@ -20,10 +22,18 @@ const interestOptions = [
 
 export default function PlannerScreen() {
   const router = useRouter();
+  const { token, isLoading: isAuthLoading } = useAuth();
   const [selectedInterests, setSelectedInterests] = useState<string[]>([
     'Culture',
     'Food',
   ]);
+  const [destination, setDestination] = useState('');
+  const [date, setDate] = useState('');
+  const [availableTime, setAvailableTime] = useState('');
+  const [budgetStyle, setBudgetStyle] = useState('');
+  const [transportMode, setTransportMode] = useState('');
+  const [naturalLanguageDescription, setNaturalLanguageDescription] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const toggleInterest = (interest: string) => {
     setSelectedInterests((prev) =>
@@ -31,6 +41,95 @@ export default function PlannerScreen() {
         ? prev.filter((item) => item !== interest)
         : [...prev, interest]
     );
+  };
+
+  const parseBudgetTl = (value: string) => {
+    const normalized = value.trim().toLowerCase();
+
+    if (normalized === 'low') return 2000;
+    if (normalized === 'medium') return 6000;
+    if (normalized === 'high') return 20000;
+
+    return undefined;
+  };
+
+  const parseTimeRange = (value: string) => {
+    const match = value.trim().match(/^(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})$/);
+
+    if (!match) {
+      return {};
+    }
+
+    return {
+      startTime: match[1],
+      endTime: match[2],
+    };
+  };
+
+  const handleGenerateRoute = async () => {
+    if (!token) {
+      Alert.alert(
+        'Authentication required',
+        isAuthLoading
+          ? 'Restoring session. Please try again in a moment.'
+          : 'Please sign in again.'
+      );
+      return;
+    }
+
+    if (!destination.trim()) {
+      Alert.alert('Missing title', 'Please enter a trip title or destination.');
+      return;
+    }
+
+    if (!date.trim()) {
+      Alert.alert('Missing date', 'Please enter a trip date in YYYY-MM-DD format.');
+      return;
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date.trim())) {
+      Alert.alert('Invalid date', 'Please use the YYYY-MM-DD format.');
+      return;
+    }
+
+    if (isSubmitting) return;
+
+    const normalizedCategories = selectedInterests.map((interest) =>
+      interest.toLowerCase()
+    );
+    const parsedBudgetTl = parseBudgetTl(budgetStyle);
+    const parsedTimeRange = parseTimeRange(availableTime);
+
+    const payload: CreateTripPayload = {
+      title: destination.trim(),
+      date: date.trim(),
+      categories: normalizedCategories,
+      ...(naturalLanguageDescription.trim() && {
+        description: naturalLanguageDescription.trim(),
+      }),
+      ...(parsedBudgetTl !== undefined && { budgetTl: parsedBudgetTl }),
+      ...parsedTimeRange,
+    };
+
+    try {
+      setIsSubmitting(true);
+      const createdTrip = await createTrip(token, payload);
+      const optimizedTrip = await optimizeTrip(token, createdTrip.trip.id);
+
+      router.push({
+        pathname: '/results',
+        params: {
+          tripId: optimizedTrip.trip.id,
+        },
+      });
+    } catch (error) {
+      Alert.alert(
+        'Unable to generate route',
+        error instanceof Error ? error.message : 'Trip creation or optimization failed.'
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -49,20 +148,26 @@ export default function PlannerScreen() {
             placeholder="Istanbul district or area"
             placeholderTextColor="#94A3B8"
             style={styles.input}
+            value={destination}
+            onChangeText={setDestination}
           />
 
           <Text style={styles.label}>Date</Text>
           <TextInput
-            placeholder="Select date"
+            placeholder="YYYY-MM-DD"
             placeholderTextColor="#94A3B8"
             style={styles.input}
+            value={date}
+            onChangeText={setDate}
           />
 
           <Text style={styles.label}>Available Time</Text>
           <TextInput
-            placeholder="e.g. 6 hours"
+            placeholder="Optional: 10:00-18:00"
             placeholderTextColor="#94A3B8"
             style={styles.input}
+            value={availableTime}
+            onChangeText={setAvailableTime}
           />
 
           <Text style={styles.label}>Interests</Text>
@@ -82,6 +187,8 @@ export default function PlannerScreen() {
             placeholder="Low / Medium / High"
             placeholderTextColor="#94A3B8"
             style={styles.input}
+            value={budgetStyle}
+            onChangeText={setBudgetStyle}
           />
 
           <Text style={styles.label}>Transport Mode</Text>
@@ -89,6 +196,8 @@ export default function PlannerScreen() {
             placeholder="Walking / Car"
             placeholderTextColor="#94A3B8"
             style={styles.input}
+            value={transportMode}
+            onChangeText={setTransportMode}
           />
 
           <Text style={styles.sectionLabel}>Or describe it naturally</Text>
@@ -98,9 +207,15 @@ export default function PlannerScreen() {
             multiline
             textAlignVertical="top"
             style={styles.textArea}
+            value={naturalLanguageDescription}
+            onChangeText={setNaturalLanguageDescription}
           />
 
-          <AppButton title="Generate Route" onPress={() => router.push('/results')} />
+          <AppButton
+            title={isSubmitting ? 'Generating Route...' : 'Generate Route'}
+            onPress={handleGenerateRoute}
+            disabled={isSubmitting || isAuthLoading}
+          />
         </View>
       </ScrollView>
     </ScreenContainer>
