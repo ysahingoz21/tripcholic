@@ -71,6 +71,14 @@ export class OptimizerService {
     };
   }
 
+  async callOptimize(request: OptimizerOptimizeRequest): Promise<OptimizerOptimizeResponse> {
+    return this.request<OptimizerOptimizeResponse>({
+      method: 'POST',
+      url: `${this.optimizerUrl}/optimize`,
+      data: request,
+    });
+  }
+
   async previewRoute(previewRequest: OptimizerPreviewRequestDto) {
     const optimizerRequest = this.mapPreviewRequestToOptimizer(previewRequest);
     const optimizerResponse = await this.request<OptimizerOptimizeResponse>({
