@@ -1,38 +1,138 @@
+import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import ScreenContainer from '../components/ui/ScreenContainer';
 import SectionTitle from '../components/ui/SectionTitle';
 import AppButton from '../components/ui/AppButton';
 import TimelineItem from '../components/ui/TimelineItem';
 import { theme } from '../constants/theme';
+import { useAuth } from '@/context/AuthContext';
+import { getTrip, type TripDetailResponse } from '@/services/trips';
 
 export default function ResultsScreen() {
+  const router = useRouter();
+  const { tripId } = useLocalSearchParams<{ tripId?: string }>();
+  const { token, isLoading: isAuthLoading } = useAuth();
+  const [tripDetail, setTripDetail] = useState<TripDetailResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadTrip() {
+      if (isAuthLoading) {
+        return;
+      }
+
+      if (!token) {
+        setError('Authentication required. Please sign in again.');
+        setIsLoading(false);
+        return;
+      }
+
+      if (!tripId || typeof tripId !== 'string') {
+        setError('Missing trip id.');
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+        setError(null);
+        const data = await getTrip(token, tripId);
+        setTripDetail(data);
+      } catch (loadError) {
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : 'Unable to load trip results.'
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    void loadTrip();
+  }, [token, tripId, isAuthLoading]);
+
+  if (isLoading || isAuthLoading) {
+    return (
+      <ScreenContainer>
+        <SectionTitle
+          title="Loading Route"
+          subtitle="Fetching your persisted trip result from the backend."
+        />
+      </ScreenContainer>
+    );
+  }
+
+  if (error || !tripDetail) {
+    return (
+      <ScreenContainer>
+        <SectionTitle
+          title="Route Unavailable"
+          subtitle={error ?? 'Trip result could not be loaded.'}
+        />
+        <AppButton title="Back to Planner" onPress={() => router.replace('/(tabs)/planner')} />
+      </ScreenContainer>
+    );
+  }
+
+  const { trip, optimization, stops } = tripDetail;
+  const routeSummary = [
+    `${optimization.stopCount} stop${optimization.stopCount === 1 ? '' : 's'}`,
+    optimization.routeTotalDurationMin
+      ? `${optimization.routeTotalDurationMin} min`
+      : 'duration pending',
+    optimization.routeTotalCostTl
+      ? `${optimization.routeTotalCostTl} TL`
+      : 'cost pending',
+  ].join(' • ');
+
   return (
     <ScreenContainer>
       <ScrollView showsVerticalScrollIndicator={false}>
         <SectionTitle
-          title="Your Generated Route"
-          subtitle="A single-day itinerary with optimized stop order, estimated durations, and explanation."
+          title={optimization.routeName ?? trip.title}
+          subtitle={`Trip status: ${trip.status.toLowerCase()} • ${routeSummary}`}
         />
 
         <View style={styles.mapCard}>
           <View style={styles.mapHeader}>
             <Ionicons name="map" size={18} color={theme.colors.primaryDark} />
-            <Text style={styles.mapTitle}>Map-Based Route Visualization</Text>
+            <Text style={styles.mapTitle}>Route Summary</Text>
           </View>
 
           <View style={styles.fakeMap}>
-            <View style={[styles.poiPin, { top: 28, left: 46 }]} />
-            <View style={[styles.poiPin, { top: 72, left: 138 }]} />
-            <View style={[styles.poiPin, { top: 128, left: 228 }]} />
-            <View style={[styles.poiPin, { top: 82, left: 306 }]} />
-            <View style={styles.routeLineOne} />
-            <View style={styles.routeLineTwo} />
-            <View style={styles.routeLineThree} />
+            <Text style={styles.summaryTitle}>{trip.title}</Text>
+            <Text style={styles.summaryLine}>
+              Date: {new Date(trip.date).toLocaleDateString()}
+            </Text>
+            <Text style={styles.summaryLine}>
+              Distance:{' '}
+              {optimization.routeTotalDistanceKm !== null
+                ? `${optimization.routeTotalDistanceKm} km`
+                : 'N/A'}
+            </Text>
+            <Text style={styles.summaryLine}>
+              Duration:{' '}
+              {optimization.routeTotalDurationMin !== null
+                ? `${optimization.routeTotalDurationMin} min`
+                : 'N/A'}
+            </Text>
+            <Text style={styles.summaryLine}>
+              Cost:{' '}
+              {optimization.routeTotalCostTl !== null
+                ? `${optimization.routeTotalCostTl} TL`
+                : 'N/A'}
+            </Text>
+            <Text style={styles.summaryLine}>
+              Algorithm: {optimization.routeAlgorithmUsed ?? 'N/A'}
+            </Text>
           </View>
 
           <Text style={styles.mapCaption}>
-            Route map placeholder for POIs, stop order, and travel path.
+            Optimized backend result for persisted trip `{trip.id}`.
           </Text>
         </View>
 
@@ -41,45 +141,48 @@ export default function ResultsScreen() {
           subtitle="A time-ordered display of the generated day plan."
         />
 
-        <TimelineItem
-          time="10:00"
-          title="Galata Tower"
-          subtitle="Estimated visit: 45 min • Strong starting point with central access."
-          icon="business"
-        />
-        <TimelineItem
-          time="11:15"
-          title="Coffee Break"
-          subtitle="Estimated visit: 30 min • Planned rest stop before next activity."
-          icon="cafe"
-        />
-        <TimelineItem
-          time="12:00"
-          title="Pera Museum"
-          subtitle="Estimated visit: 60 min • Cultural preference match and indoor-friendly."
-          icon="images"
-        />
-        <TimelineItem
-          time="13:30"
-          title="Lunch Stop"
-          subtitle="Estimated visit: 60 min • Budget-aligned meal suggestion nearby."
-          icon="restaurant"
-        />
+        {stops.length > 0 ? (
+          stops.map((stop) => (
+            <TimelineItem
+              key={stop.id}
+              time={stop.arrivalTime}
+              title={stop.title}
+              subtitle={`${stop.poi.category} • ${stop.departureTime} departure • ${stop.estimatedCostTl} TL`}
+              icon="location"
+            />
+          ))
+        ) : (
+          <View style={styles.explanationCard}>
+            <Text style={styles.explanationText}>
+              No feasible route was returned for this trip yet.
+            </Text>
+          </View>
+        )}
 
         <SectionTitle
-          title="Plan Explanation"
-          subtitle="LLM-generated reasoning aligned with route constraints and preferences."
+          title="Trip Settings"
+          subtitle="Persisted trip preferences used by the backend optimizer."
         />
 
         <View style={styles.explanationCard}>
           <Text style={styles.explanationText}>
-            This route prioritizes cultural points of interest, keeps walking effort moderate,
-            and balances activity time with travel distance. Indoor stops are grouped around midday
-            to preserve flexibility if weather conditions change.
+            Categories: {trip.categories.join(', ') || 'None'}{'\n'}
+            Budget: {trip.budgetTl !== null ? `${trip.budgetTl} TL` : 'Not set'}{'\n'}
+            Time window: {trip.timeStart ?? 'N/A'} - {trip.timeEnd ?? 'N/A'}{'\n'}
+            Max stops: {trip.maxPois ?? 'N/A'}{'\n'}
+            Walking tolerance: {trip.walkingToleranceKm ?? 'N/A'} km
           </Text>
         </View>
 
-        <AppButton title="Publish Route" />
+        <AppButton
+          title="Open Trip Detail"
+          onPress={() =>
+            router.push({
+              pathname: '/trip/[id]',
+              params: { id: trip.id },
+            })
+          }
+        />
       </ScrollView>
     </ScreenContainer>
   );
@@ -106,48 +209,23 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   fakeMap: {
-    height: 220,
+    minHeight: 220,
     borderRadius: theme.radius.lg,
     backgroundColor: '#EAF6F5',
-    position: 'relative',
-    overflow: 'hidden',
+    padding: theme.spacing.lg,
+    justifyContent: 'center',
     marginBottom: 10,
   },
-  poiPin: {
-    position: 'absolute',
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: theme.colors.primary,
-    borderWidth: 3,
-    borderColor: theme.colors.white,
+  summaryTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: theme.colors.primaryDark,
+    marginBottom: 12,
   },
-  routeLineOne: {
-    position: 'absolute',
-    top: 34,
-    left: 58,
-    width: 95,
-    height: 3,
-    backgroundColor: theme.colors.primaryDark,
-    transform: [{ rotate: '20deg' }],
-  },
-  routeLineTwo: {
-    position: 'absolute',
-    top: 96,
-    left: 148,
-    width: 102,
-    height: 3,
-    backgroundColor: theme.colors.primaryDark,
-    transform: [{ rotate: '24deg' }],
-  },
-  routeLineThree: {
-    position: 'absolute',
-    top: 108,
-    left: 238,
-    width: 78,
-    height: 3,
-    backgroundColor: theme.colors.primaryDark,
-    transform: [{ rotate: '-22deg' }],
+  summaryLine: {
+    fontSize: 14,
+    color: theme.colors.text,
+    marginBottom: 6,
   },
   mapCaption: {
     fontSize: 13,

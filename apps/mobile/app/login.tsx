@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  Alert,
   View,
   Text,
   TextInput,
@@ -14,13 +15,25 @@ export default function LoginScreen() {
   const router = useRouter();
   const { signIn } = useAuth();
 
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleLogin = () => {
-    if (!username.trim() || !password.trim()) return;
-    signIn(username, password);
-    router.replace('/(tabs)');
+  const handleLogin = async () => {
+    if (!email.trim() || !password.trim() || isSubmitting) return;
+
+    try {
+      setIsSubmitting(true);
+      await signIn(email.trim(), password);
+      router.replace('/');
+    } catch (error) {
+      Alert.alert(
+        'Login failed',
+        error instanceof Error ? error.message : 'Unable to sign in.'
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -38,11 +51,12 @@ export default function LoginScreen() {
 
           <TextInput
             style={styles.input}
-            placeholder="Email or Username"
+            placeholder="Email"
             placeholderTextColor="#000"
-            value={username}
-            onChangeText={setUsername}
+            value={email}
+            onChangeText={setEmail}
             autoCapitalize="none"
+            keyboardType="email-address"
           />
 
           <TextInput
@@ -54,8 +68,14 @@ export default function LoginScreen() {
             secureTextEntry
           />
 
-          <Pressable style={styles.button} onPress={handleLogin}>
-            <Text style={styles.buttonText}>Sign In</Text>
+          <Pressable
+            style={[styles.button, isSubmitting && styles.buttonDisabled]}
+            onPress={handleLogin}
+            disabled={isSubmitting}
+          >
+            <Text style={styles.buttonText}>
+              {isSubmitting ? 'Logging In...' : 'Sign In'}
+            </Text>
           </Pressable>
 
           <View style={styles.footerRow}>
@@ -122,6 +142,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     marginTop: 4,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
   },
 
   buttonText: {

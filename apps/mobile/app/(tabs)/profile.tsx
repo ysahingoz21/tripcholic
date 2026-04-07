@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import ScreenContainer from '@/components/ui/ScreenContainer';
@@ -9,22 +10,33 @@ import { useAuth } from '@/context/AuthContext';
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { signOut } = useAuth();
+  const { signOut, user } = useAuth();
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
-  const handleLogout = () => {
-    signOut();
-    router.replace('/login');
+  const handleLogout = async () => {
+    if (isSigningOut) return;
+
+    try {
+      setIsSigningOut(true);
+      await signOut();
+      router.replace('/login');
+    } finally {
+      setIsSigningOut(false);
+    }
   };
+
+  const email = user?.email ?? 'Not signed in';
+  const avatarLetter = email.charAt(0).toUpperCase() || 'U';
 
   return (
     <ScreenContainer>
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={styles.headerCard}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>T</Text>
+            <Text style={styles.avatarText}>{avatarLetter}</Text>
           </View>
-          <Text style={styles.name}>Tuğçe Tepe</Text>
-          <Text style={styles.email}>tripcholic.user@example.com</Text>
+          <Text style={styles.name}>Signed In</Text>
+          <Text style={styles.email}>{email}</Text>
         </View>
 
         <SectionTitle
@@ -38,7 +50,11 @@ export default function ProfileScreen() {
         <InfoCard title="Settings" description="Update account, privacy, and notification preferences." />
 
         <View style={styles.logoutContainer}>
-          <AppButton title="Logg out" onPress={handleLogout} />
+          <AppButton
+            title={isSigningOut ? 'Signing Out...' : 'Log Out'}
+            onPress={handleLogout}
+            disabled={isSigningOut}
+          />
         </View>
       </ScrollView>
     </ScreenContainer>
@@ -84,4 +100,3 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.xl,
   },
 });
-

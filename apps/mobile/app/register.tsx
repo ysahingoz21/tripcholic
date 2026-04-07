@@ -5,23 +5,21 @@ import { useAuth } from '@/context/AuthContext';
 
 export default function RegisterScreen() {
   const router = useRouter();
-  const { signIn } = useAuth();
+  const { signUp } = useAuth();
 
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
-  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleCreateAccount = () => {
+  const handleCreateAccount = async () => {
     if (
-      !fullName.trim() ||
       !email.trim() ||
-      !username.trim() ||
       !password.trim() ||
       !confirmPassword.trim()
     ) {
-      Alert.alert('Missing information', 'Please fill in all fields.');
+      Alert.alert('Missing information', 'Please fill in email and password fields.');
       return;
     }
 
@@ -30,10 +28,24 @@ export default function RegisterScreen() {
       return;
     }
 
-    // Demo akış:
-    // Gerçek backend yoksa oluşturup direkt giriş yaptırıyoruz.
-    signIn(username, password);
-    router.replace('/(tabs)');
+    if (isSubmitting) return;
+
+    try {
+      setIsSubmitting(true);
+      await signUp(
+        email.trim(),
+        password,
+        fullName.trim() ? fullName.trim() : undefined
+      );
+      router.replace('/');
+    } catch (error) {
+      Alert.alert(
+        'Registration failed',
+        error instanceof Error ? error.message : 'Unable to create account.'
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -45,7 +57,7 @@ export default function RegisterScreen() {
 
           <TextInput
             style={styles.input}
-            placeholder="Full Name"
+            placeholder="Full Name (Optional)"
             placeholderTextColor="#000"
             value={fullName}
             onChangeText={setFullName}
@@ -59,15 +71,6 @@ export default function RegisterScreen() {
             onChangeText={setEmail}
             autoCapitalize="none"
             keyboardType="email-address"
-          />
-
-          <TextInput
-            style={styles.input}
-            placeholder="Username"
-            placeholderTextColor="#000"
-            value={username}
-            onChangeText={setUsername}
-            autoCapitalize="none"
           />
 
           <TextInput
@@ -88,8 +91,14 @@ export default function RegisterScreen() {
             secureTextEntry
           />
 
-          <Pressable style={styles.button} onPress={handleCreateAccount}>
-            <Text style={styles.buttonText}>Create Account</Text>
+          <Pressable
+            style={[styles.button, isSubmitting && styles.buttonDisabled]}
+            onPress={handleCreateAccount}
+            disabled={isSubmitting}
+          >
+            <Text style={styles.buttonText}>
+              {isSubmitting ? 'Creating Account...' : 'Create Account'}
+            </Text>
           </Pressable>
 
           <View style={styles.footerRow}>
@@ -151,6 +160,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     marginTop: 4,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
   },
   buttonText: {
     color: '#FFFFFF',
