@@ -8,7 +8,6 @@ class Settings(BaseSettings):
     APP_VERSION: str = "0.1.0"
     LOG_LEVEL: str = "INFO"
     OSRM_BASE_URL: str = "http://router.project-osrm.org"
-    POI_DATA_PATH: str = "../../data/istanbul_poi_dataset.csv"
 
     model_config = SettingsConfigDict(
         env_file=".env",

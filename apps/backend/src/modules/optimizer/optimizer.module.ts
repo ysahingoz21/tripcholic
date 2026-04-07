@@ -5,5 +5,6 @@ import { OptimizerService } from './optimizer.service';
 @Module({
   controllers: [OptimizerController],
   providers: [OptimizerService],
+  exports: [OptimizerService],
 })
 export class OptimizerModule {}

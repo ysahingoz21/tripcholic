@@ -55,7 +55,7 @@ def _fetch_osrm_matrix(pois: list[POI]) -> list[list[float]] | None:
     url = _OSRM_TABLE_URL.format(base=settings.OSRM_BASE_URL, coords=coords)
 
     try:
-        with httpx.Client(timeout=10.0) as client:
+        with httpx.Client(timeout=2.0) as client:
             response = client.get(url)
             response.raise_for_status()
             data = response.json()

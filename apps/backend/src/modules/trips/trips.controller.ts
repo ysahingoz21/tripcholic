@@ -45,4 +45,16 @@ export class TripsController {
   remove(@Param('id') id: string) {
     return this.tripsService.remove(id);
   }
+
+  @Post(':id/optimize')
+  @ApiOperation({
+    summary: 'Optimize a trip',
+    description:
+      'Selects candidate POIs from the database based on the trip\'s categories and preferences, ' +
+      'calls the optimizer microservice, and saves the resulting stops back to the trip.',
+  })
+  @ApiOkResponse({ description: 'Trip optimized successfully.' })
+  optimize(@Param('id') id: string) {
+    return this.tripsService.optimize(id);
+  }
 }

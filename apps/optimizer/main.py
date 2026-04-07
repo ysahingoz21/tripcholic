@@ -10,9 +10,6 @@ from app.routers import health, optimize, validate
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print(f"[{settings.APP_NAME}] v{settings.APP_VERSION} starting — env={settings.ENV}")
-    # Load POI dataset once at startup; stored on app.state for request handlers
-    from app.services.poi_loader import load_pois
-    app.state.all_pois = load_pois()
     yield
     print(f"[{settings.APP_NAME}] shutting down")
 
@@ -22,12 +19,11 @@ app = FastAPI(
     description=(
         "Constraint-aware route optimization engine for the Tripcholic trip planning application.\n\n"
         "Models single-day trip planning in Istanbul as a constrained optimization problem. "
-        "Receives structured user preference vectors from the NestJS backend and returns "
-        "feasible ordered daily itineraries that satisfy time windows, venue opening hours, "
-        "budget limits, and walking distance tolerance.\n\n"
-        "**Algorithm:** greedy nearest-feasible selection with OSRM walking-time matrix "
-        "(Haversine fallback). All preference fields are optional — missing values are "
-        "filled with sensible defaults so partial LLM output never causes a failure."
+        "Receives structured user preference vectors and candidate POIs from the NestJS backend "
+        "and returns feasible ordered daily itineraries that satisfy time windows, venue opening "
+        "hours, budget limits, and walking distance tolerance.\n\n"
+        "**Algorithm:** OR-Tools CP-SAT solver (greedy fallback). "
+        "Candidate POIs are selected and filtered by the backend before reaching this service."
     ),
     version=settings.APP_VERSION,
     contact={
