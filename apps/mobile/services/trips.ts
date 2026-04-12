@@ -111,6 +111,7 @@ export type CreateTripPayload = {
   budgetTl?: number;
   maxWalkingDistanceKm?: number;
   maxStops?: number;
+  weather?: 'clear' | 'cloudy' | 'rainy';
 };
 
 function getErrorMessage(payload: unknown, fallback: string) {

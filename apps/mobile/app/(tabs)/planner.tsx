@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import ScreenContainer from '../../components/ui/ScreenContainer';
 import SectionTitle from '../../components/ui/SectionTitle';
@@ -9,7 +9,7 @@ import { theme } from '../../constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { createTrip, optimizeTrip, type CreateTripPayload } from '@/services/trips';
 
-const interestOptions = [
+const categoryOptions = [
   'Culture',
   'Food',
   'Museums',
@@ -20,51 +20,48 @@ const interestOptions = [
   'Nightlife',
 ];
 
+const budgetOptions = [
+  { label: 'Low', value: 2000 },
+  { label: 'Medium', value: 6000 },
+  { label: 'High', value: 20000 },
+] as const;
+
+const weatherOptions = [
+  { label: 'Clear', value: 'clear' },
+  { label: 'Cloudy', value: 'cloudy' },
+  { label: 'Rainy', value: 'rainy' },
+] as const;
+
+type WeatherValue = 'clear' | 'cloudy' | 'rainy';
+type BudgetValue = 2000 | 6000 | 20000;
+
 export default function PlannerScreen() {
   const router = useRouter();
   const { token, isLoading: isAuthLoading } = useAuth();
-  const [selectedInterests, setSelectedInterests] = useState<string[]>([
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([
     'Culture',
     'Food',
   ]);
   const [destination, setDestination] = useState('');
   const [date, setDate] = useState('');
-  const [availableTime, setAvailableTime] = useState('');
-  const [budgetStyle, setBudgetStyle] = useState('');
-  const [transportMode, setTransportMode] = useState('');
-  const [naturalLanguageDescription, setNaturalLanguageDescription] = useState('');
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
+  const [budgetTl, setBudgetTl] = useState<BudgetValue | undefined>(undefined);
+  const [weather, setWeather] = useState<WeatherValue | undefined>(undefined);
+  const [maxWalkingDistanceKm, setMaxWalkingDistanceKm] = useState('');
+  const [maxStops, setMaxStops] = useState('');
+  const [tripNotes, setTripNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const toggleInterest = (interest: string) => {
-    setSelectedInterests((prev) =>
-      prev.includes(interest)
-        ? prev.filter((item) => item !== interest)
-        : [...prev, interest]
+  const toggleCategory = (category: string) => {
+    setSelectedCategories((prev) =>
+      prev.includes(category)
+        ? prev.filter((item) => item !== category)
+        : [...prev, category]
     );
   };
 
-  const parseBudgetTl = (value: string) => {
-    const normalized = value.trim().toLowerCase();
-
-    if (normalized === 'low') return 2000;
-    if (normalized === 'medium') return 6000;
-    if (normalized === 'high') return 20000;
-
-    return undefined;
-  };
-
-  const parseTimeRange = (value: string) => {
-    const match = value.trim().match(/^(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})$/);
-
-    if (!match) {
-      return {};
-    }
-
-    return {
-      startTime: match[1],
-      endTime: match[2],
-    };
-  };
+  const isValidTime = (value: string) => /^\d{2}:\d{2}$/.test(value.trim());
 
   const handleGenerateRoute = async () => {
     if (!token) {
@@ -92,23 +89,39 @@ export default function PlannerScreen() {
       return;
     }
 
+    if (startTime.trim() && !isValidTime(startTime)) {
+      Alert.alert('Invalid start time', 'Please use HH:MM format (e.g. 09:00).');
+      return;
+    }
+
+    if (endTime.trim() && !isValidTime(endTime)) {
+      Alert.alert('Invalid end time', 'Please use HH:MM format (e.g. 18:00).');
+      return;
+    }
+
     if (isSubmitting) return;
 
-    const normalizedCategories = selectedInterests.map((interest) =>
-      interest.toLowerCase()
-    );
-    const parsedBudgetTl = parseBudgetTl(budgetStyle);
-    const parsedTimeRange = parseTimeRange(availableTime);
+    const normalizedCategories = selectedCategories.map((c) => c.toLowerCase());
+
+    const parsedMaxWalking = maxWalkingDistanceKm.trim()
+      ? parseFloat(maxWalkingDistanceKm.trim())
+      : undefined;
+
+    const parsedMaxStops = maxStops.trim()
+      ? parseInt(maxStops.trim(), 10)
+      : undefined;
 
     const payload: CreateTripPayload = {
       title: destination.trim(),
       date: date.trim(),
       categories: normalizedCategories,
-      ...(naturalLanguageDescription.trim() && {
-        description: naturalLanguageDescription.trim(),
-      }),
-      ...(parsedBudgetTl !== undefined && { budgetTl: parsedBudgetTl }),
-      ...parsedTimeRange,
+      ...(tripNotes.trim() && { description: tripNotes.trim() }),
+      ...(budgetTl !== undefined && { budgetTl }),
+      ...(startTime.trim() && { startTime: startTime.trim() }),
+      ...(endTime.trim() && { endTime: endTime.trim() }),
+      ...(weather !== undefined && { weather }),
+      ...(parsedMaxWalking !== undefined && !isNaN(parsedMaxWalking) && { maxWalkingDistanceKm: parsedMaxWalking }),
+      ...(parsedMaxStops !== undefined && !isNaN(parsedMaxStops) && { maxStops: parsedMaxStops }),
     };
 
     try {
@@ -117,7 +130,7 @@ export default function PlannerScreen() {
       const optimizedTrip = await optimizeTrip(token, createdTrip.trip.id);
 
       router.push({
-        pathname: '/results',
+        pathname: '/results' as any,
         params: {
           tripId: optimizedTrip.trip.id,
         },
@@ -137,12 +150,11 @@ export default function PlannerScreen() {
       <ScrollView showsVerticalScrollIndicator={false}>
         <SectionTitle
           title="Trip Planner"
-          subtitle="Create a personalized Istanbul route with structured input or natural language."
+          subtitle="Set your preferences and generate a personalized Istanbul route."
         />
 
         <View style={styles.formCard}>
-          <Text style={styles.sectionLabel}>Structured preferences</Text>
-
+          {/* Destination & Date */}
           <Text style={styles.label}>Destination</Text>
           <TextInput
             placeholder="Istanbul district or area"
@@ -161,54 +173,125 @@ export default function PlannerScreen() {
             onChangeText={setDate}
           />
 
-          <Text style={styles.label}>Available Time</Text>
-          <TextInput
-            placeholder="Optional: 10:00-18:00"
-            placeholderTextColor="#94A3B8"
-            style={styles.input}
-            value={availableTime}
-            onChangeText={setAvailableTime}
-          />
+          {/* Time range */}
+          <Text style={styles.label}>Time Range (optional)</Text>
+          <View style={styles.row}>
+            <TextInput
+              placeholder="Start  09:00"
+              placeholderTextColor="#94A3B8"
+              style={[styles.input, styles.halfInput]}
+              value={startTime}
+              onChangeText={setStartTime}
+              keyboardType="numbers-and-punctuation"
+              maxLength={5}
+            />
+            <TextInput
+              placeholder="End  18:00"
+              placeholderTextColor="#94A3B8"
+              style={[styles.input, styles.halfInput]}
+              value={endTime}
+              onChangeText={setEndTime}
+              keyboardType="numbers-and-punctuation"
+              maxLength={5}
+            />
+          </View>
 
-          <Text style={styles.label}>Interests</Text>
+          {/* Categories */}
+          <Text style={styles.label}>Categories</Text>
           <View style={styles.chipContainer}>
-            {interestOptions.map((interest) => (
+            {categoryOptions.map((category) => (
               <InterestChip
-                key={interest}
-                label={interest}
-                selected={selectedInterests.includes(interest)}
-                onPress={() => toggleInterest(interest)}
+                key={category}
+                label={category}
+                selected={selectedCategories.includes(category)}
+                onPress={() => toggleCategory(category)}
               />
             ))}
           </View>
 
-          <Text style={styles.label}>Budget Style</Text>
+          {/* Budget */}
+          <Text style={styles.label}>Budget</Text>
+          <View style={styles.row}>
+            {budgetOptions.map((opt) => (
+              <TouchableOpacity
+                key={opt.label}
+                style={[
+                  styles.selectorChip,
+                  budgetTl === opt.value && styles.selectorChipSelected,
+                ]}
+                onPress={() =>
+                  setBudgetTl(budgetTl === opt.value ? undefined : opt.value)
+                }
+              >
+                <Text
+                  style={[
+                    styles.selectorChipText,
+                    budgetTl === opt.value && styles.selectorChipTextSelected,
+                  ]}
+                >
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Weather */}
+          <Text style={styles.label}>Weather</Text>
+          <View style={styles.row}>
+            {weatherOptions.map((opt) => (
+              <TouchableOpacity
+                key={opt.value}
+                style={[
+                  styles.selectorChip,
+                  weather === opt.value && styles.selectorChipSelected,
+                ]}
+                onPress={() =>
+                  setWeather(weather === opt.value ? undefined : opt.value)
+                }
+              >
+                <Text
+                  style={[
+                    styles.selectorChipText,
+                    weather === opt.value && styles.selectorChipTextSelected,
+                  ]}
+                >
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Walking & Stops */}
+          <Text style={styles.label}>Max Walking Distance (km, optional)</Text>
           <TextInput
-            placeholder="Low / Medium / High"
+            placeholder="e.g. 5"
             placeholderTextColor="#94A3B8"
             style={styles.input}
-            value={budgetStyle}
-            onChangeText={setBudgetStyle}
+            value={maxWalkingDistanceKm}
+            onChangeText={setMaxWalkingDistanceKm}
+            keyboardType="decimal-pad"
           />
 
-          <Text style={styles.label}>Transport Mode</Text>
+          <Text style={styles.label}>Max Stops (optional)</Text>
           <TextInput
-            placeholder="Walking / Car"
+            placeholder="e.g. 6"
             placeholderTextColor="#94A3B8"
             style={styles.input}
-            value={transportMode}
-            onChangeText={setTransportMode}
+            value={maxStops}
+            onChangeText={setMaxStops}
+            keyboardType="number-pad"
           />
 
-          <Text style={styles.sectionLabel}>Or describe it naturally</Text>
+          {/* Trip Notes */}
+          <Text style={styles.label}>Trip Notes (optional)</Text>
           <TextInput
-            placeholder='Example: "A relaxed afternoon with good food and something cultural, not too much walking."'
+            placeholder="Any extra context for your trip, e.g. relaxed pace, no steep hills."
             placeholderTextColor="#94A3B8"
             multiline
             textAlignVertical="top"
             style={styles.textArea}
-            value={naturalLanguageDescription}
-            onChangeText={setNaturalLanguageDescription}
+            value={tripNotes}
+            onChangeText={setTripNotes}
           />
 
           <AppButton
@@ -231,13 +314,6 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.border,
     marginBottom: theme.spacing.xl,
   },
-  sectionLabel: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: theme.colors.primaryDark,
-    marginBottom: 8,
-    marginTop: 4,
-  },
   label: {
     fontSize: 14,
     fontWeight: '600',
@@ -256,6 +332,14 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     marginBottom: 4,
   },
+  row: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 4,
+  },
+  halfInput: {
+    flex: 1,
+  },
   textArea: {
     backgroundColor: '#F8FAFC',
     borderWidth: 1,
@@ -265,12 +349,33 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     fontSize: 15,
     color: theme.colors.text,
-    minHeight: 120,
+    minHeight: 100,
     marginBottom: 16,
   },
   chipContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     marginBottom: 8,
+  },
+  selectorChip: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: theme.radius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+  },
+  selectorChipSelected: {
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
+  },
+  selectorChipText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: theme.colors.text,
+  },
+  selectorChipTextSelected: {
+    color: '#FFFFFF',
   },
 });
