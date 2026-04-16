@@ -1,14 +1,14 @@
-import { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import ScreenContainer from '../components/ui/ScreenContainer';
-import SectionTitle from '../components/ui/SectionTitle';
-import AppButton from '../components/ui/AppButton';
-import TimelineItem from '../components/ui/TimelineItem';
-import { theme } from '../constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { getTrip, type TripDetailResponse } from '@/services/trips';
+import { Ionicons } from '@expo/vector-icons';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import AppButton from '../components/ui/AppButton';
+import ScreenContainer from '../components/ui/ScreenContainer';
+import SectionTitle from '../components/ui/SectionTitle';
+import TimelineItem from '../components/ui/TimelineItem';
+import { theme } from '../constants/theme';
 
 export default function ResultsScreen() {
   const router = useRouter();
@@ -91,7 +91,10 @@ export default function ResultsScreen() {
 
   return (
     <ScreenContainer>
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 100 }}
+      >
         <SectionTitle
           title={optimization.routeName ?? trip.title}
           subtitle={`Trip status: ${trip.status.toLowerCase()} • ${routeSummary}`}
@@ -174,15 +177,24 @@ export default function ResultsScreen() {
           </Text>
         </View>
 
-        <AppButton
-          title="Open Trip Detail"
-          onPress={() =>
-            router.push({
-              pathname: '/trip/[id]',
-              params: { id: trip.id },
-            })
-          }
-        />
+        <View style={styles.buttonGroup}>
+          <AppButton
+            title="Open Trip Detail"
+            onPress={() =>
+              router.push({
+                pathname: '/trip/[id]',
+                params: { id: trip.id },
+              })
+            }
+          />
+
+          <View style={styles.buttonSpacer} />
+
+          <AppButton
+            title="Go to My Trips"
+            onPress={() => router.replace('/(tabs)/trips')}
+          />
+        </View>
       </ScrollView>
     </ScreenContainer>
   );
@@ -243,5 +255,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 22,
     color: theme.colors.textSecondary,
+  },
+  buttonGroup: {
+    marginBottom: theme.spacing.xl,
+  },
+  buttonSpacer: {
+    height: 12,
   },
 });

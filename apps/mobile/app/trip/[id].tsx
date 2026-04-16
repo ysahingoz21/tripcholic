@@ -1,14 +1,14 @@
-import { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import AppButton from '@/components/ui/AppButton';
+import InfoCard from '@/components/ui/InfoCard';
 import ScreenContainer from '@/components/ui/ScreenContainer';
 import SectionTitle from '@/components/ui/SectionTitle';
-import InfoCard from '@/components/ui/InfoCard';
 import TimelineItem from '@/components/ui/TimelineItem';
-import AppButton from '@/components/ui/AppButton';
 import { theme } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { getTrip, type TripDetailResponse } from '@/services/trips';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 export default function TripDetailScreen() {
   const router = useRouter();
@@ -86,7 +86,10 @@ export default function TripDetailScreen() {
 
   return (
     <ScreenContainer>
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 100 }}
+      >
         <SectionTitle
           title={trip.title}
           subtitle={`Trip #${trip.id} • ${trip.status.toLowerCase()}`}
@@ -167,6 +170,11 @@ export default function TripDetailScreen() {
 
         <View style={styles.actions}>
           <AppButton title="Back to Results" onPress={() => router.back()} />
+          <View style={styles.buttonSpacer} />
+          <AppButton
+            title="Go to My Trips"
+            onPress={() => router.replace('/(tabs)/trips')}
+          />
         </View>
       </ScrollView>
     </ScreenContainer>
@@ -207,5 +215,8 @@ const styles = StyleSheet.create({
   },
   actions: {
     marginBottom: theme.spacing.xl,
+  },
+  buttonSpacer: {
+    height: 12,
   },
 });

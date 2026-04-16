@@ -1,13 +1,14 @@
-import { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useRouter } from 'expo-router';
-import ScreenContainer from '../../components/ui/ScreenContainer';
-import SectionTitle from '../../components/ui/SectionTitle';
-import AppButton from '../../components/ui/AppButton';
-import InterestChip from '../../components/ui/InterestChip';
-import { theme } from '../../constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { createTrip, optimizeTrip, type CreateTripPayload } from '@/services/trips';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { useRouter } from 'expo-router';
+import { useState } from 'react';
+import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import AppButton from '../../components/ui/AppButton';
+import InterestChip from '../../components/ui/InterestChip';
+import ScreenContainer from '../../components/ui/ScreenContainer';
+import SectionTitle from '../../components/ui/SectionTitle';
+import { theme } from '../../constants/theme';
 
 const interestOptions = [
   'Culture',
@@ -29,6 +30,9 @@ export default function PlannerScreen() {
   ]);
   const [destination, setDestination] = useState('');
   const [date, setDate] = useState('');
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showStartTimePicker, setShowStartTimePicker] = useState(false);
+  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
   const [availableTime, setAvailableTime] = useState('');
   const [budgetStyle, setBudgetStyle] = useState('');
   const [transportMode, setTransportMode] = useState('');
@@ -66,6 +70,51 @@ export default function PlannerScreen() {
     };
   };
 
+  const formatDateForApi = (value: Date) => {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const formatTimeForApi = (value: Date) => {
+    const hours = String(value.getHours()).padStart(2, '0');
+    const minutes = String(value.getMinutes()).padStart(2, '0');
+    return `${hours}:${minutes}`;
+  };
+
+  const getStartTimeValue = () => {
+    const match = availableTime.match(/^(\d{2}:\d{2})-(\d{2}:\d{2})$/);
+    const value = match ? match[1] : '10:00';
+    const [hours, minutes] = value.split(':').map(Number);
+    const base = new Date();
+    base.setHours(hours, minutes, 0, 0);
+    return base;
+  };
+
+  const getEndTimeValue = () => {
+    const match = availableTime.match(/^(\d{2}:\d{2})-(\d{2}:\d{2})$/);
+    const value = match ? match[2] : '18:00';
+    const [hours, minutes] = value.split(':').map(Number);
+    const base = new Date();
+    base.setHours(hours, minutes, 0, 0);
+    return base;
+  };
+
+  const updateStartTime = (selected: Date) => {
+    const newStart = formatTimeForApi(selected);
+    const match = availableTime.match(/^(\d{2}:\d{2})-(\d{2}:\d{2})$/);
+    const currentEnd = match ? match[2] : '18:00';
+    setAvailableTime(`${newStart}-${currentEnd}`);
+  };
+
+  const updateEndTime = (selected: Date) => {
+    const newEnd = formatTimeForApi(selected);
+    const match = availableTime.match(/^(\d{2}:\d{2})-(\d{2}:\d{2})$/);
+    const currentStart = match ? match[1] : '10:00';
+    setAvailableTime(`${currentStart}-${newEnd}`);
+  };
+
   const handleGenerateRoute = async () => {
     if (!token) {
       Alert.alert(
@@ -77,13 +126,21 @@ export default function PlannerScreen() {
       return;
     }
 
+    const missingFields: string[] = [];
+
     if (!destination.trim()) {
-      Alert.alert('Missing title', 'Please enter a trip title or destination.');
-      return;
+      missingFields.push('Destination');
     }
 
     if (!date.trim()) {
-      Alert.alert('Missing date', 'Please enter a trip date in YYYY-MM-DD format.');
+      missingFields.push('Date');
+    }
+
+    if (missingFields.length > 0) {
+      Alert.alert(
+        'Missing required fields',
+        `Please fill in the following fields: ${missingFields.join(', ')}`
+      );
       return;
     }
 
@@ -143,32 +200,111 @@ export default function PlannerScreen() {
         <View style={styles.formCard}>
           <Text style={styles.sectionLabel}>Structured preferences</Text>
 
-          <Text style={styles.label}>Destination</Text>
+          <Text style={styles.label}>Destination *</Text>
           <TextInput
-            placeholder="Istanbul district or area"
+            placeholder="e.g. Kadıköy, Beşiktaş, Sultanahmet, Taksim"
             placeholderTextColor="#94A3B8"
             style={styles.input}
             value={destination}
             onChangeText={setDestination}
           />
+          <Text style={{ fontSize: 12, color: '#888', marginBottom: 10 }}>
+            Popular areas: Kadıköy, Beşiktaş, Taksim, Sultanahmet, Eminönü, Balat
+          </Text>
 
-          <Text style={styles.label}>Date</Text>
-          <TextInput
-            placeholder="YYYY-MM-DD"
-            placeholderTextColor="#94A3B8"
+          <Text style={styles.label}>Date *</Text>
+          <TouchableOpacity
             style={styles.input}
-            value={date}
-            onChangeText={setDate}
-          />
+            onPress={() => setShowDatePicker(true)}
+          >
+            <Text
+              style={{
+                color: date ? theme.colors.text : '#94A3B8',
+                fontSize: 15,
+              }}
+            >
+              {date || 'Select date'}
+            </Text>
+          </TouchableOpacity>
+          <Text style={{ fontSize: 12, color: '#888', marginBottom: 10 }}>
+            Pick a trip date from the calendar
+          </Text>
+
+          {showDatePicker && (
+            <DateTimePicker
+              value={date ? new Date(`${date}T12:00:00`) : new Date()}
+              mode="date"
+              display="default"
+              onChange={(_, selectedDate) => {
+                setShowDatePicker(false);
+                if (selectedDate) {
+                  setDate(formatDateForApi(selectedDate));
+                }
+              }}
+            />
+          )}
 
           <Text style={styles.label}>Available Time</Text>
-          <TextInput
-            placeholder="Optional: 10:00-18:00"
-            placeholderTextColor="#94A3B8"
-            style={styles.input}
-            value={availableTime}
-            onChangeText={setAvailableTime}
-          />
+          <View style={styles.timeRow}>
+            <TouchableOpacity
+              style={[styles.input, styles.timeInput]}
+              onPress={() => setShowStartTimePicker(true)}
+            >
+              <Text
+                style={{
+                  color: availableTime ? theme.colors.text : '#94A3B8',
+                  fontSize: 15,
+                }}
+              >
+                {availableTime ? availableTime.split('-')[0] : 'Start time'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.input, styles.timeInput]}
+              onPress={() => setShowEndTimePicker(true)}
+            >
+              <Text
+                style={{
+                  color: availableTime ? theme.colors.text : '#94A3B8',
+                  fontSize: 15,
+                }}
+              >
+                {availableTime ? availableTime.split('-')[1] : 'End time'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={{ fontSize: 12, color: '#888', marginBottom: 10 }}>
+            Pick start and end time
+          </Text>
+
+          {showStartTimePicker && (
+            <DateTimePicker
+              value={getStartTimeValue()}
+              mode="time"
+              display="default"
+              onChange={(_, selectedTime) => {
+                setShowStartTimePicker(false);
+                if (selectedTime) {
+                  updateStartTime(selectedTime);
+                }
+              }}
+            />
+          )}
+
+          {showEndTimePicker && (
+            <DateTimePicker
+              value={getEndTimeValue()}
+              mode="time"
+              display="default"
+              onChange={(_, selectedTime) => {
+                setShowEndTimePicker(false);
+                if (selectedTime) {
+                  updateEndTime(selectedTime);
+                }
+              }}
+            />
+          )}
 
           <Text style={styles.label}>Interests</Text>
           <View style={styles.chipContainer}>
@@ -183,22 +319,50 @@ export default function PlannerScreen() {
           </View>
 
           <Text style={styles.label}>Budget Style</Text>
-          <TextInput
-            placeholder="Low / Medium / High"
-            placeholderTextColor="#94A3B8"
-            style={styles.input}
-            value={budgetStyle}
-            onChangeText={setBudgetStyle}
-          />
+          <View style={styles.optionRow}>
+            {['low', 'medium', 'high'].map((item) => (
+              <TouchableOpacity
+                key={item}
+                onPress={() => setBudgetStyle(item)}
+                style={[
+                  styles.optionChip,
+                  budgetStyle === item && styles.optionChipSelected,
+                ]}
+              >
+                <Text
+                  style={{
+                    color: budgetStyle === item ? '#fff' : '#333',
+                    fontWeight: '600',
+                  }}
+                >
+                  {item}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
 
           <Text style={styles.label}>Transport Mode</Text>
-          <TextInput
-            placeholder="Walking / Car"
-            placeholderTextColor="#94A3B8"
-            style={styles.input}
-            value={transportMode}
-            onChangeText={setTransportMode}
-          />
+          <View style={styles.optionRow}>
+            {['walk', 'car'].map((item) => (
+              <TouchableOpacity
+                key={item}
+                onPress={() => setTransportMode(item)}
+                style={[
+                  styles.optionChip,
+                  transportMode === item && styles.optionChipSelected,
+                ]}
+              >
+                <Text
+                  style={{
+                    color: transportMode === item ? '#fff' : '#333',
+                    fontWeight: '600',
+                  }}
+                >
+                  {item}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
 
           <Text style={styles.sectionLabel}>Or describe it naturally</Text>
           <TextInput
@@ -272,5 +436,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     marginBottom: 8,
+  },
+  timeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  timeInput: {
+    width: '48%',
+  },
+  optionRow: {
+    flexDirection: 'row',
+    marginBottom: 12,
+  },
+  optionChip: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    marginRight: 8,
+    backgroundColor: '#eee',
+  },
+  optionChipSelected: {
+    backgroundColor: '#0ea5e9',
   },
 });
