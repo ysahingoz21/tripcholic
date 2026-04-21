@@ -176,6 +176,16 @@ export default function TripDetailScreen() {
         ))}
 
         <View style={styles.actions}>
+          <AppButton
+            title="Edit Trip"
+            onPress={() =>
+              router.push({
+                pathname: '/trip/[id]/edit',
+                params: { id: trip.id },
+              })
+            }
+          />
+          <View style={styles.buttonSpacer} />
           <AppButton title="Back to Results" onPress={() => router.back()} />
           <View style={styles.buttonSpacer} />
           <AppButton
