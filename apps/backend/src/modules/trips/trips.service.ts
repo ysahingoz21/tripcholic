@@ -191,6 +191,11 @@ export class TripsService {
       candidatePois.length > 0
         ? await this.optimizerService.callOptimize(optimizerRequest)
         : this.buildNoFeasibleRouteResult(optimizerRequest, 'backend_no_candidates');
+    const routeExplanation = this.buildRouteExplanation(
+      trip,
+      optimizerResult,
+      pois,
+    );
 
     await client.$transaction(async (tx) => {
       await tx.tripStop.deleteMany({
@@ -222,6 +227,7 @@ export class TripsService {
           routeTotalDurationMin: optimizerResult.route.total_duration_minutes,
           routeTotalCostTl: optimizerResult.route.total_cost_tl,
           routeAlgorithmUsed: optimizerResult.algorithm_used,
+          routeExplanation,
         },
       });
     });
@@ -332,6 +338,113 @@ export class TripsService {
     };
   }
 
+  private buildRouteExplanation(
+    trip: Awaited<ReturnType<TripsService['getOwnedTripOrThrow']>>,
+    optimizerResult: OptimizerOptimizeResponse,
+    candidatePois: PointOfInterest[],
+  ): string {
+    const selectedStops = optimizerResult.route.stops;
+
+    if (selectedStops.length === 0) {
+      return 'No feasible route could be produced from the current constraints. The current time window and trip preferences did not yield a workable set of stops.';
+    }
+
+    const sentences: string[] = [];
+    const timeWindow = this.formatTimeWindow(
+      trip.timeStart ?? selectedStops[0]?.arrival_time ?? null,
+      trip.timeEnd ??
+        selectedStops[selectedStops.length - 1]?.departure_time ??
+        null,
+    );
+
+    if (trip.maxPois !== null && selectedStops.length >= trip.maxPois) {
+      sentences.push(
+        `This route includes ${selectedStops.length} stops, which reaches your current max stop limit${timeWindow ? ` within the ${timeWindow} day window` : ''}.`,
+      );
+    } else {
+      sentences.push(
+        `This route includes ${selectedStops.length} stops${timeWindow ? ` across the ${timeWindow} day window` : ''}.`,
+      );
+    }
+
+    const categoryFocus = this.describeCategoryFocus(selectedStops, candidatePois);
+    if (categoryFocus) {
+      sentences.push(
+        `The selected stops lean toward ${categoryFocus} based on the places that fit your current preferences.`,
+      );
+    }
+
+    sentences.push(
+      `The current result covers about ${this.formatDecimal(optimizerResult.route.total_distance_km, 1)} km, ${optimizerResult.route.total_duration_minutes} minutes, and an estimated ${this.formatCurrency(optimizerResult.route.total_cost_tl)}.`,
+    );
+
+    return sentences.slice(0, 3).join(' ');
+  }
+
+  private describeCategoryFocus(
+    selectedStops: OptimizerOptimizeResponse['route']['stops'],
+    candidatePois: PointOfInterest[],
+  ): string | null {
+    const poiById = new Map(candidatePois.map((poi) => [poi.id, poi]));
+    const categoryCounts = new Map<string, number>();
+
+    for (const stop of selectedStops) {
+      const poi = poiById.get(stop.poi_id);
+      if (!poi) {
+        continue;
+      }
+
+      const category = poi.category.toLowerCase();
+      categoryCounts.set(category, (categoryCounts.get(category) ?? 0) + 1);
+    }
+
+    const topCategories = [...categoryCounts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, 2)
+      .map(([category]) => category);
+
+    if (topCategories.length === 0) {
+      return null;
+    }
+
+    return this.formatList(topCategories);
+  }
+
+  private formatTimeWindow(
+    start: string | null,
+    end: string | null,
+  ): string | null {
+    if (!start && !end) {
+      return null;
+    }
+
+    if (start && end) {
+      return `${start}–${end}`;
+    }
+
+    return start ?? end;
+  }
+
+  private formatList(values: string[]): string {
+    if (values.length <= 1) {
+      return values[0] ?? '';
+    }
+
+    if (values.length === 2) {
+      return `${values[0]} and ${values[1]}`;
+    }
+
+    return `${values.slice(0, -1).join(', ')}, and ${values[values.length - 1]}`;
+  }
+
+  private formatDecimal(value: number, digits: number): string {
+    return value.toFixed(digits).replace(/\.0+$/, '');
+  }
+
+  private formatCurrency(value: number): string {
+    return `₺${Math.round(value)}`;
+  }
+
   private toTripDetailResponse(trip: TripDetailRecord) {
     const stops = trip.stops.map((stop) => ({
       id: stop.id,
@@ -391,6 +504,7 @@ export class TripsService {
         routeTotalDurationMin: trip.routeTotalDurationMin,
         routeTotalCostTl: trip.routeTotalCostTl,
         routeAlgorithmUsed: trip.routeAlgorithmUsed,
+        routeExplanation: trip.routeExplanation,
         stopCount: stops.length,
         isOptimized: trip.status === 'OPTIMIZED',
       },

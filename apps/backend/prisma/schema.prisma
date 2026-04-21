@@ -61,6 +61,7 @@ model Trip {
   routeTotalDurationMin Int?
   routeTotalCostTl     Float?
   routeAlgorithmUsed   String?
+  routeExplanation     String?
   optimizedAt          DateTime?
 
   createdAt DateTime @default(now())

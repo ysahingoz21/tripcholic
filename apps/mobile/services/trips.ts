@@ -36,6 +36,7 @@ export type TripDetailResponse = {
     routeTotalDurationMin: number | null;
     routeTotalCostTl: number | null;
     routeAlgorithmUsed: string | null;
+    routeExplanation: string | null;
     stopCount: number;
     isOptimized: boolean;
   };

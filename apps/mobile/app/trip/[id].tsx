@@ -133,6 +133,15 @@ export default function TripDetailScreen() {
           }`}
         />
 
+        {optimization.routeExplanation ? (
+          <View style={styles.explanationCard}>
+            <Text style={styles.explanationTitle}>Why This Route</Text>
+            <Text style={styles.explanationText}>
+              {optimization.routeExplanation}
+            </Text>
+          </View>
+        ) : null}
+
         <TripStopsMap
           stops={stops}
         />
@@ -226,6 +235,25 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.xl,
   },
   emptyText: {
+    fontSize: 14,
+    color: theme.colors.textSecondary,
+    lineHeight: 22,
+  },
+  explanationCard: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    padding: theme.spacing.lg,
+    marginBottom: theme.spacing.xl,
+  },
+  explanationTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: theme.colors.text,
+    marginBottom: 10,
+  },
+  explanationText: {
     fontSize: 14,
     color: theme.colors.textSecondary,
     lineHeight: 22,
