@@ -1,4 +1,6 @@
 import AppButton from '@/components/ui/AppButton';
+import TripStopsMap from '@/components/trip/TripStopsMap';
+import { getSortedTripStops } from '@/components/trip/tripMapUtils';
 import InfoCard from '@/components/ui/InfoCard';
 import ScreenContainer from '@/components/ui/ScreenContainer';
 import SectionTitle from '@/components/ui/SectionTitle';
@@ -82,6 +84,7 @@ export default function TripDetailScreen() {
   }
 
   const { trip, optimization, stops } = tripDetail;
+  const sortedStops = getSortedTripStops(stops);
   const tripDate = new Date(trip.date).toLocaleDateString();
 
   return (
@@ -130,13 +133,17 @@ export default function TripDetailScreen() {
           }`}
         />
 
+        <TripStopsMap
+          stops={stops}
+        />
+
         <SectionTitle
           title="Ordered Stops"
           subtitle="The persisted backend route sequence for this trip."
         />
 
-        {stops.length > 0 ? (
-          stops.map((stop) => (
+        {sortedStops.length > 0 ? (
+          sortedStops.map((stop) => (
             <TimelineItem
               key={stop.id}
               time={stop.arrivalTime}
@@ -158,7 +165,7 @@ export default function TripDetailScreen() {
           subtitle="POI metadata returned by the backend for each persisted stop."
         />
 
-        {stops.map((stop) => (
+        {sortedStops.map((stop) => (
           <InfoCard
             key={`${stop.id}-detail`}
             title={stop.poi.title}

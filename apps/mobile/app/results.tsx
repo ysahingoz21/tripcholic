@@ -1,9 +1,11 @@
 import { useAuth } from '@/context/AuthContext';
+import { getSortedTripStops } from '@/components/trip/tripMapUtils';
 import { getTrip, type TripDetailResponse } from '@/services/trips';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import TripStopsMap from '../components/trip/TripStopsMap';
 import AppButton from '../components/ui/AppButton';
 import ScreenContainer from '../components/ui/ScreenContainer';
 import SectionTitle from '../components/ui/SectionTitle';
@@ -79,6 +81,7 @@ export default function ResultsScreen() {
   }
 
   const { trip, optimization, stops } = tripDetail;
+  const sortedStops = getSortedTripStops(stops);
   const routeSummary = [
     `${optimization.stopCount} stop${optimization.stopCount === 1 ? '' : 's'}`,
     optimization.routeTotalDurationMin
@@ -106,7 +109,11 @@ export default function ResultsScreen() {
             <Text style={styles.mapTitle}>Route Summary</Text>
           </View>
 
-          <View style={styles.fakeMap}>
+          <TripStopsMap
+            stops={stops}
+          />
+
+          <View style={styles.summaryCard}>
             <Text style={styles.summaryTitle}>{trip.title}</Text>
             <Text style={styles.summaryLine}>
               Date: {new Date(trip.date).toLocaleDateString()}
@@ -144,8 +151,8 @@ export default function ResultsScreen() {
           subtitle="A time-ordered display of the generated day plan."
         />
 
-        {stops.length > 0 ? (
-          stops.map((stop) => (
+        {sortedStops.length > 0 ? (
+          sortedStops.map((stop) => (
             <TimelineItem
               key={stop.id}
               time={stop.arrivalTime}
@@ -220,12 +227,10 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     marginLeft: 8,
   },
-  fakeMap: {
-    minHeight: 220,
+  summaryCard: {
     borderRadius: theme.radius.lg,
     backgroundColor: '#EAF6F5',
     padding: theme.spacing.lg,
-    justifyContent: 'center',
     marginBottom: 10,
   },
   summaryTitle: {
