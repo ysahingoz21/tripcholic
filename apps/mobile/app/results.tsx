@@ -146,6 +146,15 @@ export default function ResultsScreen() {
           </Text>
         </View>
 
+        {optimization.routeExplanation ? (
+          <View style={styles.explanationCard}>
+            <Text style={styles.explanationTitle}>Why This Route</Text>
+            <Text style={styles.explanationText}>
+              {optimization.routeExplanation}
+            </Text>
+          </View>
+        ) : null}
+
         <SectionTitle
           title="Timeline View"
           subtitle="A time-ordered display of the generated day plan."
@@ -260,6 +269,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 22,
     color: theme.colors.textSecondary,
+  },
+  explanationTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: theme.colors.text,
+    marginBottom: 10,
   },
   buttonGroup: {
     marginBottom: theme.spacing.xl,
