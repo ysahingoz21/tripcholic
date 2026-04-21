@@ -113,6 +113,19 @@ export type CreateTripPayload = {
   maxStops?: number;
 };
 
+export type UpdateTripPayload = {
+  title?: string;
+  description?: string;
+  date?: string;
+  startTime?: string;
+  endTime?: string;
+  categories?: string[];
+  budgetTl?: number;
+  maxWalkingDistanceKm?: number;
+  maxStops?: number;
+  weather?: string;
+};
+
 function getErrorMessage(payload: unknown, fallback: string) {
   if (payload && typeof payload === 'object' && 'success' in payload) {
     const apiPayload = payload as ApiErrorEnvelope;
@@ -191,6 +204,20 @@ export async function getTrip(token: string, tripId: string) {
   });
 
   return parseApiResponse<TripDetailResponse>(response, 'Failed to load trip');
+}
+
+export async function updateTrip(
+  token: string,
+  tripId: string,
+  payload: UpdateTripPayload
+) {
+  const response = await fetch(`${API_BASE_URL}/trips/${tripId}`, {
+    method: 'PATCH',
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload),
+  });
+
+  return parseApiResponse<TripDetailResponse>(response, 'Failed to update trip');
 }
 
 export async function getTrips(token: string) {

@@ -108,7 +108,7 @@ export class TripsService {
 
     await this.getOwnedTripOrThrow(client, userId, id);
 
-    const trip = await client.trip.update({
+    await client.trip.update({
       where: { id },
       data: {
         ...(payload.title !== undefined           && { title: payload.title }),
@@ -124,7 +124,7 @@ export class TripsService {
       },
     });
 
-    return trip;
+    return this.findOne(userId, id);
   }
 
   async remove(userId: string, id: string) {
