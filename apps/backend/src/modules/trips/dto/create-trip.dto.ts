@@ -14,7 +14,7 @@ import {
   MinLength,
 } from 'class-validator';
 
-const TRIP_CATEGORY_VALUES = [
+export const TRIP_CATEGORY_VALUES = [
   'historical',
   'scenic',
   'food',
@@ -29,7 +29,7 @@ const TRIP_CATEGORY_VALUES = [
   'nightlife',
 ] as const;
 
-const WEATHER_VALUES = ['clear', 'cloudy', 'rainy'] as const;
+export const WEATHER_VALUES = ['clear', 'cloudy', 'rainy'] as const;
 export const TRIP_VISIBILITY_VALUES = ['DRAFT', 'PRIVATE', 'PUBLIC'] as const;
 
 export class CreateTripDto {

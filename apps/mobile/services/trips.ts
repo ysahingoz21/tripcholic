@@ -13,6 +13,7 @@ type ApiErrorEnvelope = {
 };
 
 export type TripVisibility = 'DRAFT' | 'PRIVATE' | 'PUBLIC';
+export type ExploreWeather = 'clear' | 'cloudy' | 'rainy';
 
 export type TripPreview = {
   headline: string;
@@ -118,6 +119,44 @@ export type TripListItem = {
   _count: {
     stops: number;
   };
+};
+
+export type ExploreTripItem = {
+  id: string;
+  title: string;
+  description: string | null;
+  categories: string[];
+  routeTotalDurationMin: number | null;
+  routeTotalCostTl: number | null;
+  optimizedAt: string | null;
+  preview: TripPreview;
+  creator: {
+    displayName: string | null;
+  };
+};
+
+export type ExploreTripsResponse = {
+  items: ExploreTripItem[];
+  meta: {
+    total: number;
+    availableCategories: string[];
+    appliedFilters: {
+      q: string | null;
+      category: string | null;
+      budgetMinTl: number | null;
+      budgetMaxTl: number | null;
+      limit: number;
+    };
+  };
+};
+
+export type ExploreTripsQuery = {
+  q?: string;
+  category?: string;
+  budgetMinTl?: number;
+  budgetMaxTl?: number;
+  weather?: ExploreWeather;
+  limit?: number;
 };
 
 export type CreateTripPayload = {
@@ -249,4 +288,45 @@ export async function getTrips(token: string) {
   });
 
   return parseApiResponse<TripListItem[]>(response, 'Failed to load trips');
+}
+
+export async function getExploreTrips(query: ExploreTripsQuery = {}) {
+  const searchParams = new URLSearchParams();
+
+  if (query.q?.trim()) {
+    searchParams.set('q', query.q.trim());
+  }
+
+  if (query.category?.trim()) {
+    searchParams.set('category', query.category.trim().toLowerCase());
+  }
+
+  if (query.budgetMinTl !== undefined) {
+    searchParams.set('budgetMinTl', String(query.budgetMinTl));
+  }
+
+  if (query.budgetMaxTl !== undefined) {
+    searchParams.set('budgetMaxTl', String(query.budgetMaxTl));
+  }
+
+  if (query.weather?.trim()) {
+    searchParams.set('weather', query.weather.trim().toLowerCase());
+  }
+
+  if (query.limit !== undefined) {
+    searchParams.set('limit', String(query.limit));
+  }
+
+  const queryString = searchParams.toString();
+  const response = await fetch(
+    `${API_BASE_URL}/trips/explore${queryString ? `?${queryString}` : ''}`,
+    {
+      method: 'GET',
+    }
+  );
+
+  return parseApiResponse<ExploreTripsResponse>(
+    response,
+    'Failed to load explore trips'
+  );
 }
