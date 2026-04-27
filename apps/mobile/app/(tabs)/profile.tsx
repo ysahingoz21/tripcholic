@@ -300,6 +300,14 @@ export default function ProfileScreen() {
         )}
 
         <View style={styles.ctaCard}>
+          <Text style={styles.ctaTitle}>Revisit saved public trips</Text>
+          <Text style={styles.ctaText}>
+            Saved Trips keeps public Explore posts separate from the trips you created yourself.
+          </Text>
+          <AppButton title="Open Saved Trips" onPress={() => router.push('/saved-trips' as any)} />
+        </View>
+
+        <View style={styles.ctaCard}>
           <Text style={styles.ctaTitle}>Manage your full trip library</Text>
           <Text style={styles.ctaText}>
             Reopen drafts, refine private plans, and review all of your optimized routes in My Trips.
