@@ -12,6 +12,7 @@ export class UsersService {
       where: { id: userId },
       select: {
         id: true,
+        displayName: true,
         email: true,
         createdAt: true,
         updatedAt: true,

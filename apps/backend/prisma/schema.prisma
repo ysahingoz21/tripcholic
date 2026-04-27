@@ -28,6 +28,12 @@ enum TripStatus {
   FAILED
 }
 
+enum TripVisibility {
+  DRAFT
+  PRIVATE
+  PUBLIC
+}
+
 model User {
   id           String   @id @default(uuid())
   email        String   @unique
@@ -45,24 +51,25 @@ model Trip {
   id     String  @id @default(uuid())
   userId String?
 
-  title       String
-  description String?
-  date        DateTime
-  timeStart   String?
-  timeEnd     String?
-  budgetTl    Float?
-  categories  String[]
-  weather     String?
-  walkingToleranceKm Float?
-  maxPois    Int?
-  status     TripStatus @default(PENDING)
-  routeName            String?
-  routeTotalDistanceKm Float?
+  title                 String
+  description           String?
+  date                  DateTime
+  timeStart             String?
+  timeEnd               String?
+  budgetTl              Float?
+  categories            String[]
+  weather               String?
+  walkingToleranceKm    Float?
+  maxPois               Int?
+  status                TripStatus     @default(PENDING)
+  visibility            TripVisibility @default(DRAFT)
+  routeName             String?
+  routeTotalDistanceKm  Float?
   routeTotalDurationMin Int?
-  routeTotalCostTl     Float?
-  routeAlgorithmUsed   String?
-  routeExplanation     String?
-  optimizedAt          DateTime?
+  routeTotalCostTl      Float?
+  routeAlgorithmUsed    String?
+  routeExplanation      String?
+  optimizedAt           DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -72,6 +79,7 @@ model Trip {
 
   @@index([userId])
   @@index([date])
+  @@index([visibility])
   @@map("trips")
 }
 
@@ -96,24 +104,24 @@ model TripStop {
 }
 
 model PointOfInterest {
-  id       String      @id
-  name     String      @unique
-  category POICategory
-  description String?
-  district    String?
-  address     String?
-  imageUrl    String?
-  source      String?
-  lat         Float
-  lng         Float
-  avgDurationMin    Int
-  budgetLevel       BudgetLevel
+  id                 String      @id
+  name               String      @unique
+  category           POICategory
+  description        String?
+  district           String?
+  address            String?
+  imageUrl           String?
+  source             String?
+  lat                Float
+  lng                Float
+  avgDurationMin     Int
+  budgetLevel        BudgetLevel
   estimatedMinCostTl Float?
   estimatedMaxCostTl Float?
-  openingHoursOpen  String
-  openingHoursClose String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  openingHoursOpen   String
+  openingHoursClose  String
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
 
   stops TripStop[]
 

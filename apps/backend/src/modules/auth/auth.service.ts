@@ -60,9 +60,11 @@ export class AuthService {
       data: {
         email: payload.email,
         passwordHash,
+        displayName: payload.displayName?.trim() || null,
       },
       select: {
         id: true,
+        displayName: true,
         email: true,
         createdAt: true,
       },
@@ -92,6 +94,7 @@ export class AuthService {
       where: { email: payload.email },
       select: {
         id: true,
+        displayName: true,
         email: true,
         passwordHash: true,
         createdAt: true,
@@ -136,6 +139,7 @@ export class AuthService {
       tokenType: 'Bearer',
       user: {
         id: user.id,
+        displayName: user.displayName,
         email: user.email,
         createdAt: user.createdAt,
       },
