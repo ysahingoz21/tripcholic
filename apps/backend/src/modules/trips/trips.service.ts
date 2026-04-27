@@ -7,6 +7,7 @@ import {
 } from '../optimizer/optimizer.types';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTripDto } from './dto/create-trip.dto';
+import { ExploreTripsQueryDto } from './dto/explore-trips-query.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
 
 // Maps the backend's broader interest labels to the optimizer's POICategory enum.
@@ -83,6 +84,29 @@ type TripListRecord = Prisma.TripGetPayload<{
   };
 }>;
 
+type ExploreTripRecord = Prisma.TripGetPayload<{
+  include: {
+    user: {
+      select: {
+        displayName: true;
+      };
+    };
+    stops: {
+      include: {
+        poi: {
+          select: {
+            category: true;
+            district: true;
+            imageUrl: true;
+            lat: true;
+            lng: true;
+          };
+        };
+      };
+    };
+  };
+}>;
+
 @Injectable()
 export class TripsService {
   constructor(
@@ -139,6 +163,101 @@ export class TripsService {
     });
 
     return trips.map((trip) => this.toTripListItem(trip as TripListRecord));
+  }
+
+  async findExploreTrips(query: ExploreTripsQueryDto) {
+    const client = await this.prisma.getClient();
+    const trimmedQuery = query.q?.trim();
+    const normalizedQuery = trimmedQuery ? trimmedQuery : null;
+    const normalizedCategory = query.category?.trim().toLowerCase() ?? null;
+    const normalizedWeather = query.weather?.trim().toLowerCase() ?? null;
+    const limit = query.limit ?? 20;
+
+    const where: Prisma.TripWhereInput = {
+      visibility: 'PUBLIC',
+      status: 'OPTIMIZED',
+      ...(normalizedQuery && {
+        OR: [
+          { title: { contains: normalizedQuery, mode: 'insensitive' } },
+          { description: { contains: normalizedQuery, mode: 'insensitive' } },
+          { routeName: { contains: normalizedQuery, mode: 'insensitive' } },
+          {
+            user: {
+              displayName: { contains: normalizedQuery, mode: 'insensitive' },
+            },
+          },
+        ],
+      }),
+      ...(normalizedCategory && { categories: { has: normalizedCategory } }),
+      ...(normalizedWeather && { weather: normalizedWeather }),
+      ...((query.budgetMinTl !== undefined || query.budgetMaxTl !== undefined) && {
+        routeTotalCostTl: {
+          ...(query.budgetMinTl !== undefined && { gte: query.budgetMinTl }),
+          ...(query.budgetMaxTl !== undefined && { lte: query.budgetMaxTl }),
+        },
+      }),
+    };
+
+    const [trips, total, categoryRows] = await Promise.all([
+      client.trip.findMany({
+        where,
+        orderBy: [{ optimizedAt: 'desc' }, { createdAt: 'desc' }],
+        take: limit,
+        include: {
+          user: {
+            select: {
+              displayName: true,
+            },
+          },
+          stops: {
+            orderBy: { order: 'asc' },
+            include: {
+              poi: {
+                select: {
+                  category: true,
+                  district: true,
+                  imageUrl: true,
+                  lat: true,
+                  lng: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+      client.trip.count({ where }),
+      client.trip.findMany({
+        where: {
+          visibility: 'PUBLIC',
+          status: 'OPTIMIZED',
+        },
+        select: {
+          categories: true,
+        },
+      }),
+    ]);
+
+    const availableCategories = [...new Set(
+      categoryRows
+        .flatMap((trip) => trip.categories)
+        .map((category) => category.trim().toLowerCase())
+        .filter(Boolean),
+    )].sort((left, right) => left.localeCompare(right));
+
+    return {
+      items: trips.map((trip) => this.toExploreTripItem(trip as ExploreTripRecord)),
+      meta: {
+        total,
+        availableCategories,
+        appliedFilters: {
+          q: normalizedQuery,
+          category: normalizedCategory,
+          budgetMinTl: query.budgetMinTl ?? null,
+          budgetMaxTl: query.budgetMaxTl ?? null,
+          limit,
+        },
+      },
+    };
   }
 
   async findOne(userId: string, id: string) {
@@ -541,6 +660,39 @@ export class TripsService {
       updatedAt: trip.updatedAt,
       preview,
       _count: trip._count,
+    };
+  }
+
+  private toExploreTripItem(trip: ExploreTripRecord) {
+    const preview = this.buildTripPreview({
+      title: trip.title,
+      routeName: trip.routeName,
+      categories: trip.categories,
+      routeTotalDurationMin: trip.routeTotalDurationMin,
+      routeTotalCostTl: trip.routeTotalCostTl,
+      stops: trip.stops.map((stop) => ({
+        category: stop.poi.category.toLowerCase(),
+        district: stop.poi.district,
+        imageUrl: stop.poi.imageUrl,
+        coordinates: {
+          lat: stop.poi.lat,
+          lng: stop.poi.lng,
+        },
+      })),
+    });
+
+    return {
+      id: trip.id,
+      title: trip.title,
+      description: trip.description,
+      categories: trip.categories,
+      routeTotalDurationMin: trip.routeTotalDurationMin,
+      routeTotalCostTl: trip.routeTotalCostTl,
+      optimizedAt: trip.optimizedAt,
+      preview,
+      creator: {
+        displayName: trip.user?.displayName ?? null,
+      },
     };
   }
 
