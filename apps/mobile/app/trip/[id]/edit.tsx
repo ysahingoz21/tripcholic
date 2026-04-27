@@ -146,7 +146,7 @@ function areStringArraysEqual(left: string[], right: string[]) {
 
 export default function EditTripScreen() {
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id?: string }>();
+  const { id, remix } = useLocalSearchParams<{ id?: string; remix?: string }>();
   const { token, isLoading: isAuthLoading } = useAuth();
   const [tripDetail, setTripDetail] = useState<TripDetailResponse | null>(null);
   const [originalValues, setOriginalValues] = useState<NormalizedTripEditState | null>(null);
@@ -491,6 +491,14 @@ export default function EditTripScreen() {
           }
         />
 
+        {remix === '1' ? (
+          <View style={styles.remixNotice}>
+            <Text style={styles.remixNoticeText}>
+              This is now your own draft copy. Any changes here only affect your remixed trip.
+            </Text>
+          </View>
+        ) : null}
+
         <View style={styles.formCard}>
           <Text style={styles.label}>Title *</Text>
           <TextInput
@@ -730,6 +738,21 @@ export default function EditTripScreen() {
 }
 
 const styles = StyleSheet.create({
+  remixNotice: {
+    backgroundColor: '#F4FBFB',
+    borderRadius: theme.radius.lg,
+    borderWidth: 1,
+    borderColor: '#BFEAE9',
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    marginBottom: theme.spacing.lg,
+  },
+  remixNoticeText: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: theme.colors.primaryDark,
+    fontWeight: '600',
+  },
   formCard: {
     backgroundColor: theme.colors.surface,
     borderRadius: theme.radius.xl,
@@ -744,6 +767,12 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     marginBottom: 8,
     marginTop: 12,
+  },
+  helperText: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: theme.colors.textSecondary,
+    marginBottom: 8,
   },
   input: {
     backgroundColor: '#F8FAFC',

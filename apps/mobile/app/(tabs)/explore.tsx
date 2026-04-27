@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import TripPreviewCard from '@/components/trip/TripPreviewCard';
 import AppButton from '@/components/ui/AppButton';
 import InterestChip from '@/components/ui/InterestChip';
@@ -103,6 +104,7 @@ function buildResultSummary(total: number, category: string | null) {
 }
 
 export default function ExploreScreen() {
+  const router = useRouter();
   const [searchInput, setSearchInput] = useState('');
   const [appliedQuery, setAppliedQuery] = useState('');
   const [activePromptId, setActivePromptId] = useState<ExplorePromptId | null>(null);
@@ -361,7 +363,15 @@ export default function ExploreScreen() {
             </Text>
           </View>
         ) : items.length > 0 ? (
-          items.map((trip) => <ExploreResultCard key={trip.id} trip={trip} />)
+          items.map((trip) => (
+            <ExploreResultCard
+              key={trip.id}
+              trip={trip}
+              onPress={() =>
+                router.push(`/public-trip/${trip.id}` as any)
+              }
+            />
+          ))
         ) : (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyTitle}>No trips found</Text>
@@ -376,9 +386,15 @@ export default function ExploreScreen() {
   );
 }
 
-function ExploreResultCard({ trip }: { trip: ExploreTripItem }) {
+function ExploreResultCard({
+  trip,
+  onPress,
+}: {
+  trip: ExploreTripItem;
+  onPress: () => void;
+}) {
   return (
-    <View style={styles.resultCard}>
+    <Pressable style={styles.resultCard} onPress={onPress}>
       <TripPreviewCard
         preview={trip.preview}
         rightContent={
@@ -400,8 +416,9 @@ function ExploreResultCard({ trip }: { trip: ExploreTripItem }) {
           </Text>
         </View>
         <Text style={styles.optimizedText}>{formatOptimizedDate(trip.optimizedAt)}</Text>
+        <Text style={styles.openPostText}>Open public trip</Text>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -546,6 +563,12 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontSize: 12,
     color: theme.colors.textSecondary,
+  },
+  openPostText: {
+    marginTop: 8,
+    fontSize: 13,
+    fontWeight: '700',
+    color: theme.colors.primary,
   },
   emptyCard: {
     backgroundColor: theme.colors.surface,

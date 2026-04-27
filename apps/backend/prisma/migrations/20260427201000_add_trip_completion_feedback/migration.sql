@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "trip_completions"
+ADD COLUMN "feedbackSignals" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+ADD COLUMN "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;

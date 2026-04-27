@@ -35,14 +35,19 @@ enum TripVisibility {
 }
 
 model User {
-  id           String   @id @default(uuid())
-  email        String   @unique
-  passwordHash String
-  displayName  String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                   String                @id @default(uuid())
+  email                String                @unique
+  passwordHash         String
+  displayName          String?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
 
-  trips Trip[]
+  trips                Trip[]
+  tripLikes            TripLike[]
+  tripComments         TripComment[]
+  savedTrips           SavedTrip[]
+  tripCompletions      TripCompletion[]
+  savedTripCollections SavedTripCollection[]
 
   @@map("users")
 }
@@ -74,13 +79,34 @@ model Trip {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user  User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
-  stops TripStop[]
+  user     User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  stops    TripStop[]
+  likes    TripLike[]
+  comments TripComment[]
+  saves    SavedTrip[]
+  completions TripCompletion[]
 
   @@index([userId])
   @@index([date])
   @@index([visibility])
   @@map("trips")
+}
+
+model TripCompletion {
+  id        String   @id @default(uuid())
+  tripId    String
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  feedbackSignals String[] @default([])
+
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, userId])
+  @@index([tripId])
+  @@index([userId])
+  @@map("trip_completions")
 }
 
 model TripStop {
@@ -128,4 +154,81 @@ model PointOfInterest {
   @@index([category])
   @@index([name])
   @@map("points_of_interest")
+}
+
+model TripLike {
+  id        String   @id @default(uuid())
+  tripId    String
+  userId    String
+  createdAt DateTime @default(now())
+
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, userId])
+  @@index([tripId])
+  @@index([userId])
+  @@map("trip_likes")
+}
+
+model TripComment {
+  id        String   @id @default(uuid())
+  tripId    String
+  userId    String
+  body      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tripId, createdAt])
+  @@index([userId])
+  @@map("trip_comments")
+}
+
+model SavedTrip {
+  id              String                    @id @default(uuid())
+  tripId          String
+  userId          String
+  createdAt       DateTime                  @default(now())
+
+  trip             Trip                      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  user             User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  collectionItems  SavedTripCollectionItem[]
+
+  @@unique([tripId, userId])
+  @@index([tripId])
+  @@index([userId])
+  @@map("saved_trips")
+}
+
+model SavedTripCollection {
+  id        String                    @id @default(uuid())
+  userId    String
+  name      String
+  createdAt DateTime                  @default(now())
+  updatedAt DateTime                  @updatedAt
+
+  user  User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items SavedTripCollectionItem[]
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@map("saved_trip_collections")
+}
+
+model SavedTripCollectionItem {
+  id           String              @id @default(uuid())
+  savedTripId  String
+  collectionId String
+  createdAt    DateTime            @default(now())
+
+  savedTrip   SavedTrip           @relation(fields: [savedTripId], references: [id], onDelete: Cascade)
+  collection  SavedTripCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  @@unique([savedTripId, collectionId])
+  @@index([savedTripId])
+  @@index([collectionId])
+  @@map("saved_trip_collection_items")
 }
