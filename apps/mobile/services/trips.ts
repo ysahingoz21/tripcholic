@@ -12,6 +12,19 @@ type ApiErrorEnvelope = {
   };
 };
 
+export type TripVisibility = 'DRAFT' | 'PRIVATE' | 'PUBLIC';
+
+export type TripPreview = {
+  headline: string;
+  subheadline: string | null;
+  primaryCategory: string | null;
+  districtLabel: string | null;
+  stopCount: number;
+  hasMapData: boolean;
+  hasPoiImage: boolean;
+  imageUrl: string | null;
+};
+
 export type TripDetailResponse = {
   trip: {
     id: string;
@@ -26,6 +39,7 @@ export type TripDetailResponse = {
     walkingToleranceKm: number | null;
     maxPois: number | null;
     status: string;
+    visibility: TripVisibility;
     createdAt: string;
     updatedAt: string;
   };
@@ -40,6 +54,7 @@ export type TripDetailResponse = {
     stopCount: number;
     isOptimized: boolean;
   };
+  preview: TripPreview;
   stops: Array<{
     id: string;
     order: number;
@@ -89,14 +104,17 @@ export type TripListItem = {
   walkingToleranceKm: number | null;
   maxPois: number | null;
   status: string;
+  visibility: TripVisibility;
   routeName: string | null;
   routeTotalDistanceKm: number | null;
   routeTotalDurationMin: number | null;
   routeTotalCostTl: number | null;
   routeAlgorithmUsed: string | null;
+  routeExplanation?: string | null;
   optimizedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  preview: TripPreview;
   _count: {
     stops: number;
   };
@@ -125,6 +143,7 @@ export type UpdateTripPayload = {
   maxWalkingDistanceKm?: number;
   maxStops?: number;
   weather?: string;
+  visibility?: TripVisibility;
 };
 
 function getErrorMessage(payload: unknown, fallback: string) {

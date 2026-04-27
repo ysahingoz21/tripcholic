@@ -3,29 +3,48 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import TripPreviewCard from '@/components/trip/TripPreviewCard';
 import ScreenContainer from '@/components/ui/ScreenContainer';
 import SectionTitle from '@/components/ui/SectionTitle';
 import AppButton from '@/components/ui/AppButton';
 import { theme } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
-import { getTrips, type TripListItem } from '@/services/trips';
+import {
+  getTrips,
+  type TripListItem,
+  type TripVisibility,
+} from '@/services/trips';
 
 function formatTripDate(date: string) {
   return new Date(date).toLocaleDateString();
 }
 
-function formatTripSummary(trip: TripListItem) {
-  const parts = [`${trip._count.stops} stop${trip._count.stops === 1 ? '' : 's'}`];
-
-  if (trip.routeTotalDurationMin !== null) {
-    parts.push(`${trip.routeTotalDurationMin} min`);
+function getVisibilityBadgeStyle(visibility: TripVisibility) {
+  switch (visibility) {
+    case 'PUBLIC':
+      return {
+        backgroundColor: '#E8F7EE',
+        borderColor: '#BBE7CA',
+        textColor: '#166534',
+      };
+    case 'PRIVATE':
+      return {
+        backgroundColor: '#F3F4F6',
+        borderColor: '#D1D5DB',
+        textColor: '#374151',
+      };
+    case 'DRAFT':
+    default:
+      return {
+        backgroundColor: '#FFF7E8',
+        borderColor: '#FCD89A',
+        textColor: '#9A6700',
+      };
   }
+}
 
-  if (trip.routeTotalCostTl !== null) {
-    parts.push(`${trip.routeTotalCostTl} TL`);
-  }
-
-  return parts.join(' • ');
+function formatVisibilityLabel(visibility: TripVisibility) {
+  return visibility.charAt(0) + visibility.slice(1).toLowerCase();
 }
 
 export default function TripsScreen() {
@@ -111,29 +130,50 @@ export default function TripsScreen() {
                 })
               }
             >
-              <View style={styles.cardTopRow}>
-                <View style={styles.cardTitleWrap}>
-                  <Text style={styles.cardTitle}>{trip.routeName ?? trip.title}</Text>
-                  <Text style={styles.cardDate}>{formatTripDate(trip.date)}</Text>
-                </View>
-                <View style={styles.statusBadge}>
-                  <Text style={styles.statusText}>{trip.status}</Text>
-                </View>
-              </View>
-
-              <Text style={styles.cardSummary}>{formatTripSummary(trip)}</Text>
-
-              <Text style={styles.cardMeta}>
-                Categories: {trip.categories.join(', ') || 'None'}
-              </Text>
+              <TripPreviewCard
+                preview={trip.preview}
+                dateLabel={formatTripDate(trip.date)}
+                rightContent={
+                  <View style={styles.statusBadge}>
+                    <Text style={styles.statusText}>{trip.status}</Text>
+                  </View>
+                }
+              />
 
               <View style={styles.cardFooter}>
-                <View style={styles.footerItem}>
-                  <Ionicons name="time-outline" size={14} color={theme.colors.textSecondary} />
-                  <Text style={styles.footerText}>
-                    {trip.optimizedAt ? 'Optimized' : 'Created'}{' '}
-                    {formatTripDate(trip.optimizedAt ?? trip.createdAt)}
-                  </Text>
+                <View style={styles.footerLeft}>
+                  <View
+                    style={[
+                      styles.visibilityBadge,
+                      {
+                        backgroundColor: getVisibilityBadgeStyle(trip.visibility)
+                          .backgroundColor,
+                        borderColor: getVisibilityBadgeStyle(trip.visibility).borderColor,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.visibilityText,
+                        {
+                          color: getVisibilityBadgeStyle(trip.visibility).textColor,
+                        },
+                      ]}
+                    >
+                      {formatVisibilityLabel(trip.visibility)}
+                    </Text>
+                  </View>
+                  <View style={styles.footerItem}>
+                    <Ionicons
+                      name="time-outline"
+                      size={14}
+                      color={theme.colors.textSecondary}
+                    />
+                    <Text style={styles.footerText}>
+                      {trip.optimizedAt ? 'Optimized' : 'Created'}{' '}
+                      {formatTripDate(trip.optimizedAt ?? trip.createdAt)}
+                    </Text>
+                  </View>
                 </View>
                 <Text style={styles.openText}>Open</Text>
               </View>
@@ -165,26 +205,6 @@ const styles = StyleSheet.create({
     padding: theme.spacing.lg,
     marginBottom: theme.spacing.md,
   },
-  cardTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 10,
-  },
-  cardTitleWrap: {
-    flex: 1,
-    paddingRight: 12,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: theme.colors.text,
-    marginBottom: 4,
-  },
-  cardDate: {
-    fontSize: 13,
-    color: theme.colors.textSecondary,
-  },
   statusBadge: {
     backgroundColor: '#E7F6F4',
     borderRadius: 999,
@@ -196,22 +216,25 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: theme.colors.primaryDark,
   },
-  cardSummary: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: theme.colors.text,
-    marginBottom: 6,
+  visibilityBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderWidth: 1,
   },
-  cardMeta: {
-    fontSize: 14,
-    color: theme.colors.textSecondary,
-    lineHeight: 21,
+  visibilityText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   cardFooter: {
-    marginTop: theme.spacing.md,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  footerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
   },
   footerItem: {
     flexDirection: 'row',

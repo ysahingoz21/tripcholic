@@ -30,6 +30,7 @@ const TRIP_CATEGORY_VALUES = [
 ] as const;
 
 const WEATHER_VALUES = ['clear', 'cloudy', 'rainy'] as const;
+export const TRIP_VISIBILITY_VALUES = ['DRAFT', 'PRIVATE', 'PUBLIC'] as const;
 
 export class CreateTripDto {
   @ApiProperty({ example: 'Historic Istanbul Day' })
@@ -94,4 +95,9 @@ export class CreateTripDto {
   @IsOptional()
   @IsIn(WEATHER_VALUES)
   weather?: (typeof WEATHER_VALUES)[number];
+
+  @ApiPropertyOptional({ enum: TRIP_VISIBILITY_VALUES, example: 'DRAFT' })
+  @IsOptional()
+  @IsIn(TRIP_VISIBILITY_VALUES)
+  visibility?: (typeof TRIP_VISIBILITY_VALUES)[number];
 }

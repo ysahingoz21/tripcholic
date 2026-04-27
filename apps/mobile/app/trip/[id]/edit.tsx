@@ -7,6 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import {
   getTrip,
   optimizeTrip,
+  type TripVisibility,
   updateTrip,
   type TripDetailResponse,
   type UpdateTripPayload,
@@ -36,6 +37,27 @@ const interestOptions = [
 ] as const;
 
 const weatherOptions = ['clear', 'cloudy', 'rainy'] as const;
+const visibilityOptions: {
+  value: TripVisibility;
+  label: string;
+  description: string;
+}[] = [
+  {
+    value: 'DRAFT',
+    label: 'Draft',
+    description: 'Still being prepared.',
+  },
+  {
+    value: 'PRIVATE',
+    label: 'Private',
+    description: 'Visible only to you.',
+  },
+  {
+    value: 'PUBLIC',
+    label: 'Public',
+    description: 'Eligible for future explore surfaces.',
+  },
+] as const;
 
 type NormalizedTripEditState = {
   title: string;
@@ -48,6 +70,7 @@ type NormalizedTripEditState = {
   maxWalkingDistanceKm: number | null;
   maxStops: number | null;
   weather: string;
+  visibility: TripVisibility;
 };
 
 function formatDateForApi(value: Date) {
@@ -100,6 +123,7 @@ function getNormalizedTripEditState(params: {
   maxWalkingDistanceKm: string;
   maxStops: string;
   weather: string;
+  visibility: TripVisibility;
 }): NormalizedTripEditState {
   return {
     title: params.title.trim(),
@@ -112,6 +136,7 @@ function getNormalizedTripEditState(params: {
     maxWalkingDistanceKm: parseOptionalNumber(params.maxWalkingDistanceKm),
     maxStops: parseOptionalNumber(params.maxStops),
     weather: params.weather.trim(),
+    visibility: params.visibility,
   };
 }
 
@@ -139,6 +164,7 @@ export default function EditTripScreen() {
   const [maxWalkingDistanceKm, setMaxWalkingDistanceKm] = useState('');
   const [maxStops, setMaxStops] = useState('');
   const [weather, setWeather] = useState('');
+  const [visibility, setVisibility] = useState<TripVisibility>('DRAFT');
 
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showStartTimePicker, setShowStartTimePicker] = useState(false);
@@ -183,6 +209,7 @@ export default function EditTripScreen() {
         );
         setMaxStops(data.trip.maxPois !== null ? String(data.trip.maxPois) : '');
         setWeather(data.trip.weather ?? '');
+        setVisibility(data.trip.visibility);
         setOriginalValues(
           getNormalizedTripEditState({
             title: data.trip.title,
@@ -199,6 +226,7 @@ export default function EditTripScreen() {
                 : '',
             maxStops: data.trip.maxPois !== null ? String(data.trip.maxPois) : '',
             weather: data.trip.weather ?? '',
+            visibility: data.trip.visibility,
           })
         );
       } catch (loadError) {
@@ -237,6 +265,7 @@ export default function EditTripScreen() {
         maxWalkingDistanceKm,
         maxStops,
         weather,
+        visibility,
       }),
     [
       title,
@@ -249,6 +278,7 @@ export default function EditTripScreen() {
       maxWalkingDistanceKm,
       maxStops,
       weather,
+      visibility,
     ]
   );
 
@@ -265,6 +295,7 @@ export default function EditTripScreen() {
         maxWalkingDistanceKm: false,
         maxStops: false,
         weather: false,
+        visibility: false,
       };
     }
 
@@ -286,11 +317,15 @@ export default function EditTripScreen() {
         normalizedCurrentValues.maxWalkingDistanceKm,
       maxStops: originalValues.maxStops !== normalizedCurrentValues.maxStops,
       weather: originalValues.weather !== normalizedCurrentValues.weather,
+      visibility: originalValues.visibility !== normalizedCurrentValues.visibility,
     };
   }, [originalValues, normalizedCurrentValues]);
 
   const changeState = useMemo(() => {
-    const hasMetadataChanges = changedFields.title || changedFields.description;
+    const hasMetadataChanges =
+      changedFields.title ||
+      changedFields.description ||
+      changedFields.visibility;
     const hasOptimizationChanges =
       changedFields.date ||
       changedFields.startTime ||
@@ -380,6 +415,7 @@ export default function EditTripScreen() {
         normalizedCurrentValues.maxWalkingDistanceKm ?? undefined,
       maxStops: normalizedCurrentValues.maxStops ?? undefined,
       weather: normalizedCurrentValues.weather || undefined,
+      visibility: normalizedCurrentValues.visibility,
     };
 
     try {
@@ -475,6 +511,39 @@ export default function EditTripScreen() {
             textAlignVertical="top"
             style={styles.textArea}
           />
+
+          <Text style={styles.label}>Visibility</Text>
+          <View style={styles.optionRow}>
+            {visibilityOptions.map((item) => {
+              const isSelected = visibility === item.value;
+
+              return (
+                <TouchableOpacity
+                  key={item.value}
+                  onPress={() => setVisibility(item.value)}
+                  style={[
+                    styles.optionChip,
+                    isSelected && styles.optionChipSelected,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.optionChipText,
+                      isSelected && styles.optionChipTextSelected,
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <Text style={styles.helperText}>
+            {
+              visibilityOptions.find((item) => item.value === visibility)
+                ?.description
+            }
+          </Text>
 
           <Text style={styles.label}>Date *</Text>
           <TouchableOpacity

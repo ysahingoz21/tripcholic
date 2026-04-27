@@ -39,11 +39,45 @@ const DEFAULT_OPTIMIZER_MAX_POIS = 6;
 const DEFAULT_OPTIMIZER_BUDGET_TL = 6000;
 const MAX_CANDIDATE_POIS = 50;
 
+type TripPreview = {
+  headline: string;
+  subheadline: string | null;
+  primaryCategory: string | null;
+  districtLabel: string | null;
+  stopCount: number;
+  hasMapData: boolean;
+  hasPoiImage: boolean;
+  imageUrl: string | null;
+};
+
 type TripDetailRecord = Prisma.TripGetPayload<{
   include: {
     stops: {
       include: {
         poi: true;
+      };
+    };
+  };
+}>;
+
+type TripListRecord = Prisma.TripGetPayload<{
+  include: {
+    _count: {
+      select: {
+        stops: true;
+      };
+    };
+    stops: {
+      include: {
+        poi: {
+          select: {
+            category: true;
+            district: true;
+            imageUrl: true;
+            lat: true;
+            lng: true;
+          };
+        };
       };
     };
   };
@@ -72,6 +106,7 @@ export class TripsService {
         weather:           payload.weather ?? null,
         walkingToleranceKm: payload.maxWalkingDistanceKm ?? null,
         maxPois:           payload.maxStops ?? null,
+        visibility:        payload.visibility ?? 'DRAFT',
       },
     });
 
@@ -84,10 +119,26 @@ export class TripsService {
     const trips = await client.trip.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
-      include: { _count: { select: { stops: true } } },
+      include: {
+        _count: { select: { stops: true } },
+        stops: {
+          orderBy: { order: 'asc' },
+          include: {
+            poi: {
+              select: {
+                category: true,
+                district: true,
+                imageUrl: true,
+                lat: true,
+                lng: true,
+              },
+            },
+          },
+        },
+      },
     });
 
-    return trips;
+    return trips.map((trip) => this.toTripListItem(trip as TripListRecord));
   }
 
   async findOne(userId: string, id: string) {
@@ -121,6 +172,7 @@ export class TripsService {
         ...(payload.weather !== undefined         && { weather: payload.weather }),
         ...(payload.maxWalkingDistanceKm !== undefined && { walkingToleranceKm: payload.maxWalkingDistanceKm }),
         ...(payload.maxStops !== undefined        && { maxPois: payload.maxStops }),
+        ...(payload.visibility !== undefined      && { visibility: payload.visibility }),
       },
     });
 
@@ -445,6 +497,178 @@ export class TripsService {
     return `₺${Math.round(value)}`;
   }
 
+  private toTripListItem(trip: TripListRecord) {
+    const preview = this.buildTripPreview({
+      title: trip.title,
+      routeName: trip.routeName,
+      categories: trip.categories,
+      routeTotalDurationMin: trip.routeTotalDurationMin,
+      routeTotalCostTl: trip.routeTotalCostTl,
+      stops: trip.stops.map((stop) => ({
+        category: stop.poi.category.toLowerCase(),
+        district: stop.poi.district,
+        imageUrl: stop.poi.imageUrl,
+        coordinates: {
+          lat: stop.poi.lat,
+          lng: stop.poi.lng,
+        },
+      })),
+    });
+
+    return {
+      id: trip.id,
+      userId: trip.userId,
+      title: trip.title,
+      description: trip.description,
+      date: trip.date,
+      timeStart: trip.timeStart,
+      timeEnd: trip.timeEnd,
+      budgetTl: trip.budgetTl,
+      categories: trip.categories,
+      weather: trip.weather,
+      walkingToleranceKm: trip.walkingToleranceKm,
+      maxPois: trip.maxPois,
+      status: trip.status,
+      visibility: trip.visibility,
+      routeName: trip.routeName,
+      routeTotalDistanceKm: trip.routeTotalDistanceKm,
+      routeTotalDurationMin: trip.routeTotalDurationMin,
+      routeTotalCostTl: trip.routeTotalCostTl,
+      routeAlgorithmUsed: trip.routeAlgorithmUsed,
+      routeExplanation: trip.routeExplanation,
+      optimizedAt: trip.optimizedAt,
+      createdAt: trip.createdAt,
+      updatedAt: trip.updatedAt,
+      preview,
+      _count: trip._count,
+    };
+  }
+
+  private buildTripPreview(input: {
+    title: string;
+    routeName: string | null;
+    categories: string[];
+    routeTotalDurationMin: number | null;
+    routeTotalCostTl: number | null;
+    stops: Array<{
+      category: string;
+      district: string | null;
+      imageUrl: string | null;
+      coordinates: {
+        lat: number | null;
+        lng: number | null;
+      };
+    }>;
+  }): TripPreview {
+    const stopCount = input.stops.length;
+    const districtLabel = this.resolveTopDistrict(input.stops);
+    const imageUrl =
+      input.stops.find((stop) => typeof stop.imageUrl === 'string' && stop.imageUrl.trim())
+        ?.imageUrl ?? null;
+    const primaryCategory = this.resolvePrimaryCategory(
+      input.categories,
+      input.stops.map((stop) => stop.category),
+    );
+    const hasMapData = input.stops.some(
+      (stop) =>
+        stop.coordinates.lat !== null &&
+        stop.coordinates.lng !== null,
+    );
+
+    return {
+      headline: input.routeName ?? input.title,
+      subheadline: this.buildTripPreviewSubheadline({
+        stopCount,
+        districtLabel,
+        routeTotalDurationMin: input.routeTotalDurationMin,
+        routeTotalCostTl: input.routeTotalCostTl,
+      }),
+      primaryCategory,
+      districtLabel,
+      stopCount,
+      hasMapData,
+      hasPoiImage: imageUrl !== null,
+      imageUrl,
+    };
+  }
+
+  private buildTripPreviewSubheadline(input: {
+    stopCount: number;
+    districtLabel: string | null;
+    routeTotalDurationMin: number | null;
+    routeTotalCostTl: number | null;
+  }): string | null {
+    const parts: string[] = [];
+
+    if (input.stopCount > 0) {
+      if (input.districtLabel) {
+        parts.push(
+          `${input.stopCount} stop${input.stopCount === 1 ? '' : 's'} around ${input.districtLabel}`,
+        );
+      } else {
+        parts.push(
+          `${input.stopCount} stop${input.stopCount === 1 ? '' : 's'} planned`,
+        );
+      }
+    } else if (input.districtLabel) {
+      parts.push(`Centered around ${input.districtLabel}`);
+    }
+
+    if (input.routeTotalDurationMin !== null) {
+      parts.push(`${input.routeTotalDurationMin} min`);
+    }
+
+    if (input.routeTotalCostTl !== null) {
+      parts.push(`${Math.round(input.routeTotalCostTl)} TL`);
+    }
+
+    if (parts.length === 0) {
+      return null;
+    }
+
+    return parts.join(' • ');
+  }
+
+  private resolvePrimaryCategory(
+    tripCategories: string[],
+    stopCategories: string[],
+  ): string | null {
+    const counts = new Map<string, number>();
+
+    for (const category of stopCategories) {
+      counts.set(category, (counts.get(category) ?? 0) + 1);
+    }
+
+    const topStopCategory = [...counts.entries()]
+      .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))[0]?.[0];
+
+    if (topStopCategory) {
+      return topStopCategory;
+    }
+
+    return tripCategories[0] ?? null;
+  }
+
+  private resolveTopDistrict(
+    stops: Array<{
+      district: string | null;
+    }>,
+  ): string | null {
+    const counts = new Map<string, number>();
+
+    for (const stop of stops) {
+      const district = stop.district?.trim();
+      if (!district) {
+        continue;
+      }
+
+      counts.set(district, (counts.get(district) ?? 0) + 1);
+    }
+
+    return [...counts.entries()]
+      .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))[0]?.[0] ?? null;
+  }
+
   private toTripDetailResponse(trip: TripDetailRecord) {
     const stops = trip.stops.map((stop) => ({
       id: stop.id,
@@ -480,6 +704,23 @@ export class TripsService {
       },
     }));
 
+    const preview = this.buildTripPreview({
+      title: trip.title,
+      routeName: trip.routeName,
+      categories: trip.categories,
+      routeTotalDurationMin: trip.routeTotalDurationMin,
+      routeTotalCostTl: trip.routeTotalCostTl,
+      stops: stops.map((stop) => ({
+        category: stop.poi.category,
+        district: stop.poi.district,
+        imageUrl: stop.poi.imageUrl,
+        coordinates: {
+          lat: stop.poi.coordinates.lat,
+          lng: stop.poi.coordinates.lng,
+        },
+      })),
+    });
+
     return {
       trip: {
         id: trip.id,
@@ -494,6 +735,7 @@ export class TripsService {
         walkingToleranceKm: trip.walkingToleranceKm,
         maxPois: trip.maxPois,
         status: trip.status,
+        visibility: trip.visibility,
         createdAt: trip.createdAt,
         updatedAt: trip.updatedAt,
       },
@@ -508,6 +750,7 @@ export class TripsService {
         stopCount: stops.length,
         isOptimized: trip.status === 'OPTIMIZED',
       },
+      preview,
       stops,
     };
   }

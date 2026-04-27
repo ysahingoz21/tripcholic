@@ -1,16 +1,49 @@
 import AppButton from '@/components/ui/AppButton';
-import TripStopsMap from '@/components/trip/TripStopsMap';
 import { getSortedTripStops } from '@/components/trip/tripMapUtils';
+import TripPreviewCard from '@/components/trip/TripPreviewCard';
 import InfoCard from '@/components/ui/InfoCard';
 import ScreenContainer from '@/components/ui/ScreenContainer';
 import SectionTitle from '@/components/ui/SectionTitle';
 import TimelineItem from '@/components/ui/TimelineItem';
 import { theme } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
-import { getTrip, type TripDetailResponse } from '@/services/trips';
+import {
+  getTrip,
+  type TripDetailResponse,
+  type TripVisibility,
+} from '@/services/trips';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import TripStopsMap from '../../components/trip/TripStopsMap';
+
+function getVisibilityBadgeStyle(visibility: TripVisibility) {
+  switch (visibility) {
+    case 'PUBLIC':
+      return {
+        backgroundColor: '#E8F7EE',
+        borderColor: '#BBE7CA',
+        textColor: '#166534',
+      };
+    case 'PRIVATE':
+      return {
+        backgroundColor: '#F3F4F6',
+        borderColor: '#D1D5DB',
+        textColor: '#374151',
+      };
+    case 'DRAFT':
+    default:
+      return {
+        backgroundColor: '#FFF7E8',
+        borderColor: '#FCD89A',
+        textColor: '#9A6700',
+      };
+  }
+}
+
+function formatVisibilityLabel(visibility: TripVisibility) {
+  return visibility.charAt(0) + visibility.slice(1).toLowerCase();
+}
 
 export default function TripDetailScreen() {
   const router = useRouter();
@@ -86,6 +119,7 @@ export default function TripDetailScreen() {
   const { trip, optimization, stops } = tripDetail;
   const sortedStops = getSortedTripStops(stops);
   const tripDate = new Date(trip.date).toLocaleDateString();
+  const visibilityBadgeStyle = getVisibilityBadgeStyle(trip.visibility);
 
   return (
     <ScreenContainer>
@@ -98,15 +132,31 @@ export default function TripDetailScreen() {
           subtitle={`Trip #${trip.id} • ${trip.status.toLowerCase()}`}
         />
 
-        <View style={styles.heroCard}>
-          <Text style={styles.heroTitle}>
-            {optimization.routeName ?? trip.title}
-          </Text>
-          <Text style={styles.heroSubtitle}>
-            {tripDate} • {optimization.stopCount} stop
-            {optimization.stopCount === 1 ? '' : 's'}
-          </Text>
-        </View>
+        <TripPreviewCard
+          preview={tripDetail.preview}
+          dateLabel={tripDate}
+          variant="hero"
+          rightContent={
+            <View
+              style={[
+                styles.visibilityBadge,
+                {
+                  backgroundColor: visibilityBadgeStyle.backgroundColor,
+                  borderColor: visibilityBadgeStyle.borderColor,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.visibilityText,
+                  { color: visibilityBadgeStyle.textColor },
+                ]}
+              >
+                {formatVisibilityLabel(trip.visibility)}
+              </Text>
+            </View>
+          }
+        />
 
         <InfoCard
           title="Route Summary"
@@ -208,23 +258,16 @@ export default function TripDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  heroCard: {
-    backgroundColor: theme.colors.surface,
+  visibilityBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.radius.xl,
-    padding: theme.spacing.xl,
-    marginBottom: theme.spacing.xl,
+    backgroundColor: theme.colors.surface,
   },
-  heroTitle: {
-    fontSize: 22,
+  visibilityText: {
+    fontSize: 12,
     fontWeight: '700',
-    color: theme.colors.text,
-    marginBottom: 4,
-  },
-  heroSubtitle: {
-    fontSize: 14,
-    color: theme.colors.textSecondary,
   },
   emptyCard: {
     backgroundColor: theme.colors.surface,

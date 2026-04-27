@@ -4,6 +4,9 @@ export class CurrentUserResponseDto {
   @ApiProperty({ example: '9f3c9d61-65df-4c3e-9ff3-4f5bdb1a7f8a' })
   id!: string;
 
+  @ApiProperty({ example: 'Tripcholic User', required: false, nullable: true })
+  displayName!: string | null;
+
   @ApiProperty({ example: 'user@example.com' })
   email!: string;
 

@@ -14,6 +14,7 @@ type ApiErrorEnvelope = {
 
 export type AuthUser = {
   id: string;
+  displayName: string | null;
   email: string;
   createdAt: string;
   updatedAt?: string;
