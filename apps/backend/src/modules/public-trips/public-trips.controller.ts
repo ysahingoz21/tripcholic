@@ -22,6 +22,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { type AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { CreateSavedTripCollectionDto } from './dto/create-saved-trip-collection.dto';
 import { CreateTripCommentDto } from './dto/create-trip-comment.dto';
+import { ListForYouTripsQueryDto } from './dto/list-for-you-trips-query.dto';
 import { ListSavedTripsQueryDto } from './dto/list-saved-trips-query.dto';
 import { UpdateTripFeedbackDto } from './dto/update-trip-feedback.dto';
 import { UpdateSavedTripCollectionsDto } from './dto/update-saved-trip-collections.dto';
@@ -46,6 +47,16 @@ export class PublicTripsController {
     @Query() query: ListSavedTripsQueryDto,
   ) {
     return this.publicTripsService.findSavedTrips(req.user.id, query);
+  }
+
+  @Get('for-you')
+  @ApiOperation({ summary: 'List personalized public trips for the current user' })
+  @ApiOkResponse({ description: 'Personalized public trips returned successfully.' })
+  findForYou(
+    @Req() req: AuthenticatedRequest,
+    @Query() query: ListForYouTripsQueryDto,
+  ) {
+    return this.publicTripsService.findForYouTrips(req.user.id, query);
   }
 
   @Post('saved/collections')

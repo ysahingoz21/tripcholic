@@ -188,6 +188,44 @@ export type SavedPublicTripItem = {
   engagement: PublicTripEngagement;
 };
 
+export type ForYouRecommendation = {
+  kind: 'personalized' | 'fallback';
+  primaryReason: string;
+  matchedTraits: string[];
+};
+
+export type ForYouSignalSummary = {
+  likes: number;
+  saves: number;
+  completions: number;
+  feedbackSubmissions: number;
+};
+
+export type ForYouTripItem = {
+  id: string;
+  title: string;
+  description: string | null;
+  categories: string[];
+  routeTotalDurationMin: number | null;
+  routeTotalCostTl: number | null;
+  optimizedAt: string | null;
+  preview: TripPreview;
+  creator: {
+    id: string | null;
+    displayName: string | null;
+  };
+  recommendation: ForYouRecommendation;
+};
+
+export type ForYouTripsResponse = {
+  items: ForYouTripItem[];
+  meta: {
+    personalizationState: 'personalized' | 'cold_start';
+    signalSummary: ForYouSignalSummary;
+    total: number;
+  };
+};
+
 export type SavedPublicTripsResponse = {
   collections: SavedTripCollectionSummary[];
   filter: {
@@ -427,6 +465,26 @@ export async function getSavedPublicTrips(token: string, collectionId?: string) 
   return parseApiResponse<SavedPublicTripsResponse>(
     response,
     'Failed to load saved public trips'
+  );
+}
+
+export async function getForYouPublicTrips(token: string, limit = 20) {
+  const searchParams = new URLSearchParams();
+  searchParams.set('limit', String(limit));
+
+  const response = await fetch(
+    `${API_BASE_URL}/public-trips/for-you?${searchParams.toString()}`,
+    {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  return parseApiResponse<ForYouTripsResponse>(
+    response,
+    'Failed to load personalized public trips'
   );
 }
 

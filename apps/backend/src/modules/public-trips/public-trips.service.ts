@@ -10,9 +10,84 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateSavedTripCollectionDto } from './dto/create-saved-trip-collection.dto';
 import { buildTripPreview } from '../trips/trip-preview';
 import { CreateTripCommentDto } from './dto/create-trip-comment.dto';
+import { ListForYouTripsQueryDto } from './dto/list-for-you-trips-query.dto';
 import { ListSavedTripsQueryDto } from './dto/list-saved-trips-query.dto';
 import { UpdateTripFeedbackDto } from './dto/update-trip-feedback.dto';
 import { UpdateSavedTripCollectionsDto } from './dto/update-saved-trip-collections.dto';
+
+const FOR_YOU_INTERACTION_WEIGHTS = {
+  save: 5,
+  completion: 4,
+  like: 2,
+} as const;
+
+const FOR_YOU_POSITIVE_FEEDBACK_WEIGHTS = {
+  worked_well: 2,
+  worth_repeating: 3,
+  good_for_rainy_weather: 2,
+} as const;
+
+const FOR_YOU_BUDGET_BAND_ORDER = ['low', 'medium', 'high'] as const;
+const FOR_YOU_DURATION_BAND_ORDER = ['short', 'medium', 'long'] as const;
+const FOR_YOU_DISTANCE_BAND_ORDER = ['compact', 'balanced', 'extended'] as const;
+const FOR_YOU_STOP_COUNT_BAND_ORDER = ['short', 'balanced', 'full'] as const;
+
+type PublicTripListRecord = Prisma.TripGetPayload<{
+  include: {
+    user: {
+      select: {
+        id: true;
+        displayName: true;
+      };
+    };
+    stops: {
+      include: {
+        poi: {
+          select: {
+            category: true;
+            district: true;
+            imageUrl: true;
+            lat: true;
+            lng: true;
+          };
+        };
+      };
+    };
+  };
+}>;
+
+type ForYouRecommendation = {
+  kind: 'personalized' | 'fallback';
+  primaryReason: string;
+  matchedTraits: string[];
+};
+
+type ForYouSignalSummary = {
+  likes: number;
+  saves: number;
+  completions: number;
+  feedbackSubmissions: number;
+};
+
+type ForYouTasteProfile = {
+  categoryWeights: Map<string, number>;
+  weatherWeights: Map<string, number>;
+  budgetBandWeights: Map<string, number>;
+  durationBandWeights: Map<string, number>;
+  distanceBandWeights: Map<string, number>;
+  stopCountBandWeights: Map<string, number>;
+  districtWeights: Map<string, number>;
+  signalSummary: ForYouSignalSummary;
+  seedTripIds: Set<string>;
+  excludedTripIds: Set<string>;
+  personalizationState: 'personalized' | 'cold_start';
+};
+
+type ForYouContribution = {
+  score: number;
+  trait: string;
+  primaryReason: string;
+};
 
 @Injectable()
 export class PublicTripsService {
@@ -546,6 +621,90 @@ export class PublicTripsService {
     };
   }
 
+  async findForYouTrips(userId: string, query: ListForYouTripsQueryDto) {
+    const client = await this.prisma.getClient();
+    const db = client as any;
+    const limit = query.limit ?? 20;
+    const tasteProfile = await this.buildForYouTasteProfile(db, userId);
+    const excludedTripIds = [...tasteProfile.excludedTripIds];
+
+    const candidates = (await db.trip.findMany({
+      where: {
+        ...this.buildEligiblePublicTripWhere(),
+        NOT: [{ userId }, ...(excludedTripIds.length > 0 ? [{ id: { in: excludedTripIds } }] : [])],
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            displayName: true,
+          },
+        },
+        stops: {
+          orderBy: { order: 'asc' },
+          include: {
+            poi: {
+              select: {
+                category: true,
+                district: true,
+                imageUrl: true,
+                lat: true,
+                lng: true,
+              },
+            },
+          },
+        },
+      },
+    })) as PublicTripListRecord[];
+
+    const popularityByTripId = await this.getCandidatePopularityByTripId(
+      db,
+      candidates.map((candidate) => candidate.id),
+    );
+    const scoredItems = candidates.map((candidate) => {
+      const recommendation =
+        tasteProfile.personalizationState === 'personalized'
+          ? this.buildPersonalizedRecommendation(candidate, tasteProfile)
+          : null;
+      const popularity = popularityByTripId.get(candidate.id) ?? {
+        saves: 0,
+        completions: 0,
+        likes: 0,
+      };
+
+      return {
+        trip: candidate,
+        recommendation:
+          recommendation ?? this.buildFallbackRecommendation(candidate, popularity),
+        sortScore:
+          recommendation?.sortScore ??
+          this.buildFallbackSortScore(candidate, popularity),
+      };
+    });
+
+    const items = scoredItems
+      .sort((left, right) =>
+        right.sortScore - left.sortScore ||
+        this.compareNullableDates(right.trip.optimizedAt, left.trip.optimizedAt) ||
+        this.compareNullableDates(right.trip.createdAt, left.trip.createdAt) ||
+        left.trip.id.localeCompare(right.trip.id),
+      )
+      .slice(0, limit)
+      .map((item) => ({
+        ...this.toPublicTripListItem(item.trip),
+        recommendation: item.recommendation.payload,
+      }));
+
+    return {
+      items,
+      meta: {
+        personalizationState: tasteProfile.personalizationState,
+        signalSummary: tasteProfile.signalSummary,
+        total: items.length,
+      },
+    };
+  }
+
   async createSavedTripCollection(
     userId: string,
     payload: CreateSavedTripCollectionDto,
@@ -1003,6 +1162,621 @@ export class PublicTripsService {
     return {
       items: selectedItems,
     };
+  }
+
+  private async buildForYouTasteProfile(
+    client: any,
+    userId: string,
+  ): Promise<ForYouTasteProfile> {
+    const tripListInclude = {
+      trip: {
+        include: {
+          stops: {
+            orderBy: { order: 'asc' },
+            include: {
+              poi: {
+                select: {
+                  category: true,
+                  district: true,
+                  imageUrl: true,
+                  lat: true,
+                  lng: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    };
+
+    const [savedTrips, completions, likes] = await Promise.all([
+      client.savedTrip.findMany({
+        where: { userId },
+        include: tripListInclude,
+      }),
+      client.tripCompletion.findMany({
+        where: { userId },
+        include: tripListInclude,
+      }),
+      client.tripLike.findMany({
+        where: { userId },
+        include: tripListInclude,
+      }),
+    ]);
+
+    const profile: ForYouTasteProfile = {
+      categoryWeights: new Map(),
+      weatherWeights: new Map(),
+      budgetBandWeights: new Map(),
+      durationBandWeights: new Map(),
+      distanceBandWeights: new Map(),
+      stopCountBandWeights: new Map(),
+      districtWeights: new Map(),
+      signalSummary: {
+        likes: 0,
+        saves: 0,
+        completions: 0,
+        feedbackSubmissions: 0,
+      },
+      seedTripIds: new Set<string>(),
+      excludedTripIds: new Set<string>(),
+      personalizationState: 'cold_start',
+    };
+
+    for (const savedTrip of savedTrips) {
+      if (!this.isEligiblePublicTrip(savedTrip.trip)) {
+        continue;
+      }
+
+      profile.signalSummary.saves += 1;
+      profile.seedTripIds.add(savedTrip.tripId);
+      profile.excludedTripIds.add(savedTrip.tripId);
+      this.applyTripToTasteProfile(
+        profile,
+        savedTrip.trip,
+        FOR_YOU_INTERACTION_WEIGHTS.save,
+      );
+    }
+
+    for (const completion of completions) {
+      if (!this.isEligiblePublicTrip(completion.trip)) {
+        continue;
+      }
+
+      profile.signalSummary.completions += 1;
+      profile.seedTripIds.add(completion.tripId);
+      profile.excludedTripIds.add(completion.tripId);
+      this.applyTripToTasteProfile(
+        profile,
+        completion.trip,
+        FOR_YOU_INTERACTION_WEIGHTS.completion,
+      );
+
+      const positiveSignals = this.normalizeStoredFeedbackSignals(
+        completion.feedbackSignals,
+      ).filter((signal) => signal in FOR_YOU_POSITIVE_FEEDBACK_WEIGHTS);
+
+      if (positiveSignals.length > 0) {
+        profile.signalSummary.feedbackSubmissions += 1;
+      }
+
+      for (const signal of positiveSignals) {
+        const bonusWeight =
+          FOR_YOU_POSITIVE_FEEDBACK_WEIGHTS[
+            signal as keyof typeof FOR_YOU_POSITIVE_FEEDBACK_WEIGHTS
+          ];
+        this.applyTripToTasteProfile(profile, completion.trip, bonusWeight);
+
+        if (signal === 'good_for_rainy_weather') {
+          this.addWeight(profile.weatherWeights, 'rainy', bonusWeight + 1);
+        }
+      }
+    }
+
+    for (const like of likes) {
+      if (!this.isEligiblePublicTrip(like.trip)) {
+        continue;
+      }
+
+      profile.signalSummary.likes += 1;
+      profile.seedTripIds.add(like.tripId);
+      this.applyTripToTasteProfile(
+        profile,
+        like.trip,
+        FOR_YOU_INTERACTION_WEIGHTS.like,
+      );
+    }
+
+    const strongSignalCount =
+      profile.signalSummary.saves +
+      profile.signalSummary.completions +
+      profile.signalSummary.feedbackSubmissions;
+
+    profile.personalizationState =
+      profile.seedTripIds.size >= 2 || strongSignalCount >= 2
+        ? 'personalized'
+        : 'cold_start';
+
+    return profile;
+  }
+
+  private applyTripToTasteProfile(
+    profile: ForYouTasteProfile,
+    trip: PublicTripListRecord | any,
+    weight: number,
+  ) {
+    const categories = this.normalizeCategoryValues(trip.categories);
+    for (const category of categories) {
+      this.addWeight(profile.categoryWeights, category, weight);
+    }
+
+    const dominantStopCategories = this.getDominantStopCategories(trip.stops ?? []);
+    for (const category of dominantStopCategories) {
+      this.addWeight(profile.categoryWeights, category, weight * 1.25);
+    }
+
+    const district = this.getTopDistrictFromStops(trip.stops ?? []);
+    if (district) {
+      this.addWeight(profile.districtWeights, district, weight);
+    }
+
+    const weather = trip.weather?.trim().toLowerCase();
+    if (weather) {
+      this.addWeight(profile.weatherWeights, weather, weight);
+    }
+
+    const budgetBand = this.getBudgetBand(trip.routeTotalCostTl);
+    if (budgetBand) {
+      this.addWeight(profile.budgetBandWeights, budgetBand, weight);
+    }
+
+    const durationBand = this.getDurationBand(trip.routeTotalDurationMin);
+    if (durationBand) {
+      this.addWeight(profile.durationBandWeights, durationBand, weight);
+    }
+
+    const distanceBand = this.getDistanceBand(trip.routeTotalDistanceKm);
+    if (distanceBand) {
+      this.addWeight(profile.distanceBandWeights, distanceBand, weight);
+    }
+
+    const stopCountBand = this.getStopCountBand((trip.stops ?? []).length);
+    if (stopCountBand) {
+      this.addWeight(profile.stopCountBandWeights, stopCountBand, weight);
+    }
+  }
+
+  private buildPersonalizedRecommendation(
+    trip: PublicTripListRecord,
+    profile: ForYouTasteProfile,
+  ) {
+    const contributions: ForYouContribution[] = [];
+    const candidateCategories = [
+      ...new Set([
+        ...this.normalizeCategoryValues(trip.categories),
+        ...this.getDominantStopCategories(trip.stops),
+      ]),
+    ];
+
+    for (const category of candidateCategories) {
+      const score = profile.categoryWeights.get(category) ?? 0;
+      if (score <= 0) {
+        continue;
+      }
+
+      contributions.push({
+        score,
+        trait: `category:${category}`,
+        primaryReason: `Matches your interest in ${category} public trips.`,
+      });
+    }
+
+    const weather = trip.weather?.trim().toLowerCase();
+    if (weather) {
+      const score = (profile.weatherWeights.get(weather) ?? 0) * 1.2;
+      if (score > 0) {
+        contributions.push({
+          score,
+          trait: `weather:${weather}`,
+          primaryReason:
+            weather === 'rainy'
+              ? 'Matches the rainy-weather routes you responded well to.'
+              : `Matches the ${weather}-weather public trips you engage with.`,
+        });
+      }
+    }
+
+    const budgetBand = this.getBudgetBand(trip.routeTotalCostTl);
+    if (budgetBand) {
+      const score = (profile.budgetBandWeights.get(budgetBand) ?? 0) * 1.1;
+      if (score > 0) {
+        contributions.push({
+          score,
+          trait: `budget:${budgetBand}`,
+          primaryReason: `Fits the ${budgetBand}-budget routes you tend to save or complete.`,
+        });
+      }
+    }
+
+    const durationBand = this.getDurationBand(trip.routeTotalDurationMin);
+    if (durationBand) {
+      const score = profile.durationBandWeights.get(durationBand) ?? 0;
+      if (score > 0) {
+        contributions.push({
+          score,
+          trait: `duration:${durationBand}`,
+          primaryReason: `Has a ${durationBand} route pace similar to trips you've engaged with.`,
+        });
+      }
+    }
+
+    const distanceBand = this.getDistanceBand(trip.routeTotalDistanceKm);
+    if (distanceBand) {
+      const score = profile.distanceBandWeights.get(distanceBand) ?? 0;
+      if (score > 0) {
+        contributions.push({
+          score,
+          trait: `distance:${distanceBand}`,
+          primaryReason: `Matches the ${distanceBand} route distance you usually respond to.`,
+        });
+      }
+    }
+
+    const stopCountBand = this.getStopCountBand(trip.stops.length);
+    if (stopCountBand) {
+      const score = profile.stopCountBandWeights.get(stopCountBand) ?? 0;
+      if (score > 0) {
+        contributions.push({
+          score,
+          trait: `stop-count:${stopCountBand}`,
+          primaryReason: `Has a ${stopCountBand} stop count similar to routes you've engaged with.`,
+        });
+      }
+    }
+
+    const district = this.getTopDistrictFromStops(trip.stops);
+    if (district) {
+      const score = profile.districtWeights.get(district) ?? 0;
+      if (score > 0) {
+        contributions.push({
+          score,
+          trait: `district:${district}`,
+          primaryReason: `Includes stops around ${district}, similar to public trips you've engaged with.`,
+        });
+      }
+    }
+
+    const rankedContributions = contributions.sort(
+      (left, right) =>
+        right.score - left.score || left.trait.localeCompare(right.trait),
+    );
+
+    if (rankedContributions.length === 0) {
+      return null;
+    }
+
+    return {
+      payload: {
+        kind: 'personalized' as const,
+        primaryReason: rankedContributions[0].primaryReason,
+        matchedTraits: rankedContributions
+          .slice(0, 3)
+          .map((contribution) => contribution.trait),
+      },
+      sortScore: rankedContributions.reduce(
+        (total, contribution) => total + contribution.score,
+        0,
+      ),
+    };
+  }
+
+  private buildFallbackRecommendation(
+    trip: PublicTripListRecord,
+    popularity: {
+      saves: number;
+      completions: number;
+      likes: number;
+    },
+  ) {
+    const parts: string[] = [];
+
+    if (popularity.saves > 0) {
+      parts.push(
+        popularity.saves === 1
+          ? 'saved by 1 traveler'
+          : `saved by ${popularity.saves} travelers`,
+      );
+    }
+
+    if (popularity.completions > 0) {
+      parts.push(
+        popularity.completions === 1
+          ? 'completed by 1 traveler'
+          : `completed by ${popularity.completions} travelers`,
+      );
+    }
+
+    if (parts.length > 0) {
+      return {
+        payload: {
+          kind: 'fallback' as const,
+          primaryReason: `Popular public trip while we learn your taste: ${parts.join(' and ')}.`,
+          matchedTraits: ['popular'],
+        },
+      };
+    }
+
+    return {
+      payload: {
+        kind: 'fallback' as const,
+        primaryReason: 'Recently optimized public trip while we learn your taste.',
+        matchedTraits: ['recent'],
+      },
+    };
+  }
+
+  private buildFallbackSortScore(
+    trip: PublicTripListRecord,
+    popularity: {
+      saves: number;
+      completions: number;
+      likes: number;
+    },
+  ) {
+    const popularityScore =
+      popularity.saves * 4 + popularity.completions * 3 + popularity.likes * 2;
+    const recencyScore = trip.optimizedAt
+      ? trip.optimizedAt.getTime() / 1_000_000_000_000
+      : 0;
+
+    return popularityScore + recencyScore;
+  }
+
+  private async getCandidatePopularityByTripId(client: any, tripIds: string[]) {
+    const popularityByTripId = new Map<
+      string,
+      {
+        saves: number;
+        completions: number;
+        likes: number;
+      }
+    >();
+
+    if (tripIds.length === 0) {
+      return popularityByTripId;
+    }
+
+    const [saveRows, completionRows, likeRows] = await Promise.all([
+      client.savedTrip.groupBy({
+        by: ['tripId'],
+        where: { tripId: { in: tripIds } },
+        _count: { _all: true },
+      }),
+      client.tripCompletion.groupBy({
+        by: ['tripId'],
+        where: { tripId: { in: tripIds } },
+        _count: { _all: true },
+      }),
+      client.tripLike.groupBy({
+        by: ['tripId'],
+        where: { tripId: { in: tripIds } },
+        _count: { _all: true },
+      }),
+    ]);
+
+    for (const tripId of tripIds) {
+      popularityByTripId.set(tripId, {
+        saves: 0,
+        completions: 0,
+        likes: 0,
+      });
+    }
+
+    for (const row of saveRows) {
+      popularityByTripId.set(row.tripId, {
+        ...(popularityByTripId.get(row.tripId) ?? {
+          saves: 0,
+          completions: 0,
+          likes: 0,
+        }),
+        saves: row._count._all,
+      });
+    }
+
+    for (const row of completionRows) {
+      popularityByTripId.set(row.tripId, {
+        ...(popularityByTripId.get(row.tripId) ?? {
+          saves: 0,
+          completions: 0,
+          likes: 0,
+        }),
+        completions: row._count._all,
+      });
+    }
+
+    for (const row of likeRows) {
+      popularityByTripId.set(row.tripId, {
+        ...(popularityByTripId.get(row.tripId) ?? {
+          saves: 0,
+          completions: 0,
+          likes: 0,
+        }),
+        likes: row._count._all,
+      });
+    }
+
+    return popularityByTripId;
+  }
+
+  private toPublicTripListItem(trip: PublicTripListRecord) {
+    const preview = buildTripPreview({
+      title: trip.title,
+      routeName: trip.routeName,
+      categories: trip.categories,
+      routeTotalDurationMin: trip.routeTotalDurationMin,
+      routeTotalCostTl: trip.routeTotalCostTl,
+      stops: trip.stops.map((stop) => ({
+        category: stop.poi.category.toLowerCase(),
+        district: stop.poi.district,
+        imageUrl: stop.poi.imageUrl,
+        coordinates: {
+          lat: stop.poi.lat,
+          lng: stop.poi.lng,
+        },
+      })),
+    });
+
+    return {
+      id: trip.id,
+      title: trip.title,
+      description: trip.description,
+      categories: trip.categories,
+      routeTotalDurationMin: trip.routeTotalDurationMin,
+      routeTotalCostTl: trip.routeTotalCostTl,
+      optimizedAt: trip.optimizedAt,
+      preview,
+      creator: {
+        id: trip.user?.id ?? trip.userId ?? null,
+        displayName: trip.user?.displayName ?? null,
+      },
+    };
+  }
+
+  private isEligiblePublicTrip(trip: {
+    visibility: string;
+    status: string;
+  }) {
+    return trip.visibility === 'PUBLIC' && trip.status === 'OPTIMIZED';
+  }
+
+  private normalizeCategoryValues(categories: string[]) {
+    return [...new Set(categories.map((category) => category.trim().toLowerCase()).filter(Boolean))];
+  }
+
+  private getDominantStopCategories(
+    stops: Array<{
+      poi: {
+        category: string;
+      };
+    }>,
+  ) {
+    const counts = new Map<string, number>();
+
+    for (const stop of stops) {
+      const category = stop.poi.category.trim().toLowerCase();
+      if (!category) {
+        continue;
+      }
+
+      counts.set(category, (counts.get(category) ?? 0) + 1);
+    }
+
+    const topCount = Math.max(0, ...counts.values());
+    if (topCount === 0) {
+      return [];
+    }
+
+    return [...counts.entries()]
+      .filter(([, count]) => count === topCount)
+      .map(([category]) => category)
+      .sort((left, right) => left.localeCompare(right));
+  }
+
+  private getTopDistrictFromStops(
+    stops: Array<{
+      poi: {
+        district: string | null;
+      };
+    }>,
+  ) {
+    const counts = new Map<string, number>();
+
+    for (const stop of stops) {
+      const district = stop.poi.district?.trim();
+      if (!district) {
+        continue;
+      }
+
+      counts.set(district, (counts.get(district) ?? 0) + 1);
+    }
+
+    return [...counts.entries()]
+      .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))[0]?.[0] ?? null;
+  }
+
+  private getBudgetBand(value: number | null) {
+    if (value === null) {
+      return null;
+    }
+
+    if (value <= 2000) {
+      return FOR_YOU_BUDGET_BAND_ORDER[0];
+    }
+
+    if (value <= 6000) {
+      return FOR_YOU_BUDGET_BAND_ORDER[1];
+    }
+
+    return FOR_YOU_BUDGET_BAND_ORDER[2];
+  }
+
+  private getDurationBand(value: number | null) {
+    if (value === null) {
+      return null;
+    }
+
+    if (value <= 180) {
+      return FOR_YOU_DURATION_BAND_ORDER[0];
+    }
+
+    if (value <= 360) {
+      return FOR_YOU_DURATION_BAND_ORDER[1];
+    }
+
+    return FOR_YOU_DURATION_BAND_ORDER[2];
+  }
+
+  private getDistanceBand(value: number | null) {
+    if (value === null) {
+      return null;
+    }
+
+    if (value <= 3) {
+      return FOR_YOU_DISTANCE_BAND_ORDER[0];
+    }
+
+    if (value <= 8) {
+      return FOR_YOU_DISTANCE_BAND_ORDER[1];
+    }
+
+    return FOR_YOU_DISTANCE_BAND_ORDER[2];
+  }
+
+  private getStopCountBand(value: number) {
+    if (value <= 0) {
+      return null;
+    }
+
+    if (value <= 3) {
+      return FOR_YOU_STOP_COUNT_BAND_ORDER[0];
+    }
+
+    if (value <= 5) {
+      return FOR_YOU_STOP_COUNT_BAND_ORDER[1];
+    }
+
+    return FOR_YOU_STOP_COUNT_BAND_ORDER[2];
+  }
+
+  private addWeight(weights: Map<string, number>, key: string, amount: number) {
+    weights.set(key, (weights.get(key) ?? 0) + amount);
+  }
+
+  private compareNullableDates(left: Date | null, right: Date | null) {
+    const leftValue = left?.getTime() ?? 0;
+    const rightValue = right?.getTime() ?? 0;
+
+    return leftValue - rightValue;
   }
 
   private toSavedTripItem(
