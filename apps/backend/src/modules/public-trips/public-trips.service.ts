@@ -89,6 +89,11 @@ type ForYouContribution = {
   primaryReason: string;
 };
 
+type CreatorFollowSummary = {
+  followerCount: number;
+  isFollowedByMe: boolean;
+};
+
 @Injectable()
 export class PublicTripsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -145,8 +150,18 @@ export class PublicTripsService {
       this.getEngagementSnapshot(db, trip.id, userId),
       this.getFeedbackSnapshot(db, trip.id, userId),
     ]);
+    const creatorFollowSummaryByUserId = await this.getCreatorFollowSummaryByUserId(
+      db,
+      userId,
+      [trip.user?.id ?? trip.userId ?? null],
+    );
 
-    return this.toPublicTripDetailResponse(trip, engagement, feedback);
+    return this.toPublicTripDetailResponse(
+      trip,
+      engagement,
+      feedback,
+      creatorFollowSummaryByUserId,
+    );
   }
 
   async remixTrip(userId: string, tripId: string) {
@@ -591,6 +606,11 @@ export class PublicTripsService {
     );
     const tripIds = savedTrips.map((savedTrip) => savedTrip.tripId);
     const engagementByTripId = await this.getEngagementSnapshots(db, tripIds, userId);
+    const creatorFollowSummaryByUserId = await this.getCreatorFollowSummaryByUserId(
+      db,
+      userId,
+      savedTrips.map((savedTrip) => savedTrip.trip.user?.id ?? savedTrip.trip.userId ?? null),
+    );
 
     return {
       collections: collections.map((collection) =>
@@ -617,6 +637,7 @@ export class PublicTripsService {
             savedTrip,
             membershipsBySavedTripId.get(savedTrip.id) ?? [],
             engagementByTripId.get(savedTrip.tripId) ?? this.createEmptyEngagement(),
+            creatorFollowSummaryByUserId,
           )),
     };
   }
@@ -689,18 +710,23 @@ export class PublicTripsService {
         this.compareNullableDates(right.trip.createdAt, left.trip.createdAt) ||
         left.trip.id.localeCompare(right.trip.id),
       )
-      .slice(0, limit)
-      .map((item) => ({
-        ...this.toPublicTripListItem(item.trip),
+      .slice(0, limit);
+    const creatorFollowSummaryByUserId = await this.getCreatorFollowSummaryByUserId(
+      db,
+      userId,
+      items.map((item) => item.trip.user?.id ?? item.trip.userId ?? null),
+    );
+    const mappedItems = items.map((item) => ({
+        ...this.toPublicTripListItem(item.trip, creatorFollowSummaryByUserId),
         recommendation: item.recommendation.payload,
       }));
 
     return {
-      items,
+      items: mappedItems,
       meta: {
         personalizationState: tasteProfile.personalizationState,
         signalSummary: tasteProfile.signalSummary,
-        total: items.length,
+        total: mappedItems.length,
       },
     };
   }
@@ -963,6 +989,7 @@ export class PublicTripsService {
     trip: any,
     engagement: ReturnType<typeof this.createEmptyEngagement>,
     feedback: Awaited<ReturnType<typeof this.getFeedbackSnapshot>>,
+    creatorFollowSummaryByUserId: Map<string, CreatorFollowSummary>,
   ) {
     const stops = trip.stops.map((stop) => ({
       id: stop.id,
@@ -1035,10 +1062,11 @@ export class PublicTripsService {
         updatedAt: trip.updatedAt,
       },
       preview,
-      creator: {
-        id: trip.user?.id ?? trip.userId ?? null,
-        displayName: trip.user?.displayName ?? null,
-      },
+      creator: this.toCreatorPayload(
+        trip.user?.id ?? trip.userId ?? null,
+        trip.user?.displayName ?? null,
+        creatorFollowSummaryByUserId,
+      ),
       optimization: {
         optimizedAt: trip.optimizedAt,
         routeName: trip.routeName,
@@ -1608,7 +1636,10 @@ export class PublicTripsService {
     return popularityByTripId;
   }
 
-  private toPublicTripListItem(trip: PublicTripListRecord) {
+  private toPublicTripListItem(
+    trip: PublicTripListRecord,
+    creatorFollowSummaryByUserId: Map<string, CreatorFollowSummary>,
+  ) {
     const preview = buildTripPreview({
       title: trip.title,
       routeName: trip.routeName,
@@ -1635,10 +1666,11 @@ export class PublicTripsService {
       routeTotalCostTl: trip.routeTotalCostTl,
       optimizedAt: trip.optimizedAt,
       preview,
-      creator: {
-        id: trip.user?.id ?? trip.userId ?? null,
-        displayName: trip.user?.displayName ?? null,
-      },
+      creator: this.toCreatorPayload(
+        trip.user?.id ?? trip.userId ?? null,
+        trip.user?.displayName ?? null,
+        creatorFollowSummaryByUserId,
+      ),
     };
   }
 
@@ -1788,6 +1820,7 @@ export class PublicTripsService {
       updatedAt: Date;
     }>,
     engagement: ReturnType<typeof this.createEmptyEngagement>,
+    creatorFollowSummaryByUserId: Map<string, CreatorFollowSummary>,
   ) {
     const trip = savedTrip.trip;
     const preview = buildTripPreview({
@@ -1819,10 +1852,11 @@ export class PublicTripsService {
         weather: trip.weather,
       },
       preview,
-      creator: {
-        id: trip.user?.id ?? trip.userId ?? null,
-        displayName: trip.user?.displayName ?? null,
-      },
+      creator: this.toCreatorPayload(
+        trip.user?.id ?? trip.userId ?? null,
+        trip.user?.displayName ?? null,
+        creatorFollowSummaryByUserId,
+      ),
       optimization: {
         optimizedAt: trip.optimizedAt,
         routeName: trip.routeName,
@@ -1834,6 +1868,85 @@ export class PublicTripsService {
       ),
       engagement,
     };
+  }
+
+  private toCreatorPayload(
+    creatorId: string | null,
+    displayName: string | null,
+    creatorFollowSummaryByUserId: Map<string, CreatorFollowSummary>,
+  ) {
+    const followSummary = creatorId
+      ? creatorFollowSummaryByUserId.get(creatorId)
+      : null;
+
+    return {
+      id: creatorId,
+      displayName,
+      isFollowedByMe: followSummary?.isFollowedByMe ?? false,
+      followerCount: followSummary?.followerCount ?? 0,
+    };
+  }
+
+  private async getCreatorFollowSummaryByUserId(
+    client: any,
+    currentUserId: string,
+    creatorIds: Array<string | null | undefined>,
+  ) {
+    const normalizedCreatorIds = [...new Set(creatorIds.filter(Boolean))] as string[];
+
+    if (normalizedCreatorIds.length === 0) {
+      return new Map<string, CreatorFollowSummary>();
+    }
+
+    const followerCountRows = (await client.$queryRaw(Prisma.sql`
+      SELECT "followingId" AS "userId", COUNT(*)::int AS "followerCount"
+      FROM "user_follows"
+      WHERE "followingId" IN (${Prisma.join(normalizedCreatorIds)})
+      GROUP BY "followingId"
+    `)) as Array<{
+      userId: string;
+      followerCount: number;
+    }>;
+
+    const followedRows = (await client.$queryRaw(Prisma.sql`
+      SELECT "followingId" AS "userId"
+      FROM "user_follows"
+      WHERE "followerId" = ${currentUserId}
+        AND "followingId" IN (${Prisma.join(normalizedCreatorIds)})
+    `)) as Array<{
+      userId: string;
+    }>;
+
+    const summaryByUserId = new Map<string, CreatorFollowSummary>();
+
+    for (const creatorId of normalizedCreatorIds) {
+      summaryByUserId.set(creatorId, {
+        followerCount: 0,
+        isFollowedByMe: false,
+      });
+    }
+
+    for (const row of followerCountRows) {
+      summaryByUserId.set(row.userId, {
+        ...(summaryByUserId.get(row.userId) ?? {
+          followerCount: 0,
+          isFollowedByMe: false,
+        }),
+        followerCount: row.followerCount,
+      });
+    }
+
+    for (const row of followedRows) {
+      summaryByUserId.set(row.userId, {
+        ...(summaryByUserId.get(row.userId) ?? {
+          followerCount: 0,
+          isFollowedByMe: false,
+        }),
+        isFollowedByMe: true,
+      });
+    }
+
+    return summaryByUserId;
   }
 
   private async listSavedTripCollections(client: any, userId: string) {

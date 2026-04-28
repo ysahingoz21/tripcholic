@@ -78,6 +78,8 @@ export type PublicTripDetailResponse = {
   creator: {
     id: string | null;
     displayName: string | null;
+    isFollowedByMe: boolean;
+    followerCount: number;
   };
   optimization: {
     optimizedAt: string | null;
@@ -177,6 +179,8 @@ export type SavedPublicTripItem = {
   creator: {
     id: string | null;
     displayName: string | null;
+    isFollowedByMe: boolean;
+    followerCount: number;
   };
   optimization: {
     optimizedAt: string | null;
@@ -213,6 +217,8 @@ export type ForYouTripItem = {
   creator: {
     id: string | null;
     displayName: string | null;
+    isFollowedByMe: boolean;
+    followerCount: number;
   };
   recommendation: ForYouRecommendation;
 };
