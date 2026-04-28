@@ -34,6 +34,7 @@ import {
   type PublicTripDetailResponse,
   type PublicTripEngagement,
 } from '@/services/publicTrips';
+import { followUser, unfollowUser } from '@/services/users';
 import TripStopsMap from '../../components/trip/TripStopsMap';
 
 function formatCreatorName(displayName: string | null) {
@@ -127,7 +128,7 @@ function EngagementActionButton({
 export default function PublicTripDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
-  const { token, isLoading: isAuthLoading } = useAuth();
+  const { user, token, isLoading: isAuthLoading } = useAuth();
   const [tripDetail, setTripDetail] = useState<PublicTripDetailResponse | null>(null);
   const [comments, setComments] = useState<PublicTripComment[]>([]);
   const [commentInput, setCommentInput] = useState('');
@@ -137,6 +138,7 @@ export default function PublicTripDetailScreen() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [isLikePending, setIsLikePending] = useState(false);
   const [isSavePending, setIsSavePending] = useState(false);
+  const [isFollowPending, setIsFollowPending] = useState(false);
   const [isCompletePending, setIsCompletePending] = useState(false);
   const [selectedFeedbackSignals, setSelectedFeedbackSignals] = useState<string[]>([]);
   const [isFeedbackPending, setIsFeedbackPending] = useState(false);
@@ -192,6 +194,42 @@ export default function PublicTripDetailScreen() {
     () => getSortedTripStops(tripDetail?.stops ?? []),
     [tripDetail?.stops]
   );
+  const creatorId = tripDetail?.creator.id ?? null;
+  const isOwnCreatorTrip = creatorId !== null && creatorId === user?.id;
+  const canToggleFollow = Boolean(token && creatorId && !isOwnCreatorTrip);
+
+  const handleToggleFollow = async () => {
+    if (!token || !tripDetail || !creatorId || isOwnCreatorTrip || isFollowPending) {
+      return;
+    }
+
+    try {
+      setIsFollowPending(true);
+      const response = tripDetail.creator.isFollowedByMe
+        ? await unfollowUser(creatorId, token)
+        : await followUser(creatorId, token);
+      setTripDetail((currentDetail) =>
+        currentDetail
+          ? {
+              ...currentDetail,
+              creator: {
+                ...currentDetail.creator,
+                ...response.creator,
+              },
+            }
+          : currentDetail
+      );
+      setActionError(null);
+    } catch (followError) {
+      setActionError(
+        followError instanceof Error
+          ? followError.message
+          : 'Unable to update follow state.'
+      );
+    } finally {
+      setIsFollowPending(false);
+    }
+  };
 
   const handleToggleLike = async () => {
     if (!token || !id || typeof id !== 'string' || !engagement || isLikePending) {
@@ -463,19 +501,58 @@ export default function PublicTripDetailScreen() {
         />
 
         <View style={styles.creatorCard}>
-          <View style={styles.creatorRow}>
-            <View style={styles.creatorAvatar}>
-              <Ionicons name="person-outline" size={18} color={theme.colors.primaryDark} />
+          <View style={styles.creatorHeaderRow}>
+            <View style={styles.creatorRow}>
+              <View style={styles.creatorAvatar}>
+                <Ionicons name="person-outline" size={18} color={theme.colors.primaryDark} />
+              </View>
+              <View style={styles.creatorTextWrap}>
+                <Text style={styles.creatorLabel}>Creator</Text>
+                <Text style={styles.creatorName}>
+                  {formatCreatorName(tripDetail.creator.displayName)}
+                </Text>
+                <Text style={styles.creatorMeta}>
+                  {formatCount(
+                    tripDetail.creator.followerCount,
+                    'follower',
+                    'followers'
+                  )}
+                </Text>
+              </View>
             </View>
-            <View style={styles.creatorTextWrap}>
-              <Text style={styles.creatorLabel}>Creator</Text>
-              <Text style={styles.creatorName}>
-                {formatCreatorName(tripDetail.creator.displayName)}
-              </Text>
-            </View>
+            {canToggleFollow ? (
+              <Pressable
+                onPress={() => void handleToggleFollow()}
+                disabled={isFollowPending}
+                style={[
+                  styles.followButton,
+                  tripDetail.creator.isFollowedByMe && styles.followButtonActive,
+                  isFollowPending && styles.actionButtonDisabled,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.followButtonText,
+                    tripDetail.creator.isFollowedByMe && styles.followButtonTextActive,
+                  ]}
+                >
+                  {isFollowPending
+                    ? tripDetail.creator.isFollowedByMe
+                      ? 'Updating...'
+                      : 'Following...'
+                    : tripDetail.creator.isFollowedByMe
+                      ? 'Following'
+                      : 'Follow'}
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
           <Text style={styles.creatorSubtext}>
-            Shared as a public optimized trip post.
+            {creatorId
+              ? isOwnCreatorTrip
+                ? 'This is your own public optimized trip post.'
+                : 'Shared as a public optimized trip post.'
+              : 'Creator details are unavailable for this public trip.'}
           </Text>
         </View>
 
@@ -812,10 +889,17 @@ const styles = StyleSheet.create({
     padding: theme.spacing.lg,
     marginBottom: theme.spacing.xl,
   },
+  creatorHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.spacing.md,
+    marginBottom: theme.spacing.sm,
+  },
   creatorRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: theme.spacing.sm,
+    flex: 1,
   },
   creatorAvatar: {
     width: 42,
@@ -842,10 +926,39 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: theme.colors.text,
   },
+  creatorMeta: {
+    marginTop: 4,
+    fontSize: 13,
+    fontWeight: '600',
+    color: theme.colors.textSecondary,
+  },
   creatorSubtext: {
     fontSize: 14,
     lineHeight: 21,
     color: theme.colors.textSecondary,
+  },
+  followButton: {
+    minWidth: 96,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: 10,
+    borderRadius: theme.radius.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
+    backgroundColor: '#E6FBFA',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  followButtonActive: {
+    backgroundColor: '#F8FAFC',
+    borderColor: theme.colors.border,
+  },
+  followButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: theme.colors.primaryDark,
+  },
+  followButtonTextActive: {
+    color: theme.colors.text,
   },
   engagementCard: {
     backgroundColor: theme.colors.surface,

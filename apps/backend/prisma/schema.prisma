@@ -48,8 +48,25 @@ model User {
   savedTrips           SavedTrip[]
   tripCompletions      TripCompletion[]
   savedTripCollections SavedTripCollection[]
+  followers            UserFollow[]          @relation("UserFollowers")
+  following            UserFollow[]          @relation("UserFollowing")
 
   @@map("users")
+}
+
+model UserFollow {
+  id          String   @id @default(uuid())
+  followerId  String
+  followingId String
+  createdAt   DateTime @default(now())
+
+  follower  User @relation("UserFollowing", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("UserFollowers", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+  @@index([followerId])
+  @@index([followingId])
+  @@map("user_follows")
 }
 
 model Trip {
