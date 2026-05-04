@@ -1,22 +1,28 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
-import TripPreviewCard from '@/components/trip/TripPreviewCard';
-import AppButton from '@/components/ui/AppButton';
-import ScreenContainer from '@/components/ui/ScreenContainer';
-import SectionTitle from '@/components/ui/SectionTitle';
+import { Image } from 'expo-image';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import Artwork from '@/components/ui/Artwork';
 import { theme } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { getTrips, type TripListItem } from '@/services/trips';
+import { buildTripDetailParams } from '@/utils/tripNavigation';
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function getDisplayName(displayName: string | null | undefined, email: string) {
   const trimmedDisplayName = displayName?.trim();
-  if (trimmedDisplayName) {
-    return trimmedDisplayName;
-  }
-
+  if (trimmedDisplayName) return trimmedDisplayName;
   const localPart = email.split('@')[0]?.trim();
   return localPart || 'Traveler';
 }
@@ -27,19 +33,14 @@ function getAvatarLabel(displayName: string | null | undefined, email: string) {
     .split(/[\s._-]+/)
     .map((part) => part.trim())
     .filter(Boolean);
-
   if (parts.length >= 2) {
     return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
   }
-
   return source.slice(0, 2).toUpperCase();
 }
 
 function formatJoinedDate(date: string | undefined) {
-  if (!date) {
-    return 'Joined recently';
-  }
-
+  if (!date) return 'Joined recently';
   return `Joined ${new Date(date).toLocaleDateString(undefined, {
     month: 'short',
     day: 'numeric',
@@ -47,66 +48,90 @@ function formatJoinedDate(date: string | undefined) {
   })}`;
 }
 
-function formatTripDate(date: string) {
-  return new Date(date).toLocaleDateString();
+function formatShortDate(date: string) {
+  return new Date(date).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
 function formatCategoryLabel(category: string) {
   return category.charAt(0).toUpperCase() + category.slice(1);
 }
 
-function formatList(values: string[]) {
-  if (values.length <= 1) {
-    return values[0] ?? '';
-  }
 
-  if (values.length === 2) {
-    return `${values[0]} and ${values[1]}`;
-  }
 
-  return `${values.slice(0, -1).join(', ')}, and ${values[values.length - 1]}`;
-}
+// Derives a short "Istanbul Enthusiast • Digital Nomad"-style tagline
+function buildTagline(trips: TripListItem[]): string {
+  if (trips.length === 0) return 'Tripcholic Traveler';
 
-function buildIdentitySummary(trips: TripListItem[]) {
-  if (trips.length === 0) {
-    return 'New to Tripcholic. Your planned routes will start shaping this profile as you create trips.';
-  }
-
-  const publicReadyCount = trips.filter((trip) => trip.visibility === 'PUBLIC').length;
-  const optimizedCount = trips.filter((trip) => trip.status === 'OPTIMIZED').length;
   const categoryCounts = new Map<string, number>();
-
   for (const trip of trips) {
     for (const category of trip.categories) {
       const normalized = category.trim().toLowerCase();
-      if (!normalized) {
-        continue;
-      }
-
+      if (!normalized) continue;
       categoryCounts.set(normalized, (categoryCounts.get(normalized) ?? 0) + 1);
     }
   }
 
-  const topCategories = [...categoryCounts.entries()]
-    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+  const top = [...categoryCounts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .slice(0, 2)
-    .map(([category]) => formatCategoryLabel(category));
+    .map(([cat]) => `${formatCategoryLabel(cat)} Enthusiast`);
 
-  const firstSentence = `${trips.length} trip${trips.length === 1 ? '' : 's'} created, ${publicReadyCount} public-ready.`;
-
-  if (topCategories.length > 0) {
-    return `${firstSentence} Mostly ${formatList(topCategories)} routes so far.`;
-  }
-
-  if (optimizedCount > 0) {
-    return `${firstSentence} ${optimizedCount} optimized trip${optimizedCount === 1 ? '' : 's'} already saved.`;
-  }
-
-  return `${firstSentence} Still building the first shareable routes.`;
+  if (top.length === 0) return 'Tripcholic Traveler';
+  return top.join(' • ');
 }
+
+// ── Grid card (public routes 2-column grid) ───────────────────────────────
+
+function GridTripCard({
+  trip,
+  size,
+  onPress,
+}: {
+  trip: TripListItem;
+  size: number;
+  onPress: () => void;
+}) {
+  const imageUrl = trip.preview?.imageUrl?.trim() || null;
+
+  return (
+    <Pressable
+      style={[styles.gridCard, { width: size, height: size }]}
+      onPress={onPress}
+    >
+      {imageUrl ? (
+        <Image
+          source={{ uri: imageUrl }}
+          style={StyleSheet.absoluteFill}
+          contentFit="cover"
+          transition={150}
+        />
+      ) : (
+        <View style={StyleSheet.absoluteFill}>
+          <Artwork kind="trip" variant="cover" label={trip.title} />
+        </View>
+      )}
+      {/* Scrim overlay */}
+      <View style={styles.gridCardScrim} />
+      {/* Text overlay */}
+      <View style={styles.gridCardTextWrap}>
+        <Text style={styles.gridCardTitle} numberOfLines={2}>
+          {trip.title}
+        </Text>
+        <Text style={styles.gridCardDate}>{formatShortDate(trip.date)}</Text>
+      </View>
+    </Pressable>
+  );
+}
+
+// ── Screen ────────────────────────────────────────────────────────────────────
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const { width: screenWidth } = useWindowDimensions();
   const { signOut, user, token, isLoading: isAuthLoading } = useAuth();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [trips, setTrips] = useState<TripListItem[]>([]);
@@ -114,9 +139,7 @@ export default function ProfileScreen() {
   const [tripsError, setTripsError] = useState<string | null>(null);
 
   const loadTrips = useCallback(async () => {
-    if (isAuthLoading) {
-      return;
-    }
+    if (isAuthLoading) return;
 
     if (!token) {
       setTrips([]);
@@ -132,7 +155,9 @@ export default function ProfileScreen() {
       setTrips(data);
     } catch (error) {
       setTrips([]);
-      setTripsError(error instanceof Error ? error.message : 'Unable to load your trips.');
+      setTripsError(
+        error instanceof Error ? error.message : 'Unable to load your trips.'
+      );
     } finally {
       setIsTripsLoading(false);
     }
@@ -146,7 +171,6 @@ export default function ProfileScreen() {
 
   const handleLogout = async () => {
     if (isSigningOut) return;
-
     try {
       setIsSigningOut(true);
       await signOut();
@@ -159,349 +183,410 @@ export default function ProfileScreen() {
   const email = user?.email ?? 'Not signed in';
   const profileName = getDisplayName(user?.displayName, email);
   const avatarLabel = getAvatarLabel(user?.displayName, email);
-  const identitySummary = buildIdentitySummary(trips);
+  const tagline = buildTagline(trips);
 
-  const stats = useMemo(() => {
-    const totalTrips = trips.length;
-    const optimizedTrips = trips.filter((trip) => trip.status === 'OPTIMIZED').length;
-    const publicTrips = trips.filter((trip) => trip.visibility === 'PUBLIC').length;
-    const draftTrips = trips.filter((trip) => trip.visibility === 'DRAFT').length;
-    const privateTrips = trips.filter((trip) => trip.visibility === 'PRIVATE').length;
-
-    return {
-      totalTrips,
-      optimizedTrips,
-      publicTrips,
-      draftTrips,
-      privateTrips,
-    };
-  }, [trips]);
+  const stats = useMemo(() => ({
+    totalTrips: trips.length,
+    optimizedTrips: trips.filter((t) => t.status === 'OPTIMIZED').length,
+    publicTrips: trips.filter((t) => t.visibility === 'PUBLIC').length,
+    draftTrips: trips.filter((t) => t.visibility === 'DRAFT').length,
+    privateTrips: trips.filter((t) => t.visibility === 'PRIVATE').length,
+  }), [trips]);
 
   const publicReadyTrips = useMemo(
-    () => trips.filter((trip) => trip.visibility === 'PUBLIC').slice(0, 3),
+    () => trips.filter((t) => t.visibility === 'PUBLIC').slice(0, 6),
     [trips]
   );
 
-  if (isAuthLoading) {
-    return (
-      <ScreenContainer>
-        <SectionTitle
-          title="Profile"
-          subtitle="Loading your identity and trip activity."
-        />
-      </ScreenContainer>
-    );
-  }
+  // Grid: 2 columns, gap 2px, full bleed
+  const GRID_GAP = 2;
+  const gridCellSize = Math.floor((screenWidth - GRID_GAP) / 2);
 
   return (
-    <ScreenContainer>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-        <View style={styles.headerCard}>
-          <View style={styles.headerTopRow}>
+    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
+        {/* ── Cover band (teal-to-dark-navy gradient simulation) ── */}
+        <View style={styles.coverBand}>
+          {/* Top teal half */}
+          <View style={styles.coverTop} />
+          {/* Bottom dark-navy half */}
+          <View style={styles.coverBottom} />
+          {/* Avatar — floats at the bottom edge of the band */}
+          <View style={styles.avatarRing}>
             <View style={styles.avatar}>
               <Text style={styles.avatarText}>{avatarLabel}</Text>
             </View>
-            <View style={styles.headerTextWrap}>
-              <Text style={styles.name}>{profileName}</Text>
-              <Text style={styles.email}>{email}</Text>
-              <Text style={styles.joinedText}>{formatJoinedDate(user?.createdAt)}</Text>
-            </View>
           </View>
-          <Text style={styles.summaryText}>{identitySummary}</Text>
         </View>
 
-        <SectionTitle
-          title="Creator Snapshot"
-          subtitle="A simple view of the trips you have created and prepared for future sharing surfaces."
-        />
+        {/* ── Identity section ── */}
+        <View style={styles.identitySection}>
+          <Text style={styles.name} numberOfLines={1}>
+            {profileName}
+          </Text>
+          {!isAuthLoading && (
+            <Text style={styles.tagline} numberOfLines={1}>
+              {tagline}
+            </Text>
+          )}
+          <Text style={styles.joinedText}>
+            {formatJoinedDate(user?.createdAt)}
+          </Text>
+        </View>
 
+        {/* ── Social stats row ── */}
         <View style={styles.statsRow}>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{stats.totalTrips}</Text>
-            <Text style={styles.statLabel}>Trips</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{stats.optimizedTrips}</Text>
-            <Text style={styles.statLabel}>Optimized</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{stats.publicTrips}</Text>
-            <Text style={styles.statLabel}>Public-ready</Text>
-          </View>
+          {[
+            { label: 'TRIPS', value: stats.totalTrips },
+            { label: 'PUBLIC', value: stats.publicTrips },
+            { label: 'OPTIMIZED', value: stats.optimizedTrips },
+          ].map(({ label, value }, index) => (
+            <View key={label} style={styles.statCell}>
+              {index > 0 && <View style={styles.statDivider} />}
+              <View style={styles.statCellInner}>
+                <Text style={styles.statValue}>{value}</Text>
+                <Text style={styles.statLabel}>{label}</Text>
+              </View>
+            </View>
+          ))}
         </View>
 
-        <SectionTitle
-          title="Visibility Snapshot"
-          subtitle="These states describe your own trip library. Public-ready trips are not publicly browsable yet."
-        />
-
-        <View style={styles.visibilityGrid}>
-          <View style={[styles.visibilityCard, styles.visibilityDraft]}>
-            <Text style={styles.visibilityCount}>{stats.draftTrips}</Text>
-            <Text style={styles.visibilityLabel}>Draft</Text>
-          </View>
-          <View style={[styles.visibilityCard, styles.visibilityPrivate]}>
-            <Text style={styles.visibilityCount}>{stats.privateTrips}</Text>
-            <Text style={styles.visibilityLabel}>Private</Text>
-          </View>
-          <View style={[styles.visibilityCard, styles.visibilityPublic]}>
-            <Text style={styles.visibilityCount}>{stats.publicTrips}</Text>
-            <Text style={styles.visibilityLabel}>Public</Text>
-          </View>
+        {/* ── CTA buttons ── */}
+        <View style={styles.ctaRow}>
+          <Pressable
+            style={styles.ctaButton}
+            onPress={() => router.push('/(tabs)/trips')}
+          >
+            <Text style={styles.ctaButtonText}>My Trips</Text>
+          </Pressable>
+          <Pressable
+            style={styles.ctaButton}
+            onPress={() => router.push('/saved-trips' as any)}
+          >
+            <Text style={styles.ctaButtonText}>Saved Trips</Text>
+          </Pressable>
         </View>
 
-        <SectionTitle
-          title="Public-ready Trips"
-          subtitle="Trips marked Public can later feed profile grids and Explore-style surfaces when those features arrive."
-        />
+        {/* ── Public Routes section ── */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Public Routes</Text>
+          <Text style={styles.sectionSub}>Shared with the community</Text>
+        </View>
 
         {isTripsLoading ? (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>Loading trips</Text>
-            <Text style={styles.emptyText}>Building your profile shelf from saved trip data.</Text>
+          <View style={styles.stateCenter}>
+            <ActivityIndicator size="small" color={theme.colors.primary} />
+            <Text style={styles.stateCenterText}>Loading trips…</Text>
           </View>
         ) : tripsError ? (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>Trips unavailable</Text>
-            <Text style={styles.emptyText}>{tripsError}</Text>
-            <AppButton title="Try Again" onPress={() => void loadTrips()} />
+          <View style={styles.stateCenter}>
+            <Text style={styles.stateCenterText}>{tripsError}</Text>
+            <Pressable
+              style={styles.retryButton}
+              onPress={() => void loadTrips()}
+            >
+              <Text style={styles.retryButtonText}>Retry</Text>
+            </Pressable>
           </View>
         ) : publicReadyTrips.length > 0 ? (
-          publicReadyTrips.map((trip) => (
-            <Pressable
-              key={trip.id}
-              style={styles.previewPressable}
-              onPress={() =>
-                router.push({
-                  pathname: '/trip/[id]',
-                  params: { id: trip.id },
-                })
-              }
-            >
-              <TripPreviewCard
-                preview={trip.preview}
-                dateLabel={formatTripDate(trip.date)}
-                rightContent={
-                  <View style={styles.publicBadge}>
-                    <Ionicons name="globe-outline" size={14} color="#166534" />
-                    <Text style={styles.publicBadgeText}>Public-ready</Text>
-                  </View>
+          <View style={styles.grid}>
+            {publicReadyTrips.map((trip) => (
+              <GridTripCard
+                key={trip.id}
+                trip={trip}
+                size={gridCellSize}
+                onPress={() =>
+                  router.push(
+                    buildTripDetailParams(trip.id, { source: 'profile' })
+                  )
                 }
               />
-            </Pressable>
-          ))
+            ))}
+          </View>
         ) : (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>No public-ready trips yet</Text>
-            <Text style={styles.emptyText}>
-              Set a trip to Public when it is ready for future sharing surfaces. It will still remain owner-only for now.
+          <View style={styles.stateCenter}>
+            <Text style={styles.stateCenterText}>
+              No public routes yet. Set a trip to Public to see it here.
             </Text>
           </View>
         )}
 
-        <View style={styles.ctaCard}>
-          <Text style={styles.ctaTitle}>Revisit saved public trips</Text>
-          <Text style={styles.ctaText}>
-            Saved Trips keeps public Explore posts separate from the trips you created yourself.
+        {/* ── Sign out ── */}
+        <Pressable
+          style={styles.signOutLink}
+          onPress={() => void handleLogout()}
+          disabled={isSigningOut}
+        >
+          <Text style={[styles.signOutText, isSigningOut && styles.signOutDisabled]}>
+            {isSigningOut ? 'Signing out…' : 'Sign out'}
           </Text>
-          <AppButton title="Open Saved Trips" onPress={() => router.push('/saved-trips' as any)} />
-        </View>
-
-        <View style={styles.ctaCard}>
-          <Text style={styles.ctaTitle}>Manage your full trip library</Text>
-          <Text style={styles.ctaText}>
-            Reopen drafts, refine private plans, and review all of your optimized routes in My Trips.
-          </Text>
-          <AppButton title="Open My Trips" onPress={() => router.push('/(tabs)/trips')} />
-        </View>
-
-        <View style={styles.logoutContainer}>
-          <AppButton
-            title={isSigningOut ? 'Signing Out...' : 'Log Out'}
-            onPress={handleLogout}
-            disabled={isSigningOut}
-          />
-        </View>
+        </Pressable>
       </ScrollView>
-    </ScreenContainer>
+    </SafeAreaView>
   );
 }
 
+// ── Styles ─────────────────────────────────────────────────────────────────
+
+const COVER_HEIGHT = 140;
+const AVATAR_SIZE = 88;
+const AVATAR_OVERFLOW = AVATAR_SIZE / 2; // how far avatar hangs below band
+const H_PAD = 24;
+
+// Gradient simulation: teal (#006A69) on top blending toward dark navy (#0B1929)
+// We use a two-tone approach: teal occupies ~60% of the band height,
+// and a transitional dark strip at the bottom creates the gradient feel.
+const TEAL = '#006A69';
+const NAVY = '#0B1929';
+const MID = '#004E5A'; // midpoint for a smoother visual transition
+
 const styles = StyleSheet.create({
-  content: {
-    paddingBottom: theme.spacing.xl,
+  safe: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
   },
-  headerCard: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.xl,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    padding: theme.spacing.xl,
-    marginBottom: theme.spacing.xl,
+  scrollContent: {
+    paddingBottom: 48,
   },
-  headerTopRow: {
-    flexDirection: 'row',
+
+  // ── Cover band ──────────────────────────────────────────────────────────
+  coverBand: {
+    height: COVER_HEIGHT + AVATAR_OVERFLOW, // extra height for avatar overflow
+    position: 'relative',
+    overflow: 'visible',
+  },
+  coverTop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: COVER_HEIGHT * 0.55,
+    backgroundColor: TEAL,
+  },
+  coverBottom: {
+    position: 'absolute',
+    top: COVER_HEIGHT * 0.55,
+    left: 0,
+    right: 0,
+    height: COVER_HEIGHT * 0.45,
+    backgroundColor: NAVY,
+    // Soft midpoint strip at the seam via a border trick
+    borderTopWidth: COVER_HEIGHT * 0.18,
+    borderTopColor: MID,
+  },
+  // White ring around avatar to float it out of the band
+  avatarRing: {
+    position: 'absolute',
+    bottom: 0,
+    alignSelf: 'center',
+    width: AVATAR_SIZE + 6,
+    height: AVATAR_SIZE + 6,
+    borderRadius: (AVATAR_SIZE + 6) / 2,
+    backgroundColor: theme.colors.background,
     alignItems: 'center',
-    gap: theme.spacing.lg,
+    justifyContent: 'center',
   },
   avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: theme.colors.primary,
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: AVATAR_SIZE / 2,
+    backgroundColor: '#006A69',
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarText: {
-    color: theme.colors.white,
+    color: '#FFFFFF',
     fontSize: 28,
     fontWeight: '800',
+    letterSpacing: 0.5,
   },
-  headerTextWrap: {
-    flex: 1,
-    gap: 4,
+
+  // ── Identity section ────────────────────────────────────────────────────
+  identitySection: {
+    alignItems: 'center',
+    paddingHorizontal: H_PAD,
+    paddingTop: 14,
+    paddingBottom: 24,
+    gap: 5,
   },
   name: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '800',
-    color: theme.colors.text,
+    color: '#111C2C',
+    letterSpacing: -0.3,
+    textAlign: 'center',
   },
-  email: {
+  tagline: {
     fontSize: 14,
+    fontWeight: '400',
     color: theme.colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
   },
   joinedText: {
-    fontSize: 13,
+    fontSize: 12,
     color: theme.colors.textSecondary,
+    marginTop: 2,
   },
-  summaryText: {
-    marginTop: theme.spacing.lg,
-    fontSize: 15,
-    lineHeight: 22,
-    color: theme.colors.text,
-  },
+
+  // ── Stats row ───────────────────────────────────────────────────────────
   statsRow: {
     flexDirection: 'row',
-    gap: theme.spacing.md,
-    marginBottom: theme.spacing.xl,
+    marginHorizontal: H_PAD,
+    marginBottom: 20,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#E8ECF0',
+    paddingVertical: 16,
   },
-  statCard: {
+  statCell: {
     flex: 1,
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.xl,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    paddingVertical: theme.spacing.lg,
-    paddingHorizontal: theme.spacing.md,
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  statDivider: {
+    width: 1,
+    backgroundColor: '#E8ECF0',
+    marginVertical: 4,
+  },
+  statCellInner: {
+    flex: 1,
     alignItems: 'center',
+    gap: 3,
   },
   statValue: {
-    fontSize: 26,
+    fontSize: 30,
     fontWeight: '800',
-    color: theme.colors.text,
+    color: '#111C2C',
+    letterSpacing: -0.5,
+    lineHeight: 34,
   },
   statLabel: {
-    marginTop: 6,
-    fontSize: 13,
-    color: theme.colors.textSecondary,
-  },
-  visibilityGrid: {
-    flexDirection: 'row',
-    gap: theme.spacing.md,
-    marginBottom: theme.spacing.xl,
-  },
-  visibilityCard: {
-    flex: 1,
-    borderRadius: theme.radius.xl,
-    borderWidth: 1,
-    paddingVertical: theme.spacing.lg,
-    paddingHorizontal: theme.spacing.md,
-    alignItems: 'center',
-  },
-  visibilityDraft: {
-    backgroundColor: '#FFF7E8',
-    borderColor: '#FCD89A',
-  },
-  visibilityPrivate: {
-    backgroundColor: '#F3F4F6',
-    borderColor: '#D1D5DB',
-  },
-  visibilityPublic: {
-    backgroundColor: '#E8F7EE',
-    borderColor: '#BBE7CA',
-  },
-  visibilityCount: {
-    fontSize: 26,
-    fontWeight: '800',
-    color: theme.colors.text,
-  },
-  visibilityLabel: {
-    marginTop: 6,
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '700',
     color: theme.colors.textSecondary,
+    letterSpacing: 0.8,
   },
-  previewPressable: {
-    marginBottom: theme.spacing.md,
-  },
-  publicBadge: {
+
+  // ── CTA row ─────────────────────────────────────────────────────────────
+  ctaRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#E8F7EE',
-    borderColor: '#BBE7CA',
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    marginHorizontal: H_PAD,
+    gap: 12,
+    marginBottom: 28,
   },
-  publicBadgeText: {
+  ctaButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#006A69',
+    borderRadius: 14,
+    paddingVertical: 14,
+  },
+  ctaButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.1,
+  },
+
+  // ── Section header ──────────────────────────────────────────────────────
+  sectionHeader: {
+    paddingHorizontal: H_PAD,
+    marginBottom: 14,
+    gap: 3,
+  },
+  sectionTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#111C2C',
+    letterSpacing: -0.2,
+  },
+  sectionSub: {
+    fontSize: 13,
+    color: theme.colors.textSecondary,
+  },
+
+  // ── Trip grid ───────────────────────────────────────────────────────────
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 2,
+    marginBottom: 8,
+  },
+  gridCard: {
+    backgroundColor: '#DFF7F6',
+    overflow: 'hidden',
+  },
+  gridCardScrim: {
+    ...StyleSheet.absoluteFillObject,
+    // Bottom-to-top dark scrim for text legibility
+    backgroundColor: 'transparent',
+    // We use a nested View for the gradient scrim effect
+  },
+  gridCardTextWrap: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    gap: 2,
+  },
+  gridCardTitle: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#166534',
+    color: '#FFFFFF',
+    lineHeight: 16,
   },
-  emptyCard: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.xl,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    padding: theme.spacing.xl,
-    marginBottom: theme.spacing.xl,
+  gridCardDate: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.75)',
   },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: theme.colors.text,
-    marginBottom: 8,
+
+  // ── State: loading / error / empty ─────────────────────────────────────
+  stateCenter: {
+    alignItems: 'center',
+    paddingVertical: 32,
+    paddingHorizontal: H_PAD,
+    gap: 10,
   },
-  emptyText: {
+  stateCenterText: {
     fontSize: 14,
-    lineHeight: 22,
+    lineHeight: 20,
     color: theme.colors.textSecondary,
-    marginBottom: theme.spacing.lg,
+    textAlign: 'center',
   },
-  ctaCard: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.xl,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    padding: theme.spacing.xl,
-    marginTop: theme.spacing.sm,
+  retryButton: {
+    backgroundColor: '#006A69',
+    paddingHorizontal: 20,
+    paddingVertical: 9,
+    borderRadius: 10,
   },
-  ctaTitle: {
-    fontSize: 18,
+  retryButtonText: {
+    fontSize: 13,
     fontWeight: '700',
-    color: theme.colors.text,
-    marginBottom: 8,
+    color: '#FFFFFF',
   },
-  ctaText: {
-    fontSize: 14,
-    lineHeight: 22,
-    color: theme.colors.textSecondary,
-    marginBottom: theme.spacing.lg,
+
+  // ── Sign out ────────────────────────────────────────────────────────────
+  signOutLink: {
+    alignSelf: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    marginTop: 20,
   },
-  logoutContainer: {
-    marginTop: theme.spacing.xl,
-    marginBottom: theme.spacing.xl,
+  signOutText: {
+    fontSize: 13,
+    color: '#64748B',
+    fontWeight: '500',
+  },
+  signOutDisabled: {
+    opacity: 0.45,
   },
 });

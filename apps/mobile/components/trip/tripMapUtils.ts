@@ -38,7 +38,7 @@ function isValidLongitude(value: unknown): value is number {
   );
 }
 
-function getStopLabel(stop: TripStop) {
+export function getTripStopLabel(stop: TripStop) {
   const primaryTitle = stop.title.trim();
   const fallbackTitle = stop.poi.title.trim();
 
@@ -69,7 +69,7 @@ export function getTripStopMapMarkers(stops: TripStop[]): TripStopMapMarker[] {
       {
         id: stop.id,
         order: stop.order,
-        title: getStopLabel(stop),
+        title: getTripStopLabel(stop),
         latitude: lat,
         longitude: lng,
       },

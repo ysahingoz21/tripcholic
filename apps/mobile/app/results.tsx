@@ -1,16 +1,25 @@
 import { useAuth } from '@/context/AuthContext';
-import { getSortedTripStops } from '@/components/trip/tripMapUtils';
+import {
+  getSortedTripStops,
+  getTripStopLabel,
+} from '@/components/trip/tripMapUtils';
 import { getTrip, type TripDetailResponse } from '@/services/trips';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import TripStopsMap from '../components/trip/TripStopsMap';
-import AppButton from '../components/ui/AppButton';
-import ScreenContainer from '../components/ui/ScreenContainer';
-import SectionTitle from '../components/ui/SectionTitle';
 import TimelineItem from '../components/ui/TimelineItem';
 import { theme } from '../constants/theme';
+import { buildTripDetailParams } from '../utils/tripNavigation';
 
 export default function ResultsScreen() {
   const router = useRouter();
@@ -22,9 +31,7 @@ export default function ResultsScreen() {
 
   useEffect(() => {
     async function loadTrip() {
-      if (isAuthLoading) {
-        return;
-      }
+      if (isAuthLoading) return;
 
       if (!token) {
         setError('Authentication required. Please sign in again.');
@@ -59,227 +66,487 @@ export default function ResultsScreen() {
 
   if (isLoading || isAuthLoading) {
     return (
-      <ScreenContainer>
-        <SectionTitle
-          title="Loading Route"
-          subtitle="Fetching your persisted trip result from the backend."
-        />
-      </ScreenContainer>
+      <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+        <View style={styles.centerState}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <Text style={styles.stateText}>Preparing your route…</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (error || !tripDetail) {
     return (
-      <ScreenContainer>
-        <SectionTitle
-          title="Route Unavailable"
-          subtitle={error ?? 'Trip result could not be loaded.'}
-        />
-        <AppButton title="Back to Planner" onPress={() => router.replace('/(tabs)/planner')} />
-      </ScreenContainer>
+      <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+        <View style={styles.centerState}>
+          <Ionicons
+            name="alert-circle-outline"
+            size={44}
+            color={theme.colors.textSecondary}
+          />
+          <Text style={styles.stateTitle}>Route unavailable</Text>
+          <Text style={styles.stateText}>
+            {error ?? 'Trip result could not be loaded.'}
+          </Text>
+          <Pressable
+            style={styles.primaryButton}
+            onPress={() => router.replace('/(tabs)/planner')}
+          >
+            <Text style={styles.primaryButtonText}>Back to Planner</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
     );
   }
 
   const { trip, optimization, stops } = tripDetail;
   const sortedStops = getSortedTripStops(stops);
-  const routeSummary = [
-    `${optimization.stopCount} stop${optimization.stopCount === 1 ? '' : 's'}`,
-    optimization.routeTotalDurationMin
-      ? `${optimization.routeTotalDurationMin} min`
-      : 'duration pending',
-    optimization.routeTotalCostTl
-      ? `${optimization.routeTotalCostTl} TL`
-      : 'cost pending',
-  ].join(' • ');
+
+  const metrics = [
+    {
+      icon: 'location-outline' as const,
+      value: String(optimization.stopCount),
+      label: 'Stops',
+    },
+    {
+      icon: 'walk-outline' as const,
+      value:
+        optimization.routeTotalDistanceKm !== null
+          ? `${optimization.routeTotalDistanceKm}`
+          : '—',
+      unit: optimization.routeTotalDistanceKm !== null ? 'km' : undefined,
+      label: 'Distance',
+    },
+    {
+      icon: 'time-outline' as const,
+      value:
+        optimization.routeTotalDurationMin !== null
+          ? `${optimization.routeTotalDurationMin}`
+          : '—',
+      unit: optimization.routeTotalDurationMin !== null ? 'min' : undefined,
+      label: 'Duration',
+    },
+    {
+      icon: 'cash-outline' as const,
+      value:
+        optimization.routeTotalCostTl !== null
+          ? `${optimization.routeTotalCostTl}`
+          : '—',
+      unit: optimization.routeTotalCostTl !== null ? 'TL' : undefined,
+      label: 'Est. Cost',
+    },
+  ];
 
   return (
-    <ScreenContainer>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 100 }}
-      >
-        <SectionTitle
-          title={optimization.routeName ?? trip.title}
-          subtitle={`Trip status: ${trip.status.toLowerCase()} • ${routeSummary}`}
-        />
-
-        <View style={styles.mapCard}>
-          <View style={styles.mapHeader}>
-            <Ionicons name="map" size={18} color={theme.colors.primaryDark} />
-            <Text style={styles.mapTitle}>Route Summary</Text>
-          </View>
-
-          <TripStopsMap
-            stops={stops}
-          />
-
-          <View style={styles.summaryCard}>
-            <Text style={styles.summaryTitle}>{trip.title}</Text>
-            <Text style={styles.summaryLine}>
-              Date: {new Date(trip.date).toLocaleDateString()}
-            </Text>
-            <Text style={styles.summaryLine}>
-              Distance:{' '}
-              {optimization.routeTotalDistanceKm !== null
-                ? `${optimization.routeTotalDistanceKm} km`
-                : 'N/A'}
-            </Text>
-            <Text style={styles.summaryLine}>
-              Duration:{' '}
-              {optimization.routeTotalDurationMin !== null
-                ? `${optimization.routeTotalDurationMin} min`
-                : 'N/A'}
-            </Text>
-            <Text style={styles.summaryLine}>
-              Cost:{' '}
-              {optimization.routeTotalCostTl !== null
-                ? `${optimization.routeTotalCostTl} TL`
-                : 'N/A'}
-            </Text>
-            <Text style={styles.summaryLine}>
-              Algorithm: {optimization.routeAlgorithmUsed ?? 'N/A'}
-            </Text>
-          </View>
-
-          <Text style={styles.mapCaption}>
-            Optimized backend result for persisted trip `{trip.id}`.
+    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+      {/* ── Header ── */}
+      <View style={styles.header}>
+        <Pressable style={styles.backButton} onPress={() => router.back()}>
+          <Ionicons name="arrow-back" size={20} color="#0B3B4A" />
+        </Pressable>
+        <View style={styles.headerText}>
+          <Text style={styles.eyebrow}>GENERATED ROUTE</Text>
+          <Text style={styles.title} numberOfLines={2}>
+            {trip.title}
           </Text>
         </View>
+      </View>
 
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
+        {/* ── Metrics row ── */}
+        <View style={styles.metricsRow}>
+          {metrics.map(({ icon, value, unit, label }) => (
+            <View key={label} style={styles.metricCell}>
+              <Ionicons
+                name={icon}
+                size={16}
+                color={theme.colors.primary}
+                style={styles.metricIcon}
+              />
+              <Text style={styles.metricValue}>
+                {value}
+                {unit ? (
+                  <Text style={styles.metricUnit}> {unit}</Text>
+                ) : null}
+              </Text>
+              <Text style={styles.metricLabel}>{label}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* ── Map ── */}
+        <View style={styles.mapCard}>
+          <View style={styles.cardTitleRow}>
+            <Ionicons name="map-outline" size={16} color="#0B3B4A" />
+            <Text style={styles.cardTitle}>Route Map</Text>
+          </View>
+          <TripStopsMap stops={stops} />
+        </View>
+
+        {/* ── Route explanation ── */}
         {optimization.routeExplanation ? (
           <View style={styles.explanationCard}>
-            <Text style={styles.explanationTitle}>Why This Route</Text>
+            <View style={styles.cardTitleRow}>
+              <Ionicons name="sparkles-outline" size={16} color="#0B3B4A" />
+              <Text style={styles.cardTitle}>Why this route works</Text>
+            </View>
             <Text style={styles.explanationText}>
               {optimization.routeExplanation}
             </Text>
           </View>
         ) : null}
 
-        <SectionTitle
-          title="Timeline View"
-          subtitle="A time-ordered display of the generated day plan."
-        />
+        {/* ── Timeline ── */}
+        <View style={styles.sectionRow}>
+          <Text style={styles.sectionTitle}>Timeline</Text>
+          <Text style={styles.sectionSub}>
+            {new Date(trip.date).toLocaleDateString(undefined, {
+              weekday: 'short',
+              month: 'short',
+              day: 'numeric',
+            })}
+          </Text>
+        </View>
 
         {sortedStops.length > 0 ? (
-          sortedStops.map((stop) => (
-            <TimelineItem
-              key={stop.id}
-              time={stop.arrivalTime}
-              title={stop.title}
-              subtitle={`${stop.poi.category} • ${stop.departureTime} departure • ${stop.estimatedCostTl} TL`}
-              icon="location"
-            />
-          ))
+          <View style={styles.timelineWrap}>
+            {sortedStops.map((stop) => (
+              <TimelineItem
+                key={stop.id}
+                time={stop.arrivalTime}
+                title={getTripStopLabel(stop)}
+                subtitle={`${stop.poi.category} • ${stop.departureTime} departure • ${stop.estimatedCostTl} TL`}
+                icon="location"
+                imageUrl={stop.poi.imageUrl}
+              />
+            ))}
+          </View>
         ) : (
-          <View style={styles.explanationCard}>
-            <Text style={styles.explanationText}>
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyText}>
               No feasible route was returned for this trip yet.
             </Text>
           </View>
         )}
 
-        <SectionTitle
-          title="Trip Settings"
-          subtitle="Persisted trip preferences used by the backend optimizer."
-        />
-
-        <View style={styles.explanationCard}>
-          <Text style={styles.explanationText}>
-            Categories: {trip.categories.join(', ') || 'None'}{'\n'}
-            Budget: {trip.budgetTl !== null ? `${trip.budgetTl} TL` : 'Not set'}{'\n'}
-            Time window: {trip.timeStart ?? 'N/A'} - {trip.timeEnd ?? 'N/A'}{'\n'}
-            Max stops: {trip.maxPois ?? 'N/A'}{'\n'}
-            Walking tolerance: {trip.walkingToleranceKm ?? 'N/A'} km
-          </Text>
+        {/* ── Trip settings ── */}
+        <View style={styles.sectionRow}>
+          <Text style={styles.sectionTitle}>Trip Settings</Text>
+          <Text style={styles.sectionSub}>Preferences used to shape this route</Text>
         </View>
 
-        <View style={styles.buttonGroup}>
-          <AppButton
-            title="Open Trip Detail"
+        <View style={styles.settingsCard}>
+          {[
+            {
+              label: 'Categories',
+              value: trip.categories.join(', ') || 'None',
+            },
+            {
+              label: 'Budget',
+              value:
+                trip.budgetTl !== null ? `${trip.budgetTl} TL` : 'Not set',
+            },
+            {
+              label: 'Time window',
+              value: `${trip.timeStart ?? 'N/A'} – ${trip.timeEnd ?? 'N/A'}`,
+            },
+            { label: 'Max stops', value: String(trip.maxPois ?? 'N/A') },
+            {
+              label: 'Walking tolerance',
+              value:
+                trip.walkingToleranceKm !== null
+                  ? `${trip.walkingToleranceKm} km`
+                  : 'N/A',
+            },
+          ].map(({ label, value }, i) => (
+            <View key={label}>
+              {i > 0 && <View style={styles.settingsDivider} />}
+              <View style={styles.settingsRow}>
+                <Text style={styles.settingsLabel}>{label}</Text>
+                <Text style={styles.settingsValue}>{value}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+
+        {/* ── CTAs ── */}
+        <View style={styles.ctaGroup}>
+          <Pressable
+            style={styles.primaryButton}
             onPress={() =>
-              router.push({
-                pathname: '/trip/[id]',
-                params: { id: trip.id },
-              })
+              router.push(
+                buildTripDetailParams(trip.id, {
+                  source: 'results',
+                  returnTripId: trip.id,
+                })
+              )
             }
-          />
+          >
+            <Text style={styles.primaryButtonText}>Open Trip Detail</Text>
+            <Ionicons name="arrow-forward" size={15} color="#FFFFFF" />
+          </Pressable>
 
-          <View style={styles.buttonSpacer} />
-
-          <AppButton
-            title="Go to My Trips"
+          <Pressable
+            style={styles.secondaryButton}
             onPress={() => router.replace('/(tabs)/trips')}
-          />
+          >
+            <Text style={styles.secondaryButtonText}>Go to My Trips</Text>
+          </Pressable>
         </View>
       </ScrollView>
-    </ScreenContainer>
+    </SafeAreaView>
   );
 }
 
+// ── Styles ─────────────────────────────────────────────────────────────────
+
+const H_PAD = 24;
+
 const styles = StyleSheet.create({
-  mapCard: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.xl,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    padding: theme.spacing.xl,
-    marginBottom: theme.spacing.xl,
+  safe: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
   },
-  mapHeader: {
-    flexDirection: 'row',
+
+  // States
+  centerState: {
+    flex: 1,
     alignItems: 'center',
-    marginBottom: 12,
+    justifyContent: 'center',
+    paddingHorizontal: 40,
+    gap: 10,
   },
-  mapTitle: {
+  stateTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: theme.colors.text,
-    marginLeft: 8,
+    color: '#111C2C',
+    textAlign: 'center',
   },
-  summaryCard: {
-    borderRadius: theme.radius.lg,
-    backgroundColor: '#EAF6F5',
-    padding: theme.spacing.lg,
-    marginBottom: 10,
-  },
-  summaryTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: theme.colors.primaryDark,
-    marginBottom: 12,
-  },
-  summaryLine: {
+  stateText: {
     fontSize: 14,
-    color: theme.colors.text,
-    marginBottom: 6,
+    lineHeight: 21,
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 4,
   },
-  mapCaption: {
-    fontSize: 13,
+
+  // Header
+  header: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingHorizontal: H_PAD,
+    paddingTop: 16,
+    paddingBottom: 16,
+    gap: 14,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+    flexShrink: 0,
+  },
+  headerText: {
+    flex: 1,
+  },
+  eyebrow: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.8,
+    color: theme.colors.primary,
+    marginBottom: 3,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#111C2C',
+    letterSpacing: -0.4,
+    lineHeight: 30,
+  },
+
+  // Scroll
+  scrollContent: {
+    paddingHorizontal: H_PAD,
+    paddingBottom: 48,
+    gap: 16,
+  },
+
+  // Metrics row
+  metricsRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  metricCell: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E8ECF0',
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    gap: 4,
+  },
+  metricIcon: {
+    marginBottom: 2,
+  },
+  metricValue: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#111C2C',
+    textAlign: 'center',
+  },
+  metricUnit: {
+    fontSize: 11,
+    fontWeight: '600',
     color: theme.colors.textSecondary,
   },
-  explanationCard: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.lg,
+  metricLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: theme.colors.textSecondary,
+    letterSpacing: 0.2,
+    textAlign: 'center',
+  },
+
+  // Cards
+  mapCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    padding: theme.spacing.lg,
-    marginBottom: theme.spacing.xl,
+    borderColor: '#E8ECF0',
+    overflow: 'hidden',
+    padding: 16,
+    gap: 12,
+  },
+  explanationCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#E8ECF0',
+    padding: 16,
+    gap: 10,
+  },
+  cardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  cardTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#111C2C',
   },
   explanationText: {
     fontSize: 14,
-    lineHeight: 22,
+    lineHeight: 21,
     color: theme.colors.textSecondary,
   },
-  explanationTitle: {
-    fontSize: 16,
+
+  // Section label
+  sectionRow: {
+    gap: 2,
+  },
+  sectionTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#111C2C',
+    letterSpacing: -0.2,
+  },
+  sectionSub: {
+    fontSize: 13,
+    color: theme.colors.textSecondary,
+  },
+
+  // Timeline
+  timelineWrap: {
+    gap: 0,
+  },
+
+  // Settings card
+  settingsCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#E8ECF0',
+    overflow: 'hidden',
+  },
+  settingsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 16,
+  },
+  settingsDivider: {
+    height: 1,
+    backgroundColor: '#F1F5F9',
+    marginHorizontal: 16,
+  },
+  settingsLabel: {
+    fontSize: 13,
+    color: theme.colors.textSecondary,
+  },
+  settingsValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#111C2C',
+    textAlign: 'right',
+    flex: 1,
+  },
+
+  // Empty
+  emptyCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E8ECF0',
+    padding: 20,
+  },
+  emptyText: {
+    fontSize: 14,
+    lineHeight: 21,
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
+  },
+
+  // CTAs
+  ctaGroup: {
+    gap: 10,
+  },
+  primaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#006A69',
+    borderRadius: 14,
+    paddingVertical: 15,
+  },
+  primaryButtonText: {
+    fontSize: 15,
     fontWeight: '700',
-    color: theme.colors.text,
-    marginBottom: 10,
+    color: '#FFFFFF',
   },
-  buttonGroup: {
-    marginBottom: theme.spacing.xl,
+  secondaryButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    paddingVertical: 15,
+    borderWidth: 1,
+    borderColor: '#E8ECF0',
   },
-  buttonSpacer: {
-    height: 12,
+  secondaryButtonText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0B3B4A',
   },
 });
