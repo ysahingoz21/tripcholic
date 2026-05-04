@@ -2,6 +2,7 @@ import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '@/constants/theme';
+import AppHeader from '@/components/ui/AppHeader';
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
@@ -11,14 +12,10 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        headerStyle: {
-          backgroundColor: theme.colors.surface,
-        },
-        headerShadowVisible: false,
-        headerTitleStyle: {
-          color: theme.colors.text,
-          fontWeight: '700',
-        },
+        // ── Custom app-shell header ──
+        header: () => <AppHeader />,
+
+        // ── Tab bar ──
         sceneStyle: {
           backgroundColor: theme.colors.background,
         },

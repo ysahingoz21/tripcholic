@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Pressable,
   ScrollView,
@@ -8,15 +9,13 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import CollectionManagerModal from '@/components/saved/CollectionManagerModal';
-import TripPreviewCard from '@/components/trip/TripPreviewCard';
-import AppButton from '@/components/ui/AppButton';
-import InterestChip from '@/components/ui/InterestChip';
-import ScreenContainer from '@/components/ui/ScreenContainer';
-import SectionTitle from '@/components/ui/SectionTitle';
+import Artwork from '@/components/ui/Artwork';
 import { theme } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import {
@@ -26,10 +25,11 @@ import {
   updateSavedTripCollections,
   type SavedPublicTripItem,
   type SavedPublicTripsResponse,
-  type SavedTripCollectionSummary,
 } from '@/services/publicTrips';
 
 type SavedTripsFilter = 'all' | 'ungrouped' | `collection:${string}`;
+
+const H_PAD = 20;
 
 function formatCreatorName(displayName: string | null) {
   return displayName?.trim() || 'Tripcholic traveler';
@@ -57,14 +57,8 @@ function buildMetaLine(item: SavedPublicTripItem) {
 }
 
 function getFilterQueryValue(filter: SavedTripsFilter) {
-  if (filter === 'all') {
-    return undefined;
-  }
-
-  if (filter === 'ungrouped') {
-    return 'ungrouped';
-  }
-
+  if (filter === 'all') return undefined;
+  if (filter === 'ungrouped') return 'ungrouped';
   return filter.replace('collection:', '');
 }
 
@@ -77,31 +71,300 @@ function buildCollectionSummaryText(
   totalSavedCount: number,
   ungroupedCount: number
 ) {
-  return `${collectionCount} collection${collectionCount === 1 ? '' : 's'} • ${totalSavedCount} saved public trip${
-    totalSavedCount === 1 ? '' : 's'
-  } • ${ungroupedCount} ungrouped`;
+  return `${collectionCount} collection${collectionCount === 1 ? '' : 's'} · ${totalSavedCount} saved · ${ungroupedCount} ungrouped`;
 }
 
 function buildFilterDescription(
   activeFilter: SavedTripsFilter,
   data: SavedPublicTripsResponse | null
 ) {
-  if (!data) {
-    return 'Choose a grouping lens for the public trips you saved from Explore.';
-  }
-
-  if (activeFilter === 'all') {
-    return 'All saved public trips, including grouped and ungrouped items.';
-  }
-
-  if (activeFilter === 'ungrouped') {
-    return 'Saved public trips that are not assigned to any collection yet.';
-  }
-
+  if (!data) return 'Choose a grouping lens for the public trips you saved from Explore.';
+  if (activeFilter === 'all') return 'All saved public trips, including grouped and ungrouped items.';
+  if (activeFilter === 'ungrouped') return 'Saved public trips not assigned to any collection yet.';
   return data.filter.selectedCollection
     ? `${data.filter.selectedCollection.name} collection`
     : 'Saved public trip collection';
 }
+
+// ── SavedTripCard ─────────────────────────────────────────────────────────────
+
+function SavedTripCard({
+  item,
+  onPress,
+  onManageCollections,
+}: {
+  item: SavedPublicTripItem;
+  onPress: () => void;
+  onManageCollections: () => void;
+}) {
+  const imageUrl = item.preview.imageUrls?.[0] ?? null;
+  const category = item.preview.primaryCategory ?? null;
+
+  return (
+    <View style={cardStyles.wrap}>
+      {/* ── Thumbnail ── */}
+      <Pressable onPress={onPress} style={cardStyles.imageWrap}>
+        {imageUrl ? (
+          <Image source={{ uri: imageUrl }} style={StyleSheet.absoluteFill} contentFit="cover" />
+        ) : (
+          <Artwork />
+        )}
+        <View style={cardStyles.scrim} />
+
+        {/* top row: category chip + saved badge */}
+        <View style={cardStyles.topRow}>
+          {category ? (
+            <View style={cardStyles.categoryChip}>
+              <Text style={cardStyles.categoryChipText}>
+                {category.charAt(0).toUpperCase() + category.slice(1)}
+              </Text>
+            </View>
+          ) : null}
+          <View style={cardStyles.savedBadge}>
+            <Ionicons name="bookmark" size={11} color="#006A69" />
+            <Text style={cardStyles.savedBadgeText}>Saved</Text>
+          </View>
+        </View>
+
+        {/* bottom: title */}
+        <View style={cardStyles.bottomContent}>
+          <Text style={cardStyles.tripTitle} numberOfLines={2}>
+            {item.trip.title}
+          </Text>
+          <Text style={cardStyles.tripDate}>
+            {new Date(item.trip.date).toLocaleDateString(undefined, {
+              weekday: 'short',
+              month: 'short',
+              day: 'numeric',
+            })}
+          </Text>
+        </View>
+      </Pressable>
+
+      {/* ── Meta strip ── */}
+      <View style={cardStyles.metaStrip}>
+        <View style={cardStyles.creatorRow}>
+          <Ionicons name="person-outline" size={13} color={theme.colors.textSecondary} />
+          <Text style={cardStyles.creatorText} numberOfLines={1}>
+            {formatCreatorName(item.creator.displayName)}
+          </Text>
+        </View>
+        <View style={cardStyles.metaPills}>
+          <View style={cardStyles.metaPill}>
+            <Ionicons name="time-outline" size={12} color={theme.colors.textSecondary} />
+            <Text style={cardStyles.metaPillText}>
+              {item.optimization.routeTotalDurationMin !== null
+                ? `${item.optimization.routeTotalDurationMin} min`
+                : 'N/A'}
+            </Text>
+          </View>
+          <View style={cardStyles.metaPill}>
+            <Ionicons name="cash-outline" size={12} color={theme.colors.textSecondary} />
+            <Text style={cardStyles.metaPillText}>
+              {item.optimization.routeTotalCostTl !== null
+                ? `${item.optimization.routeTotalCostTl} TL`
+                : 'N/A'}
+            </Text>
+          </View>
+          <Text style={cardStyles.savedAtText}>Saved {formatSavedDate(item.savedAt)}</Text>
+        </View>
+      </View>
+
+      {/* ── Collections row ── */}
+      <View style={cardStyles.collectionsWrap}>
+        <View style={cardStyles.collectionsHeaderRow}>
+          <Text style={cardStyles.collectionsLabel}>Collections</Text>
+          <Pressable onPress={onManageCollections} hitSlop={8}>
+            <Text style={cardStyles.manageText}>Manage</Text>
+          </Pressable>
+        </View>
+        <View style={cardStyles.badgesRow}>
+          {item.collections.length > 0 ? (
+            item.collections.map((col) => (
+              <View key={col.id} style={cardStyles.memberBadge}>
+                <Text style={cardStyles.memberBadgeText}>{col.name}</Text>
+              </View>
+            ))
+          ) : (
+            <View style={cardStyles.ungroupedBadge}>
+              <Text style={cardStyles.ungroupedBadgeText}>Ungrouped</Text>
+            </View>
+          )}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+const cardStyles = StyleSheet.create({
+  wrap: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#E8ECF0',
+    overflow: 'hidden',
+    marginBottom: 16,
+  },
+  imageWrap: {
+    height: 160,
+    backgroundColor: '#E2E8F0',
+  },
+  scrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(11,36,48,0.52)',
+  },
+  topRow: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    right: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  categoryChip: {
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  categoryChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.2,
+  },
+  savedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#DFF7F6',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginLeft: 'auto',
+  },
+  savedBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#006A69',
+  },
+  bottomContent: {
+    position: 'absolute',
+    bottom: 12,
+    left: 12,
+    right: 12,
+  },
+  tripTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
+    lineHeight: 22,
+  },
+  tripDate: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.72)',
+    marginTop: 3,
+    fontWeight: '500',
+  },
+  metaStrip: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  creatorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  creatorText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#111C2C',
+    flex: 1,
+  },
+  metaPills: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  metaPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  metaPillText: {
+    fontSize: 12,
+    color: theme.colors.textSecondary,
+    fontWeight: '500',
+  },
+  savedAtText: {
+    fontSize: 12,
+    color: theme.colors.textSecondary,
+    marginLeft: 'auto',
+  },
+  collectionsWrap: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  collectionsHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  collectionsLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  manageText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#006A69',
+  },
+  badgesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  memberBadge: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#006A69',
+    backgroundColor: '#DFF7F6',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  memberBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#006A69',
+  },
+  ungroupedBadge: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#F8FAFC',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  ungroupedBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+});
+
+// ── Screen ────────────────────────────────────────────────────────────────────
 
 export default function SavedTripsScreen() {
   const router = useRouter();
@@ -121,9 +384,7 @@ export default function SavedTripsScreen() {
 
   const loadSavedTrips = useCallback(
     async (filterOverride?: SavedTripsFilter) => {
-      if (isAuthLoading) {
-        return;
-      }
+      if (isAuthLoading) return;
 
       if (!token) {
         setSavedTripsData(null);
@@ -142,9 +403,7 @@ export default function SavedTripsScreen() {
       } catch (loadError) {
         setSavedTripsData(null);
         setError(
-          loadError instanceof Error
-            ? loadError.message
-            : 'Unable to load saved public trips.'
+          loadError instanceof Error ? loadError.message : 'Unable to load saved public trips.'
         );
       } finally {
         setIsLoading(false);
@@ -165,14 +424,13 @@ export default function SavedTripsScreen() {
   const activeCollectionId =
     activeFilter.startsWith('collection:') ? activeFilter.replace('collection:', '') : null;
   const activeCollection = activeCollectionId
-    ? collections.find((collection) => collection.id === activeCollectionId) ?? null
+    ? collections.find((c) => c.id === activeCollectionId) ?? null
     : null;
 
   const collectionSummaryLine = useMemo(() => {
     if (!filterMeta) {
       return 'Saved Trips stays separate from My Trips and focuses only on public Explore posts.';
     }
-
     return buildCollectionSummaryText(
       collections.length,
       filterMeta.totalSavedCount,
@@ -187,32 +445,22 @@ export default function SavedTripsScreen() {
 
   const handleCreateCollection = async (name: string) => {
     const trimmedName = name.trim();
-
-    if (!trimmedName) {
-      throw new Error('Collection name cannot be empty.');
-    }
-
-    if (!token) {
-      throw new Error('Authentication required. Please sign in again.');
-    }
-
+    if (!trimmedName) throw new Error('Collection name cannot be empty.');
+    if (!token) throw new Error('Authentication required. Please sign in again.');
     const response = await createSavedTripCollection(token, trimmedName);
     return response.collection;
   };
 
   const handleTopLevelCreateCollection = async () => {
     const trimmedName = newCollectionName.trim();
-
     if (!trimmedName) {
       setCreateCollectionError('Collection name cannot be empty.');
       return;
     }
-
     if (!token) {
       setCreateCollectionError('Authentication required. Please sign in again.');
       return;
     }
-
     try {
       setIsCreatingCollection(true);
       setCreateCollectionError(null);
@@ -223,9 +471,7 @@ export default function SavedTripsScreen() {
       await loadSavedTrips(nextFilter);
     } catch (creationError) {
       setCreateCollectionError(
-        creationError instanceof Error
-          ? creationError.message
-          : 'Unable to create collection.'
+        creationError instanceof Error ? creationError.message : 'Unable to create collection.'
       );
     } finally {
       setIsCreatingCollection(false);
@@ -233,18 +479,13 @@ export default function SavedTripsScreen() {
   };
 
   const handleDeleteCollection = () => {
-    if (!activeCollection || !token || isDeletingCollection) {
-      return;
-    }
+    if (!activeCollection || !token || isDeletingCollection) return;
 
     Alert.alert(
       'Delete Collection',
       `Delete ${activeCollection.name}? Trips will stay saved and move out of this collection.`,
       [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
+        { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
           style: 'destructive',
@@ -276,15 +517,11 @@ export default function SavedTripsScreen() {
     setSelectedItem(item);
   };
 
-  const handleSaveMemberships = async (
-    savedTripId: string,
-    collectionIds: string[]
-  ) => {
+  const handleSaveMemberships = async (savedTripId: string, collectionIds: string[]) => {
     if (!token) {
       setModalError('Authentication required. Please sign in again.');
       return;
     }
-
     try {
       setIsUpdatingCollections(true);
       setModalError(null);
@@ -314,91 +551,117 @@ export default function SavedTripsScreen() {
   };
 
   const closeModal = () => {
-    if (isUpdatingCollections) {
-      return;
-    }
-
+    if (isUpdatingCollections) return;
     setSelectedItem(null);
     setModalError(null);
   };
 
+  // ── Loading state ──────────────────────────────────────────────────────────
+
   if (isLoading || isAuthLoading) {
     return (
-      <ScreenContainer>
-        <SectionTitle
-          title="Saved Trips"
-          subtitle="Loading the public trips and collections you chose to keep."
-        />
-      </ScreenContainer>
+      <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+        <View style={styles.header}>
+          <View style={styles.headerText}>
+            <Text style={styles.eyebrow}>SAVED TRIPS</Text>
+            <Text style={styles.title}>Saved Trips</Text>
+          </View>
+        </View>
+        <View style={styles.centerState}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <Text style={styles.stateText}>Loading your saved trips…</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
+  // ── Main render ────────────────────────────────────────────────────────────
+
   return (
-    <ScreenContainer>
+    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+      {/* ── Header ── */}
+      <View style={styles.header}>
+        <View style={styles.headerText}>
+          <Text style={styles.eyebrow}>SAVED TRIPS</Text>
+          <Text style={styles.title}>Saved Trips</Text>
+          <Text style={styles.headerSub}>{collectionSummaryLine}</Text>
+        </View>
+      </View>
+
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={styles.scrollContent}
       >
-        <SectionTitle
-          title="Saved Trips"
-          subtitle="A separate hub for public Explore trips you saved. This stays distinct from the trips you created yourself."
-        />
-
-        <View style={styles.filterCard}>
-          <View style={styles.filterHeaderRow}>
-            <View style={styles.filterHeaderTextWrap}>
-              <Text style={styles.filterTitle}>Collections and Filters</Text>
-              <Text style={styles.filterSubtitle}>{collectionSummaryLine}</Text>
-            </View>
+        {/* ── Filter chips ── */}
+        <View style={styles.filtersCard}>
+          <View style={styles.filtersHeaderRow}>
+            <Text style={styles.filtersCardTitle}>Collections</Text>
             {activeCollection ? (
-              <Pressable
-                onPress={handleDeleteCollection}
-                hitSlop={8}
-                disabled={isDeletingCollection}
-              >
-                <Text style={styles.deleteCollectionText}>
-                  {isDeletingCollection ? 'Deleting...' : 'Delete Collection'}
+              <Pressable onPress={handleDeleteCollection} hitSlop={8} disabled={isDeletingCollection}>
+                <Text style={styles.deleteText}>
+                  {isDeletingCollection ? 'Deleting…' : 'Delete'}
                 </Text>
               </Pressable>
             ) : null}
           </View>
 
-          <View style={styles.chipRow}>
-            <InterestChip
-              label="All"
-              selected={activeFilter === 'all'}
-              onPress={() => void handleFilterPress('all')}
-            />
-            <InterestChip
-              label="Ungrouped"
-              selected={activeFilter === 'ungrouped'}
-              onPress={() => void handleFilterPress('ungrouped')}
-            />
-            {collections.map((collection) => (
-              <InterestChip
-                key={collection.id}
-                label={collection.name}
-                selected={activeFilter === getCollectionFilterValue(collection.id)}
-                onPress={() =>
-                  void handleFilterPress(getCollectionFilterValue(collection.id))
-                }
-              />
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chipScroll}
+          >
+            {(['all', 'ungrouped'] as const).map((f) => (
+              <Pressable
+                key={f}
+                style={[styles.filterChip, activeFilter === f && styles.filterChipActive]}
+                onPress={() => void handleFilterPress(f)}
+              >
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    activeFilter === f && styles.filterChipTextActive,
+                  ]}
+                >
+                  {f === 'all' ? 'All' : 'Ungrouped'}
+                </Text>
+              </Pressable>
             ))}
-          </View>
+            {collections.map((col) => {
+              const filterVal = getCollectionFilterValue(col.id);
+              const isActive = activeFilter === filterVal;
+              return (
+                <Pressable
+                  key={col.id}
+                  style={[styles.filterChip, isActive && styles.filterChipActive]}
+                  onPress={() => void handleFilterPress(filterVal)}
+                >
+                  <Text
+                    style={[styles.filterChipText, isActive && styles.filterChipTextActive]}
+                  >
+                    {col.name}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
 
-          <Text style={styles.filterDescription}>
+          <Text style={styles.filterDesc}>
             {buildFilterDescription(activeFilter, savedTripsData)}
           </Text>
         </View>
 
-        <View style={styles.createCollectionCard}>
-          <Text style={styles.createCollectionTitle}>New Collection</Text>
-          <Text style={styles.createCollectionText}>
-            Add a grouping bucket for saved public trips. Trips can belong to more than one collection.
+        {/* ── Create Collection card ── */}
+        <View style={styles.createCard}>
+          <View style={styles.createCardHeader}>
+            <Ionicons name="add-circle-outline" size={18} color="#006A69" />
+            <Text style={styles.createCardTitle}>New Collection</Text>
+          </View>
+          <Text style={styles.createCardDesc}>
+            Group saved public trips into buckets. A trip can belong to multiple collections.
           </Text>
           <TextInput
-            style={styles.createCollectionInput}
-            placeholder="Weekend ideas"
+            style={styles.input}
+            placeholder="e.g. Weekend ideas"
             placeholderTextColor={theme.colors.textSecondary}
             value={newCollectionName}
             onChangeText={setNewCollectionName}
@@ -407,104 +670,41 @@ export default function SavedTripsScreen() {
             onSubmitEditing={() => void handleTopLevelCreateCollection()}
           />
           {createCollectionError ? (
-            <Text style={styles.inlineErrorText}>{createCollectionError}</Text>
+            <Text style={styles.inlineError}>{createCollectionError}</Text>
           ) : null}
-          <AppButton
-            title={isCreatingCollection ? 'Creating...' : 'Create Collection'}
+          <Pressable
+            style={[styles.createButton, isCreatingCollection && styles.createButtonDisabled]}
             onPress={() => void handleTopLevelCreateCollection()}
             disabled={isCreatingCollection}
-          />
+          >
+            <Text style={styles.createButtonText}>
+              {isCreatingCollection ? 'Creating…' : 'Create Collection'}
+            </Text>
+          </Pressable>
         </View>
 
+        {/* ── Trip list / error / empty ── */}
         {error ? (
           <View style={styles.emptyCard}>
+            <Ionicons name="alert-circle-outline" size={36} color={theme.colors.textSecondary} />
             <Text style={styles.emptyTitle}>Saved trips unavailable</Text>
             <Text style={styles.emptyText}>{error}</Text>
-            <AppButton title="Try Again" onPress={() => void loadSavedTrips()} />
+            <Pressable style={styles.primaryButton} onPress={() => void loadSavedTrips()}>
+              <Text style={styles.primaryButtonText}>Try Again</Text>
+            </Pressable>
           </View>
         ) : items.length > 0 ? (
           items.map((item) => (
-            <View key={item.savedTripId} style={styles.tripCard}>
-              <Pressable
-                onPress={() => router.push(`/public-trip/${item.trip.id}` as any)}
-              >
-                <TripPreviewCard
-                  preview={item.preview}
-                  dateLabel={formatSavedDate(item.trip.date)}
-                  rightContent={
-                    <View style={styles.savedBadge}>
-                      <Ionicons
-                        name="bookmark"
-                        size={14}
-                        color={theme.colors.primaryDark}
-                      />
-                      <Text style={styles.savedBadgeText}>Saved</Text>
-                    </View>
-                  }
-                />
-              </Pressable>
-
-              <View style={styles.cardFooter}>
-                <View style={styles.creatorRow}>
-                  <Ionicons
-                    name="person-outline"
-                    size={14}
-                    color={theme.colors.textSecondary}
-                  />
-                  <Text style={styles.creatorText}>
-                    {formatCreatorName(item.creator.displayName)}
-                  </Text>
-                </View>
-                <Text style={styles.savedAtText}>
-                  Saved {formatSavedDate(item.savedAt)}
-                </Text>
-              </View>
-
-              <View style={styles.metaCard}>
-                <Text style={styles.metaTitle}>Public trip snapshot</Text>
-                <Text style={styles.metaText}>{buildMetaLine(item)}</Text>
-              </View>
-
-              <View style={styles.collectionsCard}>
-                <View style={styles.collectionsHeaderRow}>
-                  <View style={styles.collectionsHeaderText}>
-                    <Text style={styles.collectionsTitle}>Collections</Text>
-                    <Text style={styles.collectionsSubtitle}>
-                      {item.collections.length > 0
-                        ? 'This saved trip appears in these groups.'
-                        : 'This saved trip is currently ungrouped.'}
-                    </Text>
-                  </View>
-                  <Pressable
-                    onPress={() => handleOpenManageCollections(item)}
-                    hitSlop={8}
-                  >
-                    <Text style={styles.manageCollectionsText}>
-                      Manage Collections
-                    </Text>
-                  </Pressable>
-                </View>
-
-                <View style={styles.membershipRow}>
-                  {item.collections.length > 0 ? (
-                    item.collections.map((collection) => (
-                      <View key={collection.id} style={styles.membershipBadge}>
-                        <Text style={styles.membershipBadgeText}>
-                          {collection.name}
-                        </Text>
-                      </View>
-                    ))
-                  ) : (
-                    <View style={styles.ungroupedBadge}>
-                      <Text style={styles.ungroupedBadgeText}>Ungrouped</Text>
-                    </View>
-                  )}
-                </View>
-              </View>
-            </View>
+            <SavedTripCard
+              key={item.savedTripId}
+              item={item}
+              onPress={() => router.push(`/public-trip/${item.trip.id}` as any)}
+              onManageCollections={() => handleOpenManageCollections(item)}
+            />
           ))
         ) : (
           <View style={styles.emptyCard}>
+            <Ionicons name="bookmark-outline" size={36} color={theme.colors.textSecondary} />
             <Text style={styles.emptyTitle}>
               {activeFilter === 'all'
                 ? 'No saved public trips yet'
@@ -515,12 +715,14 @@ export default function SavedTripsScreen() {
             <Text style={styles.emptyText}>
               {activeFilter === 'all'
                 ? 'Save interesting routes from Explore to revisit them here later.'
-                : 'Adjust collection memberships or save more public trips from Explore to fill this view.'}
+                : 'Adjust collection memberships or save more public trips from Explore.'}
             </Text>
-            <AppButton
-              title="Open Explore"
+            <Pressable
+              style={styles.primaryButton}
               onPress={() => router.replace('/(tabs)/explore')}
-            />
+            >
+              <Text style={styles.primaryButtonText}>Open Explore</Text>
+            </Pressable>
           </View>
         )}
       </ScrollView>
@@ -536,244 +738,216 @@ export default function SavedTripsScreen() {
         onSave={handleSaveMemberships}
         onCreateCollection={handleCreateCollectionFromModal}
       />
-    </ScreenContainer>
+    </SafeAreaView>
   );
 }
 
+// ── Styles ────────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  content: {
-    paddingBottom: theme.spacing.xl,
-  },
-  filterCard: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.xl,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    padding: theme.spacing.lg,
-    marginBottom: theme.spacing.lg,
-  },
-  filterHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: theme.spacing.md,
-  },
-  filterHeaderTextWrap: {
+  safe: {
     flex: 1,
+    backgroundColor: theme.colors.background,
   },
-  filterTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: theme.colors.text,
+
+  // States
+  centerState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingHorizontal: 40,
   },
-  filterSubtitle: {
-    marginTop: 6,
-    fontSize: 13,
-    lineHeight: 20,
+  stateText: {
+    fontSize: 14,
     color: theme.colors.textSecondary,
+    textAlign: 'center',
   },
-  deleteCollectionText: {
+
+  // Header
+  header: {
+    paddingHorizontal: H_PAD,
+    paddingTop: 16,
+    paddingBottom: 14,
+  },
+  headerText: {
+    gap: 2,
+  },
+  eyebrow: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.8,
+    color: theme.colors.primary,
+    marginBottom: 2,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#111C2C',
+    letterSpacing: -0.4,
+  },
+  headerSub: {
+    fontSize: 13,
+    color: theme.colors.textSecondary,
+    marginTop: 3,
+  },
+
+  // Scroll
+  scrollContent: {
+    paddingHorizontal: H_PAD,
+    paddingBottom: 48,
+    gap: 14,
+  },
+
+  // Filters card
+  filtersCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#E8ECF0',
+    padding: 16,
+    gap: 12,
+  },
+  filtersHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  filtersCardTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#111C2C',
+  },
+  deleteText: {
     fontSize: 13,
     fontWeight: '700',
     color: '#B91C1C',
   },
-  chipRow: {
+  chipScroll: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: theme.spacing.md,
+    gap: 8,
+    paddingRight: 4,
   },
-  filterDescription: {
-    marginTop: theme.spacing.sm,
-    fontSize: 13,
-    lineHeight: 20,
-    color: theme.colors.textSecondary,
-  },
-  createCollectionCard: {
+  filterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
     backgroundColor: '#F8FAFC',
-    borderRadius: theme.radius.xl,
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    padding: theme.spacing.lg,
-    marginBottom: theme.spacing.xl,
+    borderColor: '#E8ECF0',
   },
-  createCollectionTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: theme.colors.text,
+  filterChipActive: {
+    backgroundColor: '#DFF7F6',
+    borderColor: '#006A69',
   },
-  createCollectionText: {
-    marginTop: 6,
+  filterChipText: {
     fontSize: 13,
-    lineHeight: 20,
+    fontWeight: '500',
+    color: '#64748B',
+  },
+  filterChipTextActive: {
+    fontWeight: '700',
+    color: '#006A69',
+  },
+  filterDesc: {
+    fontSize: 13,
+    lineHeight: 19,
     color: theme.colors.textSecondary,
-    marginBottom: theme.spacing.md,
   },
-  createCollectionInput: {
+
+  // Create collection card
+  createCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.radius.lg,
-    backgroundColor: theme.colors.surface,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: 14,
-    fontSize: 14,
-    color: theme.colors.text,
-    marginBottom: theme.spacing.md,
+    borderColor: '#E8ECF0',
+    padding: 16,
+    gap: 10,
   },
-  inlineErrorText: {
-    marginTop: -4,
-    marginBottom: theme.spacing.sm,
+  createCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  createCardTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#111C2C',
+  },
+  createCardDesc: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: theme.colors.textSecondary,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#E8ECF0',
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    fontSize: 14,
+    color: '#111C2C',
+  },
+  inlineError: {
     fontSize: 13,
     color: '#991B1B',
+    marginTop: -4,
   },
-  tripCard: {
-    marginBottom: theme.spacing.xl,
-  },
-  savedBadge: {
-    flexDirection: 'row',
+  createButton: {
+    backgroundColor: '#006A69',
+    borderRadius: 12,
+    paddingVertical: 13,
     alignItems: 'center',
-    backgroundColor: '#DFF7F6',
-    borderColor: theme.colors.primary,
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    gap: 6,
+    justifyContent: 'center',
   },
-  savedBadgeText: {
-    fontSize: 12,
+  createButtonDisabled: {
+    opacity: 0.55,
+  },
+  createButtonText: {
+    fontSize: 14,
     fontWeight: '700',
-    color: theme.colors.primaryDark,
+    color: '#FFFFFF',
   },
-  cardFooter: {
-    backgroundColor: theme.colors.surface,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderTopWidth: 0,
-    borderBottomLeftRadius: theme.radius.lg,
-    borderBottomRightRadius: theme.radius.lg,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-  },
-  creatorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  creatorText: {
-    marginLeft: 6,
-    fontSize: 13,
-    fontWeight: '600',
-    color: theme.colors.text,
-  },
-  savedAtText: {
-    marginTop: 6,
-    fontSize: 12,
-    color: theme.colors.textSecondary,
-  },
-  metaCard: {
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.radius.lg,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    marginTop: theme.spacing.sm,
-  },
-  metaTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: theme.colors.primaryDark,
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
-    marginBottom: 4,
-  },
-  metaText: {
-    fontSize: 13,
-    lineHeight: 20,
-    color: theme.colors.textSecondary,
-  },
-  collectionsCard: {
-    marginTop: theme.spacing.sm,
-    backgroundColor: theme.colors.surface,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.radius.lg,
-    padding: theme.spacing.md,
-  },
-  collectionsHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: theme.spacing.md,
-  },
-  collectionsHeaderText: {
-    flex: 1,
-  },
-  collectionsTitle: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: theme.colors.text,
-  },
-  collectionsSubtitle: {
-    marginTop: 4,
-    fontSize: 12,
-    lineHeight: 18,
-    color: theme.colors.textSecondary,
-  },
-  manageCollectionsText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: theme.colors.primary,
-  },
-  membershipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: theme.spacing.sm,
-    marginTop: theme.spacing.md,
-  },
-  membershipBadge: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: theme.colors.primary,
-    backgroundColor: '#E6FBFA',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  membershipBadgeText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: theme.colors.primaryDark,
-  },
-  ungroupedBadge: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    backgroundColor: '#F8FAFC',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  ungroupedBadgeText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: theme.colors.textSecondary,
-  },
+
+  // Empty / error
   emptyCard: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.xl,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    padding: theme.spacing.xl,
-    marginBottom: theme.spacing.xl,
+    borderColor: '#E8ECF0',
+    padding: 28,
+    alignItems: 'center',
+    gap: 10,
   },
   emptyTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
-    color: theme.colors.text,
-    marginBottom: 8,
+    color: '#111C2C',
+    textAlign: 'center',
   },
   emptyText: {
     fontSize: 14,
-    lineHeight: 22,
+    lineHeight: 21,
     color: theme.colors.textSecondary,
-    marginBottom: theme.spacing.lg,
+    textAlign: 'center',
+  },
+
+  // Buttons
+  primaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#006A69',
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    marginTop: 4,
+  },
+  primaryButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });

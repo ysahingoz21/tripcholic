@@ -1,15 +1,9 @@
 import { useState } from 'react';
-import {
-  Alert,
-  View,
-  Text,
-  TextInput,
-  Pressable,
-  StyleSheet,
-  ImageBackground,
-} from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
+import AuthScreenLayout from '@/components/ui/AuthScreenLayout';
+import AuthInput from '@/components/ui/AuthInput';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -37,135 +31,117 @@ export default function LoginScreen() {
   };
 
   return (
-    <ImageBackground
-      source={require('../assets/images/login-bg.jpg')}
-      style={styles.background}
-      resizeMode="cover"
-    >
-      <View style={styles.overlay}>
-        <View style={styles.card}>
-          <Text style={styles.title}>Login</Text>
-          <Text style={styles.subtitle}>
-            Sign in to continue to Tripcholic
-          </Text>
+    <AuthScreenLayout tagline="Your journey through the soul of Istanbul begins here.">
+      <Text style={styles.title}>Welcome back</Text>
+      <Text style={styles.subtitle}>Sign in to continue to Tripcholic</Text>
 
-          <TextInput
-            style={styles.input}
-            placeholder="Email"
-            placeholderTextColor="#000"
-            value={email}
-            onChangeText={setEmail}
-            autoCapitalize="none"
-            keyboardType="email-address"
-          />
-
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            placeholderTextColor="#000"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-          />
-
-          <Pressable
-            style={[styles.button, isSubmitting && styles.buttonDisabled]}
-            onPress={handleLogin}
-            disabled={isSubmitting}
-          >
-            <Text style={styles.buttonText}>
-              {isSubmitting ? 'Logging In...' : 'Sign In'}
-            </Text>
-          </Pressable>
-
-          <View style={styles.footerRow}>
-            <Text style={styles.footerText}>
-              Don’t have an account?{' '}
-            </Text>
-            <Link href="/register" asChild>
-              <Pressable>
-                <Text style={styles.linkText}>Create Account</Text>
-              </Pressable>
-            </Link>
-          </View>
-        </View>
+      <View style={styles.form}>
+        <AuthInput
+          icon="mail-outline"
+          placeholder="Email"
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          returnKeyType="next"
+        />
+        <AuthInput
+          icon="lock-closed-outline"
+          placeholder="Password"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+          returnKeyType="done"
+          onSubmitEditing={handleLogin}
+        />
       </View>
-    </ImageBackground>
+
+      {/* Forgot password — visual only; no backend support yet */}
+      <Pressable
+        style={styles.forgotRow}
+        onPress={() =>
+          Alert.alert('Coming soon', 'Password reset will be available in a future update.')
+        }
+      >
+        <Text style={styles.forgotText}>Forgot password?</Text>
+      </Pressable>
+
+      <Pressable
+        style={[styles.button, isSubmitting && styles.buttonDisabled]}
+        onPress={handleLogin}
+        disabled={isSubmitting}
+      >
+        <Text style={styles.buttonText}>
+          {isSubmitting ? 'Signing in…' : 'Sign In'}
+        </Text>
+      </Pressable>
+
+      <View style={styles.footerRow}>
+        <Text style={styles.footerText}>Don't have an account? </Text>
+        <Link href="/register" asChild>
+          <Pressable>
+            <Text style={styles.linkText}>Create Account</Text>
+          </Pressable>
+        </Link>
+      </View>
+    </AuthScreenLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  background: {
-    flex: 1,
-  },
-
-  // 🔥 Arka planı hafif karartıyoruz (çok önemli)
-  overlay: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: 24,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-  },
-
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 24,
-  },
-
   title: {
-    fontSize: 28,
-    fontWeight: '800',
-    marginBottom: 8,
-    color: '#111827',
+    fontSize: 26,
+    fontWeight: '700',
+    color: '#111C2C',
+    marginBottom: 4,
+    letterSpacing: -0.3,
   },
-
   subtitle: {
     fontSize: 14,
     color: '#6B7280',
     marginBottom: 24,
+    lineHeight: 20,
   },
-
-  input: {
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    marginBottom: 12,
-    backgroundColor: '#FFFFFF',
+  form: {
+    marginBottom: 4,
   },
-
+  forgotRow: {
+    alignSelf: 'flex-end',
+    marginBottom: 20,
+    paddingVertical: 2,
+  },
+  forgotText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#006A69',
+  },
   button: {
-    backgroundColor: '#111827',
-    paddingVertical: 14,
+    backgroundColor: '#006A69',
+    paddingVertical: 15,
     borderRadius: 12,
     alignItems: 'center',
-    marginTop: 4,
   },
   buttonDisabled: {
     opacity: 0.6,
   },
-
   buttonText: {
     color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 16,
+    letterSpacing: 0.2,
   },
-
   footerRow: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginTop: 18,
+    marginTop: 20,
+    flexWrap: 'wrap',
   },
-
   footerText: {
     color: '#6B7280',
     fontSize: 14,
   },
-
   linkText: {
-    color: '#2563EB',
+    color: '#006A69',
     fontSize: 14,
     fontWeight: '700',
   },

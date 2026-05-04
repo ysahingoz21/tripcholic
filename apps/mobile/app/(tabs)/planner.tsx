@@ -1,462 +1,264 @@
-import { useAuth } from '@/context/AuthContext';
-import { createTrip, optimizeTrip, type CreateTripPayload } from '@/services/trips';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import AppButton from '../../components/ui/AppButton';
-import InterestChip from '../../components/ui/InterestChip';
-import ScreenContainer from '../../components/ui/ScreenContainer';
-import SectionTitle from '../../components/ui/SectionTitle';
-import { theme } from '../../constants/theme';
+import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { theme } from '@/constants/theme';
+import { type } from '@/constants/typography';
 
-const interestOptions = [
-  'Culture',
-  'Food',
-  'Museums',
-  'Shopping',
-  'Nature',
-  'Coffee',
-  'History',
-  'Nightlife',
-];
+const OPTIMIZED_IMG = require('@/assets/images/planner/planner-optimized-trip.png');
+const MANUAL_IMG = require('@/assets/images/planner/planner-own-trip.png');
 
-export default function PlannerScreen() {
+export default function PlannerEntryScreen() {
   const router = useRouter();
-  const { token, isLoading: isAuthLoading } = useAuth();
-  const [selectedInterests, setSelectedInterests] = useState<string[]>([
-    'Culture',
-    'Food',
-  ]);
-  const [destination, setDestination] = useState('');
-  const [date, setDate] = useState('');
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showStartTimePicker, setShowStartTimePicker] = useState(false);
-  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
-  const [availableTime, setAvailableTime] = useState('');
-  const [budgetStyle, setBudgetStyle] = useState('');
-  const [transportMode, setTransportMode] = useState('');
-  const [naturalLanguageDescription, setNaturalLanguageDescription] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const toggleInterest = (interest: string) => {
-    setSelectedInterests((prev) =>
-      prev.includes(interest)
-        ? prev.filter((item) => item !== interest)
-        : [...prev, interest]
-    );
-  };
-
-  const parseBudgetTl = (value: string) => {
-    const normalized = value.trim().toLowerCase();
-
-    if (normalized === 'low') return 2000;
-    if (normalized === 'medium') return 6000;
-    if (normalized === 'high') return 20000;
-
-    return undefined;
-  };
-
-  const parseTimeRange = (value: string) => {
-    const match = value.trim().match(/^(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})$/);
-
-    if (!match) {
-      return {};
-    }
-
-    return {
-      startTime: match[1],
-      endTime: match[2],
-    };
-  };
-
-  const formatDateForApi = (value: Date) => {
-    const year = value.getFullYear();
-    const month = String(value.getMonth() + 1).padStart(2, '0');
-    const day = String(value.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
-  const formatTimeForApi = (value: Date) => {
-    const hours = String(value.getHours()).padStart(2, '0');
-    const minutes = String(value.getMinutes()).padStart(2, '0');
-    return `${hours}:${minutes}`;
-  };
-
-  const getStartTimeValue = () => {
-    const match = availableTime.match(/^(\d{2}:\d{2})-(\d{2}:\d{2})$/);
-    const value = match ? match[1] : '10:00';
-    const [hours, minutes] = value.split(':').map(Number);
-    const base = new Date();
-    base.setHours(hours, minutes, 0, 0);
-    return base;
-  };
-
-  const getEndTimeValue = () => {
-    const match = availableTime.match(/^(\d{2}:\d{2})-(\d{2}:\d{2})$/);
-    const value = match ? match[2] : '18:00';
-    const [hours, minutes] = value.split(':').map(Number);
-    const base = new Date();
-    base.setHours(hours, minutes, 0, 0);
-    return base;
-  };
-
-  const updateStartTime = (selected: Date) => {
-    const newStart = formatTimeForApi(selected);
-    const match = availableTime.match(/^(\d{2}:\d{2})-(\d{2}:\d{2})$/);
-    const currentEnd = match ? match[2] : '18:00';
-    setAvailableTime(`${newStart}-${currentEnd}`);
-  };
-
-  const updateEndTime = (selected: Date) => {
-    const newEnd = formatTimeForApi(selected);
-    const match = availableTime.match(/^(\d{2}:\d{2})-(\d{2}:\d{2})$/);
-    const currentStart = match ? match[1] : '10:00';
-    setAvailableTime(`${currentStart}-${newEnd}`);
-  };
-
-  const handleGenerateRoute = async () => {
-    if (!token) {
-      Alert.alert(
-        'Authentication required',
-        isAuthLoading
-          ? 'Restoring session. Please try again in a moment.'
-          : 'Please sign in again.'
-      );
-      return;
-    }
-
-    const missingFields: string[] = [];
-
-    if (!destination.trim()) {
-      missingFields.push('Destination');
-    }
-
-    if (!date.trim()) {
-      missingFields.push('Date');
-    }
-
-    if (missingFields.length > 0) {
-      Alert.alert(
-        'Missing required fields',
-        `Please fill in the following fields: ${missingFields.join(', ')}`
-      );
-      return;
-    }
-
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date.trim())) {
-      Alert.alert('Invalid date', 'Please use the YYYY-MM-DD format.');
-      return;
-    }
-
-    if (isSubmitting) return;
-
-    const normalizedCategories = selectedInterests.map((interest) =>
-      interest.toLowerCase()
-    );
-    const parsedBudgetTl = parseBudgetTl(budgetStyle);
-    const parsedTimeRange = parseTimeRange(availableTime);
-
-    const payload: CreateTripPayload = {
-      title: destination.trim(),
-      date: date.trim(),
-      categories: normalizedCategories,
-      ...(naturalLanguageDescription.trim() && {
-        description: naturalLanguageDescription.trim(),
-      }),
-      ...(parsedBudgetTl !== undefined && { budgetTl: parsedBudgetTl }),
-      ...parsedTimeRange,
-    };
-
-    try {
-      setIsSubmitting(true);
-      const createdTrip = await createTrip(token, payload);
-      const optimizedTrip = await optimizeTrip(token, createdTrip.trip.id);
-
-      router.push({
-        pathname: '/results',
-        params: {
-          tripId: optimizedTrip.trip.id,
-        },
-      });
-    } catch (error) {
-      Alert.alert(
-        'Unable to generate route',
-        error instanceof Error ? error.message : 'Trip creation or optimization failed.'
-      );
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   return (
-    <ScreenContainer>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        <SectionTitle
-          title="Trip Planner"
-          subtitle="Create a personalized Istanbul route with structured input or natural language."
-        />
-
-        <View style={styles.formCard}>
-          <Text style={styles.sectionLabel}>Structured preferences</Text>
-
-          <Text style={styles.label}>Destination *</Text>
-          <TextInput
-            placeholder="e.g. Kadıköy, Beşiktaş, Sultanahmet, Taksim"
-            placeholderTextColor="#94A3B8"
-            style={styles.input}
-            value={destination}
-            onChangeText={setDestination}
-          />
-          <Text style={{ fontSize: 12, color: '#888', marginBottom: 10 }}>
-            Popular areas: Kadıköy, Beşiktaş, Taksim, Sultanahmet, Eminönü, Balat
+    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ─── Hero ─── */}
+        <View style={styles.hero}>
+          <View style={styles.eyebrowRow}>
+            <View style={styles.eyebrowDot} />
+            <Text style={styles.eyebrow}>Istanbul</Text>
+          </View>
+          <Text style={styles.title}>Design your{'\n'}perfect day.</Text>
+          <Text style={styles.subtitle}>
+            Tell us your interests and we'll craft the ideal route — tuned to
+            your pace, budget, and schedule.
           </Text>
+        </View>
 
-          <Text style={styles.label}>Date *</Text>
-          <TouchableOpacity
-            style={styles.input}
-            onPress={() => setShowDatePicker(true)}
+        {/* ─── Mode cards ─── */}
+        <View style={styles.cards}>
+
+          {/* Optimised trip — primary, fully wired */}
+          <Pressable
+            style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+            onPress={() => router.push('/planner-wizard')}
           >
-            <Text
-              style={{
-                color: date ? theme.colors.text : '#94A3B8',
-                fontSize: 15,
-              }}
-            >
-              {date || 'Select date'}
-            </Text>
-          </TouchableOpacity>
-          <Text style={{ fontSize: 12, color: '#888', marginBottom: 10 }}>
-            Pick a trip date from the calendar
-          </Text>
+            <View style={styles.cardImageWrap}>
+              <Image source={OPTIMIZED_IMG} style={styles.cardImage} contentFit="cover" />
+              <View style={styles.badgeOverlay}>
+                <View style={styles.recommendedBadge}>
+                  <Ionicons name="flash" size={10} color="#006A69" />
+                  <Text style={styles.recommendedText}>Recommended</Text>
+                </View>
+              </View>
+            </View>
 
-          {showDatePicker && (
-            <DateTimePicker
-              value={date ? new Date(`${date}T12:00:00`) : new Date()}
-              mode="date"
-              display="default"
-              onChange={(_, selectedDate) => {
-                setShowDatePicker(false);
-                if (selectedDate) {
-                  setDate(formatDateForApi(selectedDate));
-                }
-              }}
-            />
-          )}
-
-          <Text style={styles.label}>Available Time</Text>
-          <View style={styles.timeRow}>
-            <TouchableOpacity
-              style={[styles.input, styles.timeInput]}
-              onPress={() => setShowStartTimePicker(true)}
-            >
-              <Text
-                style={{
-                  color: availableTime ? theme.colors.text : '#94A3B8',
-                  fontSize: 15,
-                }}
-              >
-                {availableTime ? availableTime.split('-')[0] : 'Start time'}
+            <View style={styles.cardContent}>
+              <Text style={styles.cardTitle}>Smart trip planner</Text>
+              <Text style={styles.cardDesc}>
+                Share your interests and travel style — our engine builds a
+                perfect route around your schedule.
               </Text>
-            </TouchableOpacity>
+              <View style={styles.primaryBtn}>
+                <Text style={styles.primaryBtnText}>Generate itinerary</Text>
+                <Ionicons name="arrow-forward" size={15} color="#fff" />
+              </View>
+            </View>
+          </Pressable>
 
-            <TouchableOpacity
-              style={[styles.input, styles.timeInput]}
-              onPress={() => setShowEndTimePicker(true)}
-            >
-              <Text
-                style={{
-                  color: availableTime ? theme.colors.text : '#94A3B8',
-                  fontSize: 15,
-                }}
-              >
-                {availableTime ? availableTime.split('-')[1] : 'End time'}
+          {/* Manual trip — visual only, coming soon */}
+          <Pressable
+            style={styles.card}
+            onPress={() =>
+              Alert.alert(
+                'Coming soon',
+                'Manual trip creation will be available in a future update.'
+              )
+            }
+          >
+            <View style={styles.cardImageWrap}>
+              <Image source={MANUAL_IMG} style={styles.cardImage} contentFit="cover" />
+              <View style={styles.cardImageDim} />
+              <View style={styles.badgeOverlay}>
+                <View style={styles.soonBadge}>
+                  <Ionicons name="time-outline" size={10} color={theme.colors.textSecondary} />
+                  <Text style={styles.soonText}>Coming soon</Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.cardContent}>
+              <Text style={styles.cardTitle}>Build your own trip</Text>
+              <Text style={styles.cardDesc}>
+                Hand-pick every stop and craft your perfect itinerary from
+                scratch — entirely on your terms.
               </Text>
-            </TouchableOpacity>
-          </View>
-          <Text style={{ fontSize: 12, color: '#888', marginBottom: 10 }}>
-            Pick start and end time
-          </Text>
+              <View style={styles.secondaryBtn}>
+                <Ionicons name="lock-closed-outline" size={14} color={theme.colors.textSecondary} />
+                <Text style={styles.secondaryBtnText}>Available soon</Text>
+              </View>
+            </View>
+          </Pressable>
 
-          {showStartTimePicker && (
-            <DateTimePicker
-              value={getStartTimeValue()}
-              mode="time"
-              display="default"
-              onChange={(_, selectedTime) => {
-                setShowStartTimePicker(false);
-                if (selectedTime) {
-                  updateStartTime(selectedTime);
-                }
-              }}
-            />
-          )}
-
-          {showEndTimePicker && (
-            <DateTimePicker
-              value={getEndTimeValue()}
-              mode="time"
-              display="default"
-              onChange={(_, selectedTime) => {
-                setShowEndTimePicker(false);
-                if (selectedTime) {
-                  updateEndTime(selectedTime);
-                }
-              }}
-            />
-          )}
-
-          <Text style={styles.label}>Interests</Text>
-          <View style={styles.chipContainer}>
-            {interestOptions.map((interest) => (
-              <InterestChip
-                key={interest}
-                label={interest}
-                selected={selectedInterests.includes(interest)}
-                onPress={() => toggleInterest(interest)}
-              />
-            ))}
-          </View>
-
-          <Text style={styles.label}>Budget Style</Text>
-          <View style={styles.optionRow}>
-            {['low', 'medium', 'high'].map((item) => (
-              <TouchableOpacity
-                key={item}
-                onPress={() => setBudgetStyle(item)}
-                style={[
-                  styles.optionChip,
-                  budgetStyle === item && styles.optionChipSelected,
-                ]}
-              >
-                <Text
-                  style={{
-                    color: budgetStyle === item ? '#fff' : '#333',
-                    fontWeight: '600',
-                  }}
-                >
-                  {item}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <Text style={styles.label}>Transport Mode</Text>
-          <View style={styles.optionRow}>
-            {['walk', 'car'].map((item) => (
-              <TouchableOpacity
-                key={item}
-                onPress={() => setTransportMode(item)}
-                style={[
-                  styles.optionChip,
-                  transportMode === item && styles.optionChipSelected,
-                ]}
-              >
-                <Text
-                  style={{
-                    color: transportMode === item ? '#fff' : '#333',
-                    fontWeight: '600',
-                  }}
-                >
-                  {item}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <Text style={styles.sectionLabel}>Or describe it naturally</Text>
-          <TextInput
-            placeholder='Example: "A relaxed afternoon with good food and something cultural, not too much walking."'
-            placeholderTextColor="#94A3B8"
-            multiline
-            textAlignVertical="top"
-            style={styles.textArea}
-            value={naturalLanguageDescription}
-            onChangeText={setNaturalLanguageDescription}
-          />
-
-          <AppButton
-            title={isSubmitting ? 'Generating Route...' : 'Generate Route'}
-            onPress={handleGenerateRoute}
-            disabled={isSubmitting || isAuthLoading}
-          />
         </View>
       </ScrollView>
-    </ScreenContainer>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  formCard: {
+  safe: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+  },
+  scroll: {
+    flexGrow: 1,
+    paddingBottom: 48,
+  },
+
+  // ── Hero (centered) ──
+  hero: {
+    paddingHorizontal: 20,   // container-padding
+    paddingTop: 32,
+    paddingBottom: 40,       // xl
+    alignItems: 'center',
+  },
+  eyebrowRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 16,        // md
+  },
+  eyebrowDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: theme.colors.primary,
+  },
+  eyebrow: {
+    ...type.labelCaps,
+    color: theme.colors.primary,
+  },
+  title: {
+    ...type.displayLg,
+    color: theme.colors.primaryDark,
+    textAlign: 'center',
+    marginBottom: 16,        // md
+  },
+  subtitle: {
+    ...type.bodyLg,
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
+    maxWidth: 300,
+  },
+
+  // ── Cards ──
+  cards: {
+    paddingHorizontal: 20,   // container-padding
+    gap: 16,                 // md
+  },
+  card: {
     backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.xl,
-    padding: theme.spacing.lg,
+    borderRadius: 24,        // xl
+    overflow: 'hidden',
     borderWidth: 1,
     borderColor: theme.colors.border,
-    marginBottom: theme.spacing.xl,
+    shadowColor: '#0B3B4A',
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
   },
-  sectionLabel: {
-    fontSize: 16,
-    fontWeight: '700',
+  cardPressed: {
+    opacity: 0.93,
+  },
+
+  // Image band
+  cardImageWrap: {
+    height: 180,
+  },
+  cardImage: {
+    width: '100%',
+    height: '100%',
+  },
+  cardImageDim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.26)',
+  },
+  badgeOverlay: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+  },
+  recommendedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderRadius: 9999,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+  },
+  recommendedText: {
+    ...type.labelCaps,
+    fontSize: 11,
+    color: '#006A69',
+  },
+  soonBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(255,255,255,0.88)',
+    borderRadius: 9999,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+  },
+  soonText: {
+    ...type.labelCaps,
+    fontSize: 11,
+    color: theme.colors.textSecondary,
+  },
+
+  // Content below image
+  cardContent: {
+    padding: 20,             // container-padding
+    gap: 12,                 // stack-gap
+  },
+  cardTitle: {
+    ...type.headlineLg,
+    fontSize: 22,
     color: theme.colors.primaryDark,
-    marginBottom: 8,
+  },
+  cardDesc: {
+    ...type.bodySm,
+    color: theme.colors.textSecondary,
+  },
+
+  // CTA buttons
+  primaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: theme.colors.primary,
+    borderRadius: 16,        // lg
+    paddingVertical: 15,
     marginTop: 4,
   },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: theme.colors.text,
-    marginBottom: 8,
-    marginTop: 12,
-  },
-  input: {
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.radius.md,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+  primaryBtnText: {
+    ...type.headlineMd,
     fontSize: 15,
-    color: theme.colors.text,
-    marginBottom: 4,
+    color: '#fff',
   },
-  textArea: {
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.radius.md,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+  secondaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 16,        // lg
+    paddingVertical: 15,
+    marginTop: 4,
+  },
+  secondaryBtnText: {
+    ...type.headlineMd,
     fontSize: 15,
-    color: theme.colors.text,
-    minHeight: 120,
-    marginBottom: 16,
-  },
-  chipContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: 8,
-  },
-  timeRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  timeInput: {
-    width: '48%',
-  },
-  optionRow: {
-    flexDirection: 'row',
-    marginBottom: 12,
-  },
-  optionChip: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    marginRight: 8,
-    backgroundColor: '#eee',
-  },
-  optionChipSelected: {
-    backgroundColor: '#0ea5e9',
+    color: theme.colors.textSecondary,
   },
 });

@@ -2,12 +2,15 @@ import { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '@/constants/theme';
+import Artwork from '@/components/ui/Artwork';
 
 type Props = {
   title: string;
   description: string;
   rightContent?: ReactNode;
   icon?: keyof typeof Ionicons.glyphMap;
+  thumbnailUrl?: string | null;
+  thumbnailKind?: 'trip' | 'poi';
 };
 
 export default function InfoCard({
@@ -15,13 +18,26 @@ export default function InfoCard({
   description,
   rightContent,
   icon = 'sparkles',
+  thumbnailUrl,
+  thumbnailKind = 'poi',
 }: Props) {
   return (
     <View style={styles.card}>
       <View style={styles.left}>
-        <View style={styles.iconWrap}>
-          <Ionicons name={icon} size={16} color={theme.colors.primary} />
-        </View>
+        {thumbnailUrl !== undefined ? (
+          <View style={styles.thumbnailWrap}>
+            <Artwork
+              imageUrl={thumbnailUrl}
+              kind={thumbnailKind}
+              variant="thumbnail"
+              label={title}
+            />
+          </View>
+        ) : (
+          <View style={styles.iconWrap}>
+            <Ionicons name={icon} size={16} color={theme.colors.primary} />
+          </View>
+        )}
 
         <View style={styles.textArea}>
           <Text style={styles.title}>{title}</Text>
@@ -60,6 +76,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 12,
     marginTop: 2,
+  },
+  thumbnailWrap: {
+    marginRight: 12,
   },
   textArea: {
     flex: 1,

@@ -4,12 +4,14 @@ import { type ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { theme } from '@/constants/theme';
 import { type TripPreview } from '@/services/trips';
+import Artwork from '@/components/ui/Artwork';
 
 type Props = {
   preview: TripPreview;
   dateLabel?: string;
   rightContent?: ReactNode;
   variant?: 'card' | 'hero';
+  title?: string;
 };
 
 function formatCategoryLabel(category: string | null) {
@@ -25,36 +27,48 @@ export default function TripPreviewCard({
   dateLabel,
   rightContent,
   variant = 'card',
+  title,
 }: Props) {
   const isHero = variant === 'hero';
-  const hasImage = preview.imageUrl !== null;
+  const hasImage = Boolean(preview.imageUrl?.trim());
+  const displayTitle = title?.trim() || preview.headline;
+  const displaySubheadline =
+    preview.subheadline ??
+    (title?.trim() && preview.headline !== displayTitle ? preview.headline : null);
   const headlineColor = hasImage ? theme.colors.white : theme.colors.text;
   const secondaryTextColor = hasImage ? 'rgba(255,255,255,0.88)' : theme.colors.textSecondary;
 
   return (
     <View style={[styles.container, isHero ? styles.containerHero : styles.containerCard]}>
-      {preview.imageUrl ? (
+      {hasImage ? (
         <Image
-          source={{ uri: preview.imageUrl }}
+          source={{ uri: preview.imageUrl!.trim() }}
           style={styles.backgroundImage}
           contentFit="cover"
           transition={150}
         />
-      ) : null}
+      ) : (
+        <Artwork
+          imageUrl={null}
+          kind="trip"
+          variant="cover"
+          label={formatCategoryLabel(preview.primaryCategory)}
+        />
+      )}
 
       <View
         style={[
           styles.overlay,
-          preview.imageUrl ? styles.overlayWithImage : styles.overlayWithoutImage,
+          hasImage ? styles.overlayWithImage : styles.overlayWithoutImage,
         ]}
       >
         <View style={styles.topRow}>
           <View style={styles.kickerRow}>
-          <View style={styles.kickerChip}>
-            <Text style={styles.kickerText}>
-              {formatCategoryLabel(preview.primaryCategory)}
-            </Text>
-          </View>
+            <View style={styles.kickerChip}>
+              <Text style={styles.kickerText}>
+                {formatCategoryLabel(preview.primaryCategory)}
+              </Text>
+            </View>
             {dateLabel ? (
               <Text style={[styles.dateText, { color: secondaryTextColor }]}>
                 {dateLabel}
@@ -72,11 +86,11 @@ export default function TripPreviewCard({
               { color: headlineColor },
             ]}
           >
-            {preview.headline}
+            {displayTitle}
           </Text>
-          {preview.subheadline ? (
+          {displaySubheadline ? (
             <Text style={[styles.subheadline, { color: secondaryTextColor }]}>
-              {preview.subheadline}
+              {displaySubheadline}
             </Text>
           ) : null}
         </View>
