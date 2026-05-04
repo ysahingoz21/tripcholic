@@ -125,11 +125,14 @@ const BUDGET_RANGE_MAP: Record<
 type CsvPoiRow = {
   name: string;
   category: string;
+  district?: string;
+  address?: string;
   lat: string;
   lng: string;
   avg_duration_min: string;
   budget: string;
-  opening_hours: string;
+  opening_hours?: string;
+  available_hours?: string;
 };
 
 function parseCategory(raw: string): string {
@@ -180,7 +183,8 @@ function parseIntField(raw: string, fieldName: string): number {
 }
 
 function mapCsvRowToPoi(row: CsvPoiRow) {
-  const hours = parseOpeningHours(row.opening_hours);
+  const hoursRaw = row.available_hours ?? row.opening_hours ?? '';
+  const hours = parseOpeningHours(hoursRaw);
   const costs = parseBudgetRange(row.budget);
 
   return {
@@ -188,8 +192,8 @@ function mapCsvRowToPoi(row: CsvPoiRow) {
     name: row.name,
     category: parseCategory(row.category) as never,
     description: null,
-    district: null,
-    address: null,
+    district: row.district || null,
+    address: row.address || null,
     imageUrl: null,
     source: 'istanbul_poi_dataset.csv',
     lat: parseFloatField(row.lat, 'lat'),
