@@ -7,6 +7,8 @@ import {
 } from '../optimizer/optimizer.types';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTripDto } from './dto/create-trip.dto';
+import { ExploreTripsQueryDto } from './dto/explore-trips-query.dto';
+import { buildTripPreview, type TripPreview } from './trip-preview';
 import { UpdateTripDto } from './dto/update-trip.dto';
 
 // Maps the backend's broader interest labels to the optimizer's POICategory enum.
@@ -49,6 +51,52 @@ type TripDetailRecord = Prisma.TripGetPayload<{
   };
 }>;
 
+type TripListRecord = Prisma.TripGetPayload<{
+  include: {
+    _count: {
+      select: {
+        stops: true;
+      };
+    };
+    stops: {
+      include: {
+        poi: {
+          select: {
+            category: true;
+            district: true;
+            imageUrl: true;
+            lat: true;
+            lng: true;
+          };
+        };
+      };
+    };
+  };
+}>;
+
+type ExploreTripRecord = Prisma.TripGetPayload<{
+  include: {
+    user: {
+      select: {
+        displayName: true;
+      };
+    };
+    stops: {
+      include: {
+        poi: {
+          select: {
+            category: true;
+            district: true;
+            imageUrl: true;
+            lat: true;
+            lng: true;
+          };
+        };
+      };
+    };
+  };
+}>;
+
 @Injectable()
 export class TripsService {
   constructor(
@@ -72,6 +120,7 @@ export class TripsService {
         weather:           payload.weather ?? null,
         walkingToleranceKm: payload.maxWalkingDistanceKm ?? null,
         maxPois:           payload.maxStops ?? null,
+        visibility:        payload.visibility ?? 'DRAFT',
       },
     });
 
@@ -84,10 +133,121 @@ export class TripsService {
     const trips = await client.trip.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
-      include: { _count: { select: { stops: true } } },
+      include: {
+        _count: { select: { stops: true } },
+        stops: {
+          orderBy: { order: 'asc' },
+          include: {
+            poi: {
+              select: {
+                category: true,
+                district: true,
+                imageUrl: true,
+                lat: true,
+                lng: true,
+              },
+            },
+          },
+        },
+      },
     });
 
-    return trips;
+    return trips.map((trip) => this.toTripListItem(trip as TripListRecord));
+  }
+
+  async findExploreTrips(query: ExploreTripsQueryDto) {
+    const client = await this.prisma.getClient();
+    const trimmedQuery = query.q?.trim();
+    const normalizedQuery = trimmedQuery ? trimmedQuery : null;
+    const normalizedCategory = query.category?.trim().toLowerCase() ?? null;
+    const normalizedWeather = query.weather?.trim().toLowerCase() ?? null;
+    const limit = query.limit ?? 20;
+
+    const where: Prisma.TripWhereInput = {
+      visibility: 'PUBLIC',
+      status: 'OPTIMIZED',
+      ...(normalizedQuery && {
+        OR: [
+          { title: { contains: normalizedQuery, mode: 'insensitive' } },
+          { description: { contains: normalizedQuery, mode: 'insensitive' } },
+          { routeName: { contains: normalizedQuery, mode: 'insensitive' } },
+          {
+            user: {
+              displayName: { contains: normalizedQuery, mode: 'insensitive' },
+            },
+          },
+        ],
+      }),
+      ...(normalizedCategory && { categories: { has: normalizedCategory } }),
+      ...(normalizedWeather && { weather: normalizedWeather }),
+      ...((query.budgetMinTl !== undefined || query.budgetMaxTl !== undefined) && {
+        routeTotalCostTl: {
+          ...(query.budgetMinTl !== undefined && { gte: query.budgetMinTl }),
+          ...(query.budgetMaxTl !== undefined && { lte: query.budgetMaxTl }),
+        },
+      }),
+    };
+
+    const [trips, total, categoryRows] = await Promise.all([
+      client.trip.findMany({
+        where,
+        orderBy: [{ optimizedAt: 'desc' }, { createdAt: 'desc' }],
+        take: limit,
+        include: {
+          user: {
+            select: {
+              displayName: true,
+            },
+          },
+          stops: {
+            orderBy: { order: 'asc' },
+            include: {
+              poi: {
+                select: {
+                  category: true,
+                  district: true,
+                  imageUrl: true,
+                  lat: true,
+                  lng: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+      client.trip.count({ where }),
+      client.trip.findMany({
+        where: {
+          visibility: 'PUBLIC',
+          status: 'OPTIMIZED',
+        },
+        select: {
+          categories: true,
+        },
+      }),
+    ]);
+
+    const availableCategories = [...new Set(
+      categoryRows
+        .flatMap((trip) => trip.categories)
+        .map((category) => category.trim().toLowerCase())
+        .filter(Boolean),
+    )].sort((left, right) => left.localeCompare(right));
+
+    return {
+      items: trips.map((trip) => this.toExploreTripItem(trip as ExploreTripRecord)),
+      meta: {
+        total,
+        availableCategories,
+        appliedFilters: {
+          q: normalizedQuery,
+          category: normalizedCategory,
+          budgetMinTl: query.budgetMinTl ?? null,
+          budgetMaxTl: query.budgetMaxTl ?? null,
+          limit,
+        },
+      },
+    };
   }
 
   async findOne(userId: string, id: string) {
@@ -108,7 +268,7 @@ export class TripsService {
 
     await this.getOwnedTripOrThrow(client, userId, id);
 
-    const trip = await client.trip.update({
+    await client.trip.update({
       where: { id },
       data: {
         ...(payload.title !== undefined           && { title: payload.title }),
@@ -121,10 +281,11 @@ export class TripsService {
         ...(payload.weather !== undefined         && { weather: payload.weather }),
         ...(payload.maxWalkingDistanceKm !== undefined && { walkingToleranceKm: payload.maxWalkingDistanceKm }),
         ...(payload.maxStops !== undefined        && { maxPois: payload.maxStops }),
+        ...(payload.visibility !== undefined      && { visibility: payload.visibility }),
       },
     });
 
-    return trip;
+    return this.findOne(userId, id);
   }
 
   async remove(userId: string, id: string) {
@@ -191,6 +352,11 @@ export class TripsService {
       candidatePois.length > 0
         ? await this.optimizerService.callOptimize(optimizerRequest)
         : this.buildNoFeasibleRouteResult(optimizerRequest, 'backend_no_candidates');
+    const routeExplanation = this.buildRouteExplanation(
+      trip,
+      optimizerResult,
+      pois,
+    );
 
     await client.$transaction(async (tx) => {
       await tx.tripStop.deleteMany({
@@ -222,6 +388,7 @@ export class TripsService {
           routeTotalDurationMin: optimizerResult.route.total_duration_minutes,
           routeTotalCostTl: optimizerResult.route.total_cost_tl,
           routeAlgorithmUsed: optimizerResult.algorithm_used,
+          routeExplanation,
         },
       });
     });
@@ -332,6 +499,193 @@ export class TripsService {
     };
   }
 
+  private buildRouteExplanation(
+    trip: Awaited<ReturnType<TripsService['getOwnedTripOrThrow']>>,
+    optimizerResult: OptimizerOptimizeResponse,
+    candidatePois: PointOfInterest[],
+  ): string {
+    const selectedStops = optimizerResult.route.stops;
+
+    if (selectedStops.length === 0) {
+      return 'No feasible route could be produced from the current constraints. The current time window and trip preferences did not yield a workable set of stops.';
+    }
+
+    const sentences: string[] = [];
+    const timeWindow = this.formatTimeWindow(
+      trip.timeStart ?? selectedStops[0]?.arrival_time ?? null,
+      trip.timeEnd ??
+        selectedStops[selectedStops.length - 1]?.departure_time ??
+        null,
+    );
+
+    if (trip.maxPois !== null && selectedStops.length >= trip.maxPois) {
+      sentences.push(
+        `This route includes ${selectedStops.length} stops, which reaches your current max stop limit${timeWindow ? ` within the ${timeWindow} day window` : ''}.`,
+      );
+    } else {
+      sentences.push(
+        `This route includes ${selectedStops.length} stops${timeWindow ? ` across the ${timeWindow} day window` : ''}.`,
+      );
+    }
+
+    const categoryFocus = this.describeCategoryFocus(selectedStops, candidatePois);
+    if (categoryFocus) {
+      sentences.push(
+        `The selected stops lean toward ${categoryFocus} based on the places that fit your current preferences.`,
+      );
+    }
+
+    sentences.push(
+      `The current result covers about ${this.formatDecimal(optimizerResult.route.total_distance_km, 1)} km, ${optimizerResult.route.total_duration_minutes} minutes, and an estimated ${this.formatCurrency(optimizerResult.route.total_cost_tl)}.`,
+    );
+
+    return sentences.slice(0, 3).join(' ');
+  }
+
+  private describeCategoryFocus(
+    selectedStops: OptimizerOptimizeResponse['route']['stops'],
+    candidatePois: PointOfInterest[],
+  ): string | null {
+    const poiById = new Map(candidatePois.map((poi) => [poi.id, poi]));
+    const categoryCounts = new Map<string, number>();
+
+    for (const stop of selectedStops) {
+      const poi = poiById.get(stop.poi_id);
+      if (!poi) {
+        continue;
+      }
+
+      const category = poi.category.toLowerCase();
+      categoryCounts.set(category, (categoryCounts.get(category) ?? 0) + 1);
+    }
+
+    const topCategories = [...categoryCounts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, 2)
+      .map(([category]) => category);
+
+    if (topCategories.length === 0) {
+      return null;
+    }
+
+    return this.formatList(topCategories);
+  }
+
+  private formatTimeWindow(
+    start: string | null,
+    end: string | null,
+  ): string | null {
+    if (!start && !end) {
+      return null;
+    }
+
+    if (start && end) {
+      return `${start}–${end}`;
+    }
+
+    return start ?? end;
+  }
+
+  private formatList(values: string[]): string {
+    if (values.length <= 1) {
+      return values[0] ?? '';
+    }
+
+    if (values.length === 2) {
+      return `${values[0]} and ${values[1]}`;
+    }
+
+    return `${values.slice(0, -1).join(', ')}, and ${values[values.length - 1]}`;
+  }
+
+  private formatDecimal(value: number, digits: number): string {
+    return value.toFixed(digits).replace(/\.0+$/, '');
+  }
+
+  private formatCurrency(value: number): string {
+    return `₺${Math.round(value)}`;
+  }
+
+  private toTripListItem(trip: TripListRecord) {
+    const preview = buildTripPreview({
+      title: trip.title,
+      routeName: trip.routeName,
+      categories: trip.categories,
+      routeTotalDurationMin: trip.routeTotalDurationMin,
+      routeTotalCostTl: trip.routeTotalCostTl,
+      stops: trip.stops.map((stop) => ({
+        category: stop.poi.category.toLowerCase(),
+        district: stop.poi.district,
+        imageUrl: stop.poi.imageUrl,
+        coordinates: {
+          lat: stop.poi.lat,
+          lng: stop.poi.lng,
+        },
+      })),
+    });
+
+    return {
+      id: trip.id,
+      userId: trip.userId,
+      title: trip.title,
+      description: trip.description,
+      date: trip.date,
+      timeStart: trip.timeStart,
+      timeEnd: trip.timeEnd,
+      budgetTl: trip.budgetTl,
+      categories: trip.categories,
+      weather: trip.weather,
+      walkingToleranceKm: trip.walkingToleranceKm,
+      maxPois: trip.maxPois,
+      status: trip.status,
+      visibility: trip.visibility,
+      routeName: trip.routeName,
+      routeTotalDistanceKm: trip.routeTotalDistanceKm,
+      routeTotalDurationMin: trip.routeTotalDurationMin,
+      routeTotalCostTl: trip.routeTotalCostTl,
+      routeAlgorithmUsed: trip.routeAlgorithmUsed,
+      routeExplanation: trip.routeExplanation,
+      optimizedAt: trip.optimizedAt,
+      createdAt: trip.createdAt,
+      updatedAt: trip.updatedAt,
+      preview,
+      _count: trip._count,
+    };
+  }
+
+  private toExploreTripItem(trip: ExploreTripRecord) {
+    const preview = buildTripPreview({
+      title: trip.title,
+      routeName: trip.routeName,
+      categories: trip.categories,
+      routeTotalDurationMin: trip.routeTotalDurationMin,
+      routeTotalCostTl: trip.routeTotalCostTl,
+      stops: trip.stops.map((stop) => ({
+        category: stop.poi.category.toLowerCase(),
+        district: stop.poi.district,
+        imageUrl: stop.poi.imageUrl,
+        coordinates: {
+          lat: stop.poi.lat,
+          lng: stop.poi.lng,
+        },
+      })),
+    });
+
+    return {
+      id: trip.id,
+      title: trip.title,
+      description: trip.description,
+      categories: trip.categories,
+      routeTotalDurationMin: trip.routeTotalDurationMin,
+      routeTotalCostTl: trip.routeTotalCostTl,
+      optimizedAt: trip.optimizedAt,
+      preview,
+      creator: {
+        displayName: trip.user?.displayName ?? null,
+      },
+    };
+  }
+
   private toTripDetailResponse(trip: TripDetailRecord) {
     const stops = trip.stops.map((stop) => ({
       id: stop.id,
@@ -367,6 +721,23 @@ export class TripsService {
       },
     }));
 
+    const preview = buildTripPreview({
+      title: trip.title,
+      routeName: trip.routeName,
+      categories: trip.categories,
+      routeTotalDurationMin: trip.routeTotalDurationMin,
+      routeTotalCostTl: trip.routeTotalCostTl,
+      stops: stops.map((stop) => ({
+        category: stop.poi.category,
+        district: stop.poi.district,
+        imageUrl: stop.poi.imageUrl,
+        coordinates: {
+          lat: stop.poi.coordinates.lat,
+          lng: stop.poi.coordinates.lng,
+        },
+      })),
+    });
+
     return {
       trip: {
         id: trip.id,
@@ -381,6 +752,7 @@ export class TripsService {
         walkingToleranceKm: trip.walkingToleranceKm,
         maxPois: trip.maxPois,
         status: trip.status,
+        visibility: trip.visibility,
         createdAt: trip.createdAt,
         updatedAt: trip.updatedAt,
       },
@@ -391,9 +763,11 @@ export class TripsService {
         routeTotalDurationMin: trip.routeTotalDurationMin,
         routeTotalCostTl: trip.routeTotalCostTl,
         routeAlgorithmUsed: trip.routeAlgorithmUsed,
+        routeExplanation: trip.routeExplanation,
         stopCount: stops.length,
         isOptimized: trip.status === 'OPTIMIZED',
       },
+      preview,
       stops,
     };
   }

@@ -1,32 +1,186 @@
 import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import ScreenContainer from '@/components/ui/ScreenContainer';
-import SectionTitle from '@/components/ui/SectionTitle';
-import AppButton from '@/components/ui/AppButton';
+import { Image } from 'expo-image';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import Artwork from '@/components/ui/Artwork';
 import { theme } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
-import { getTrips, type TripListItem } from '@/services/trips';
+import {
+  getTrips,
+  type TripListItem,
+  type TripVisibility,
+} from '@/services/trips';
+import { buildTripDetailParams } from '@/utils/tripNavigation';
 
-function formatTripDate(date: string) {
-  return new Date(date).toLocaleDateString();
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function formatShortDate(dateStr: string) {
+  return new Date(dateStr).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+  });
 }
 
-function formatTripSummary(trip: TripListItem) {
-  const parts = [`${trip._count.stops} stop${trip._count.stops === 1 ? '' : 's'}`];
-
-  if (trip.routeTotalDurationMin !== null) {
-    parts.push(`${trip.routeTotalDurationMin} min`);
-  }
-
-  if (trip.routeTotalCostTl !== null) {
-    parts.push(`${trip.routeTotalCostTl} TL`);
-  }
-
-  return parts.join(' • ');
+function formatFullDate(dateStr: string) {
+  return new Date(dateStr).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
+
+type VisibilityConfig = { bg: string; text: string; label: string };
+
+function getVisibilityConfig(v: TripVisibility): VisibilityConfig {
+  switch (v) {
+    case 'PUBLIC':
+      return { bg: '#E8F7EE', text: '#166534', label: 'Public' };
+    case 'PRIVATE':
+      return { bg: '#F1F5F9', text: '#475569', label: 'Private' };
+    case 'DRAFT':
+    default:
+      return { bg: '#FFF7E8', text: '#9A6700', label: 'Draft' };
+  }
+}
+
+function formatCategory(cat: string | null) {
+  if (!cat) return null;
+  return cat.charAt(0).toUpperCase() + cat.slice(1);
+}
+
+// ── Trip Card ─────────────────────────────────────────────────────────────────
+
+type TripCardProps = {
+  trip: TripListItem;
+  onPress: () => void;
+};
+
+function TripCard({ trip, onPress }: TripCardProps) {
+  const imageUrl = trip.preview?.imageUrl?.trim() || null;
+  const category = formatCategory(trip.preview?.primaryCategory ?? null);
+  const stopCount = trip._count?.stops ?? 0;
+  const vis = getVisibilityConfig(trip.visibility);
+  const district = trip.preview?.districtLabel ?? null;
+
+  return (
+    <Pressable style={styles.card} onPress={onPress}>
+      {/* ── Image area ── */}
+      <View style={styles.imageArea}>
+        {imageUrl ? (
+          <Image
+            source={{ uri: imageUrl }}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+            transition={150}
+          />
+        ) : (
+          <Artwork kind="trip" variant="cover" label={trip.title} />
+        )}
+
+        {/* Dark scrim over image */}
+        <View style={styles.imageScrim} />
+
+        {/* Overlaid badges */}
+        <View style={styles.imageBadgeRow}>
+          {category && (
+            <View style={styles.categoryChip}>
+              <Text style={styles.categoryChipText} numberOfLines={1}>
+                {category}
+              </Text>
+            </View>
+          )}
+          <View style={styles.dateBadge}>
+            <Ionicons
+              name="calendar-outline"
+              size={10}
+              color="rgba(255,255,255,0.9)"
+            />
+            <Text style={styles.dateBadgeText}>{formatShortDate(trip.date)}</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* ── Info area ── */}
+      <View style={styles.infoArea}>
+        <Text style={styles.tripTitle} numberOfLines={2}>
+          {trip.title}
+        </Text>
+
+        {/* Meta row */}
+        {(stopCount > 0 || district || trip.optimizedAt) && (
+          <View style={styles.metaRow}>
+            {stopCount > 0 && (
+              <View style={styles.metaItem}>
+                <Ionicons
+                  name="location-outline"
+                  size={12}
+                  color={theme.colors.textSecondary}
+                />
+                <Text style={styles.metaText}>
+                  {stopCount} {stopCount === 1 ? 'stop' : 'stops'}
+                </Text>
+              </View>
+            )}
+            {district && (
+              <View style={styles.metaItem}>
+                <Ionicons
+                  name="map-outline"
+                  size={12}
+                  color={theme.colors.textSecondary}
+                />
+                <Text style={styles.metaText} numberOfLines={1}>
+                  {district}
+                </Text>
+              </View>
+            )}
+            {trip.optimizedAt && (
+              <View style={styles.metaItem}>
+                <Ionicons
+                  name="flash-outline"
+                  size={12}
+                  color={theme.colors.textSecondary}
+                />
+                <Text style={styles.metaText}>Optimized</Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Footer row */}
+        <View style={styles.cardFooter}>
+          <View style={styles.footerLeft}>
+            <View style={[styles.visBadge, { backgroundColor: vis.bg }]}>
+              <Text style={[styles.visText, { color: vis.text }]}>
+                {vis.label}
+              </Text>
+            </View>
+            <Text style={styles.footerDate}>
+              {trip.optimizedAt
+                ? `Optimized ${formatFullDate(trip.optimizedAt)}`
+                : `Created ${formatFullDate(trip.createdAt)}`}
+            </Text>
+          </View>
+          <View style={styles.openCta}>
+            <Text style={styles.openText}>Open</Text>
+            <Ionicons name="arrow-forward" size={13} color="#006A69" />
+          </View>
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
+// ── Screen ────────────────────────────────────────────────────────────────────
 
 export default function TripsScreen() {
   const router = useRouter();
@@ -36,9 +190,7 @@ export default function TripsScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const loadTrips = useCallback(async () => {
-    if (isAuthLoading) {
-      return;
-    }
+    if (isAuthLoading) return;
 
     if (!token) {
       setError('Authentication required. Please sign in again.');
@@ -54,7 +206,9 @@ export default function TripsScreen() {
       setTrips(data);
     } catch (loadError) {
       setError(
-        loadError instanceof Error ? loadError.message : 'Unable to load your trips.'
+        loadError instanceof Error
+          ? loadError.message
+          : 'Unable to load your trips.'
       );
       setTrips([]);
     } finally {
@@ -68,182 +222,337 @@ export default function TripsScreen() {
     }, [loadTrips])
   );
 
-  if (isLoading || isAuthLoading) {
-    return (
-      <ScreenContainer>
-        <SectionTitle
-          title="My Trips"
-          subtitle="Loading trips created from your account."
-        />
-      </ScreenContainer>
-    );
-  }
-
-  if (error) {
-    return (
-      <ScreenContainer>
-        <SectionTitle
-          title="My Trips"
-          subtitle={error}
-        />
-        <AppButton title="Try Again" onPress={() => void loadTrips()} />
-      </ScreenContainer>
-    );
-  }
+  const isSpinning = isLoading || isAuthLoading;
 
   return (
-    <ScreenContainer>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        <SectionTitle
-          title="My Trips"
-          subtitle="Reopen trips you created and their persisted optimization results."
-        />
+    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+      {/* ─── Header ─── */}
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.eyebrow}>ISTANBUL</Text>
+          <Text style={styles.title}>My Trips</Text>
+        </View>
+        <View style={styles.headerRight}>
+          {!isSpinning && trips.length > 0 && (
+            <View style={styles.countBadge}>
+              <Text style={styles.countText}>{trips.length}</Text>
+            </View>
+          )}
+          <Pressable
+            style={styles.newButton}
+            onPress={() => router.push('/(tabs)/planner')}
+          >
+            <Ionicons name="add" size={16} color="#006A69" />
+            <Text style={styles.newButtonText}>New</Text>
+          </Pressable>
+        </View>
+      </View>
 
-        {trips.length > 0 ? (
-          trips.map((trip) => (
-            <Pressable
-              key={trip.id}
-              style={styles.tripCard}
-              onPress={() =>
-                router.push({
-                  pathname: '/trip/[id]',
-                  params: { id: trip.id },
-                })
-              }
-            >
-              <View style={styles.cardTopRow}>
-                <View style={styles.cardTitleWrap}>
-                  <Text style={styles.cardTitle}>{trip.routeName ?? trip.title}</Text>
-                  <Text style={styles.cardDate}>{formatTripDate(trip.date)}</Text>
-                </View>
-                <View style={styles.statusBadge}>
-                  <Text style={styles.statusText}>{trip.status}</Text>
-                </View>
-              </View>
-
-              <Text style={styles.cardSummary}>{formatTripSummary(trip)}</Text>
-
-              <Text style={styles.cardMeta}>
-                Categories: {trip.categories.join(', ') || 'None'}
-              </Text>
-
-              <View style={styles.cardFooter}>
-                <View style={styles.footerItem}>
-                  <Ionicons name="time-outline" size={14} color={theme.colors.textSecondary} />
-                  <Text style={styles.footerText}>
-                    {trip.optimizedAt ? 'Optimized' : 'Created'}{' '}
-                    {formatTripDate(trip.optimizedAt ?? trip.createdAt)}
-                  </Text>
-                </View>
-                <Text style={styles.openText}>Open</Text>
-              </View>
-            </Pressable>
-          ))
-        ) : (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>No trips created yet</Text>
-            <Text style={styles.emptyText}>
-              Create a trip in the planner to start building your personal trip history.
-            </Text>
-            <AppButton
-              title="Open Planner"
-              onPress={() => router.push('/(tabs)/planner')}
-            />
+      {/* ─── Content ─── */}
+      {isSpinning ? (
+        <View style={styles.centeredArea}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <Text style={styles.loadingText}>Loading trips…</Text>
+        </View>
+      ) : error ? (
+        <View style={styles.centeredArea}>
+          <Ionicons
+            name="alert-circle-outline"
+            size={44}
+            color={theme.colors.textSecondary}
+          />
+          <Text style={styles.stateTitle}>Couldn't load trips</Text>
+          <Text style={styles.stateBody}>{error}</Text>
+          <Pressable style={styles.actionButton} onPress={() => void loadTrips()}>
+            <Text style={styles.actionButtonText}>Try again</Text>
+          </Pressable>
+        </View>
+      ) : trips.length === 0 ? (
+        <View style={styles.centeredArea}>
+          <View style={styles.emptyIconWrap}>
+            <Ionicons name="map-outline" size={26} color="#006A69" />
           </View>
-        )}
-      </ScrollView>
-    </ScreenContainer>
+          <Text style={styles.stateTitle}>No trips yet</Text>
+          <Text style={styles.stateBody}>
+            Trips you create with the planner will appear here, ready to revisit
+            and share.
+          </Text>
+          <Pressable
+            style={styles.actionButton}
+            onPress={() => router.push('/(tabs)/planner')}
+          >
+            <Text style={styles.actionButtonText}>Plan your first trip</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <ScrollView
+          style={styles.list}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {trips.map((trip) => (
+            <TripCard
+              key={trip.id}
+              trip={trip}
+              onPress={() =>
+                router.push(
+                  buildTripDetailParams(trip.id, { source: 'my-trips' })
+                )
+              }
+            />
+          ))}
+        </ScrollView>
+      )}
+    </SafeAreaView>
   );
 }
 
+// ── Styles ─────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  tripCard: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.xl,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    padding: theme.spacing.lg,
-    marginBottom: theme.spacing.md,
-  },
-  cardTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 10,
-  },
-  cardTitleWrap: {
+  safe: {
     flex: 1,
-    paddingRight: 12,
+    backgroundColor: theme.colors.background,
   },
-  cardTitle: {
-    fontSize: 18,
+
+  // ── Header ──
+  header: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 20,
+  },
+  eyebrow: {
+    fontSize: 11,
     fontWeight: '700',
-    color: theme.colors.text,
+    letterSpacing: 1.8,
+    color: theme.colors.primary,
     marginBottom: 4,
   },
-  cardDate: {
-    fontSize: 13,
-    color: theme.colors.textSecondary,
+  title: {
+    fontSize: 30,
+    fontWeight: '800',
+    color: '#111C2C',
+    letterSpacing: -0.5,
   },
-  statusBadge: {
-    backgroundColor: '#E7F6F4',
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingBottom: 3,
+  },
+  countBadge: {
+    backgroundColor: '#DFF7F6',
     borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    minWidth: 26,
+    height: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
   },
-  statusText: {
-    fontSize: 12,
+  countText: {
+    fontSize: 13,
     fontWeight: '700',
-    color: theme.colors.primaryDark,
+    color: '#006A69',
   },
-  cardSummary: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: theme.colors.text,
-    marginBottom: 6,
+  newButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#DFF7F6',
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
   },
-  cardMeta: {
+  newButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#006A69',
+  },
+
+  // ── Loading / Error / Empty ──
+  centeredArea: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 40,
+    gap: 10,
+  },
+  loadingText: {
     fontSize: 14,
     color: theme.colors.textSecondary,
-    lineHeight: 21,
+    marginTop: 4,
   },
-  cardFooter: {
-    marginTop: theme.spacing.md,
+  emptyIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#DFF7F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  stateTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111C2C',
+    textAlign: 'center',
+  },
+  stateBody: {
+    fontSize: 14,
+    lineHeight: 21,
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  actionButton: {
+    backgroundColor: '#006A69',
+    paddingHorizontal: 22,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 4,
+  },
+  actionButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+
+  // ── List ──
+  list: {
+    flex: 1,
+  },
+  listContent: {
+    paddingHorizontal: 24,
+    paddingBottom: 32,
+    gap: 16,
+  },
+
+  // ── Trip card ──
+  card: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    overflow: 'hidden',
+    shadowColor: '#0B3B4A',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+
+  // Image area
+  imageArea: {
+    height: 164,
+    backgroundColor: '#DFF7F6',
+  },
+  imageScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(11,59,74,0.28)',
+  },
+  imageBadgeRow: {
+    position: 'absolute',
+    bottom: 12,
+    left: 12,
+    right: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  footerItem: {
+  categoryChip: {
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    maxWidth: 160,
+  },
+  categoryChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0B3B4A',
+    letterSpacing: 0.2,
+  },
+  dateBadge: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(0,0,0,0.32)',
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
   },
-  footerText: {
-    marginLeft: 6,
-    fontSize: 13,
+  dateBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.95)',
+  },
+
+  // Info area
+  infoArea: {
+    padding: 16,
+    gap: 10,
+  },
+  tripTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#111C2C',
+    lineHeight: 23,
+    letterSpacing: -0.2,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  metaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  metaText: {
+    fontSize: 12,
     color: theme.colors.textSecondary,
+  },
+  cardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+  },
+  footerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  visBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  visText: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  footerDate: {
+    fontSize: 11,
+    color: theme.colors.textSecondary,
+    flex: 1,
+  },
+  openCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   openText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
-    color: theme.colors.primary,
-  },
-  emptyCard: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.xl,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    padding: theme.spacing.xl,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: theme.colors.text,
-    marginBottom: 8,
-  },
-  emptyText: {
-    fontSize: 14,
-    lineHeight: 22,
-    color: theme.colors.textSecondary,
-    marginBottom: theme.spacing.lg,
+    color: '#006A69',
   },
 });

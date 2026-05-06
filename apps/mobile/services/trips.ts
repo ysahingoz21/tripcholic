@@ -12,6 +12,20 @@ type ApiErrorEnvelope = {
   };
 };
 
+export type TripVisibility = 'DRAFT' | 'PRIVATE' | 'PUBLIC';
+export type ExploreWeather = 'clear' | 'cloudy' | 'rainy';
+
+export type TripPreview = {
+  headline: string;
+  subheadline: string | null;
+  primaryCategory: string | null;
+  districtLabel: string | null;
+  stopCount: number;
+  hasMapData: boolean;
+  hasPoiImage: boolean;
+  imageUrl: string | null;
+};
+
 export type TripDetailResponse = {
   trip: {
     id: string;
@@ -26,6 +40,7 @@ export type TripDetailResponse = {
     walkingToleranceKm: number | null;
     maxPois: number | null;
     status: string;
+    visibility: TripVisibility;
     createdAt: string;
     updatedAt: string;
   };
@@ -36,9 +51,11 @@ export type TripDetailResponse = {
     routeTotalDurationMin: number | null;
     routeTotalCostTl: number | null;
     routeAlgorithmUsed: string | null;
+    routeExplanation: string | null;
     stopCount: number;
     isOptimized: boolean;
   };
+  preview: TripPreview;
   stops: Array<{
     id: string;
     order: number;
@@ -88,17 +105,58 @@ export type TripListItem = {
   walkingToleranceKm: number | null;
   maxPois: number | null;
   status: string;
+  visibility: TripVisibility;
   routeName: string | null;
   routeTotalDistanceKm: number | null;
   routeTotalDurationMin: number | null;
   routeTotalCostTl: number | null;
   routeAlgorithmUsed: string | null;
+  routeExplanation?: string | null;
   optimizedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  preview: TripPreview;
   _count: {
     stops: number;
   };
+};
+
+export type ExploreTripItem = {
+  id: string;
+  title: string;
+  description: string | null;
+  categories: string[];
+  routeTotalDurationMin: number | null;
+  routeTotalCostTl: number | null;
+  optimizedAt: string | null;
+  preview: TripPreview;
+  creator: {
+    displayName: string | null;
+  };
+};
+
+export type ExploreTripsResponse = {
+  items: ExploreTripItem[];
+  meta: {
+    total: number;
+    availableCategories: string[];
+    appliedFilters: {
+      q: string | null;
+      category: string | null;
+      budgetMinTl: number | null;
+      budgetMaxTl: number | null;
+      limit: number;
+    };
+  };
+};
+
+export type ExploreTripsQuery = {
+  q?: string;
+  category?: string;
+  budgetMinTl?: number;
+  budgetMaxTl?: number;
+  weather?: ExploreWeather;
+  limit?: number;
 };
 
 export type CreateTripPayload = {
@@ -112,6 +170,20 @@ export type CreateTripPayload = {
   maxWalkingDistanceKm?: number;
   maxStops?: number;
   weather?: 'clear' | 'cloudy' | 'rainy';
+};
+
+export type UpdateTripPayload = {
+  title?: string;
+  description?: string;
+  date?: string;
+  startTime?: string;
+  endTime?: string;
+  categories?: string[];
+  budgetTl?: number;
+  maxWalkingDistanceKm?: number;
+  maxStops?: number;
+  weather?: string;
+  visibility?: TripVisibility;
 };
 
 function getErrorMessage(payload: unknown, fallback: string) {
@@ -194,6 +266,20 @@ export async function getTrip(token: string, tripId: string) {
   return parseApiResponse<TripDetailResponse>(response, 'Failed to load trip');
 }
 
+export async function updateTrip(
+  token: string,
+  tripId: string,
+  payload: UpdateTripPayload
+) {
+  const response = await fetch(`${API_BASE_URL}/trips/${tripId}`, {
+    method: 'PATCH',
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload),
+  });
+
+  return parseApiResponse<TripDetailResponse>(response, 'Failed to update trip');
+}
+
 export async function getTrips(token: string) {
   const response = await fetch(`${API_BASE_URL}/trips`, {
     method: 'GET',
@@ -203,4 +289,45 @@ export async function getTrips(token: string) {
   });
 
   return parseApiResponse<TripListItem[]>(response, 'Failed to load trips');
+}
+
+export async function getExploreTrips(query: ExploreTripsQuery = {}) {
+  const searchParams = new URLSearchParams();
+
+  if (query.q?.trim()) {
+    searchParams.set('q', query.q.trim());
+  }
+
+  if (query.category?.trim()) {
+    searchParams.set('category', query.category.trim().toLowerCase());
+  }
+
+  if (query.budgetMinTl !== undefined) {
+    searchParams.set('budgetMinTl', String(query.budgetMinTl));
+  }
+
+  if (query.budgetMaxTl !== undefined) {
+    searchParams.set('budgetMaxTl', String(query.budgetMaxTl));
+  }
+
+  if (query.weather?.trim()) {
+    searchParams.set('weather', query.weather.trim().toLowerCase());
+  }
+
+  if (query.limit !== undefined) {
+    searchParams.set('limit', String(query.limit));
+  }
+
+  const queryString = searchParams.toString();
+  const response = await fetch(
+    `${API_BASE_URL}/trips/explore${queryString ? `?${queryString}` : ''}`,
+    {
+      method: 'GET',
+    }
+  );
+
+  return parseApiResponse<ExploreTripsResponse>(
+    response,
+    'Failed to load explore trips'
+  );
 }

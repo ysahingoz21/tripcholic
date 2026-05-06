@@ -1,27 +1,29 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '@/constants/theme';
+import AppHeader from '@/components/ui/AppHeader';
 
 export default function TabLayout() {
+  const insets = useSafeAreaInsets();
+  const tabBarBottomPadding = Math.max(insets.bottom, 8);
+  const tabBarHeight = 56 + tabBarBottomPadding + 8;
+
   return (
     <Tabs
       screenOptions={{
-        headerStyle: {
-          backgroundColor: theme.colors.surface,
-        },
-        headerShadowVisible: false,
-        headerTitleStyle: {
-          color: theme.colors.text,
-          fontWeight: '700',
-        },
+        // ── Custom app-shell header ──
+        header: () => <AppHeader />,
+
+        // ── Tab bar ──
         sceneStyle: {
           backgroundColor: theme.colors.background,
         },
         tabBarStyle: {
           backgroundColor: theme.colors.surface,
           borderTopColor: theme.colors.border,
-          height: 64,
-          paddingBottom: 8,
+          height: tabBarHeight,
+          paddingBottom: tabBarBottomPadding,
           paddingTop: 8,
         },
         tabBarActiveTintColor: theme.colors.primary,

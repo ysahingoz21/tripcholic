@@ -6,6 +6,7 @@ import { HealthModule } from './modules/health/health.module';
 import { OptimizerModule } from './modules/optimizer/optimizer.module';
 import { PoisModule } from './modules/pois/pois.module';
 import { PrismaModule } from './modules/prisma/prisma.module';
+import { PublicTripsModule } from './modules/public-trips/public-trips.module';
 import { TripsModule } from './modules/trips/trips.module';
 import { UsersModule } from './modules/users/users.module';
 
@@ -18,6 +19,7 @@ import { UsersModule } from './modules/users/users.module';
     AuthModule,
     UsersModule,
     TripsModule,
+    PublicTripsModule,
     PoisModule,
     OptimizerModule,
   ],

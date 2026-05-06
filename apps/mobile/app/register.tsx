@@ -1,7 +1,9 @@
 import { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TextInput, View, Pressable } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
+import AuthScreenLayout from '@/components/ui/AuthScreenLayout';
+import AuthInput from '@/components/ui/AuthInput';
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -14,11 +16,7 @@ export default function RegisterScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleCreateAccount = async () => {
-    if (
-      !email.trim() ||
-      !password.trim() ||
-      !confirmPassword.trim()
-    ) {
+    if (!email.trim() || !password.trim() || !confirmPassword.trim()) {
       Alert.alert('Missing information', 'Please fill in email and password fields.');
       return;
     }
@@ -49,95 +47,75 @@ export default function RegisterScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.card}>
-          <Text style={styles.title}>Create Account</Text>
-          <Text style={styles.subtitle}>Create your Tripcholic account to start planning smarter trips.</Text>
+    <AuthScreenLayout tagline="Start your curated journey across the globe.">
+      <Text style={styles.title}>Create Account</Text>
+      <Text style={styles.subtitle}>
+        Join Tripcholic and start planning smarter trips.
+      </Text>
 
-          <TextInput
-            style={styles.input}
-            placeholder="Full Name (Optional)"
-            placeholderTextColor="#000"
-            value={fullName}
-            onChangeText={setFullName}
-          />
+      <View style={styles.form}>
+        <AuthInput
+          icon="person-outline"
+          placeholder="Full Name (Optional)"
+          value={fullName}
+          onChangeText={setFullName}
+          returnKeyType="next"
+        />
+        <AuthInput
+          icon="mail-outline"
+          placeholder="Email"
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          returnKeyType="next"
+        />
+        <AuthInput
+          icon="lock-closed-outline"
+          placeholder="Password"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+          returnKeyType="next"
+        />
+        <AuthInput
+          icon="lock-closed-outline"
+          placeholder="Confirm Password"
+          value={confirmPassword}
+          onChangeText={setConfirmPassword}
+          secureTextEntry
+          returnKeyType="done"
+          onSubmitEditing={handleCreateAccount}
+        />
+      </View>
 
-          <TextInput
-            style={styles.input}
-            placeholder="Email"
-            placeholderTextColor="#000"
-            value={email}
-            onChangeText={setEmail}
-            autoCapitalize="none"
-            keyboardType="email-address"
-          />
+      <Pressable
+        style={[styles.button, isSubmitting && styles.buttonDisabled]}
+        onPress={handleCreateAccount}
+        disabled={isSubmitting}
+      >
+        <Text style={styles.buttonText}>
+          {isSubmitting ? 'Creating Account…' : 'Create Account'}
+        </Text>
+      </Pressable>
 
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            placeholderTextColor="#000"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-          />
-
-          <TextInput
-            style={styles.input}
-            placeholder="Confirm Password"
-            placeholderTextColor="#000"
-            value={confirmPassword}
-            onChangeText={setConfirmPassword}
-            secureTextEntry
-          />
-
-          <Pressable
-            style={[styles.button, isSubmitting && styles.buttonDisabled]}
-            onPress={handleCreateAccount}
-            disabled={isSubmitting}
-          >
-            <Text style={styles.buttonText}>
-              {isSubmitting ? 'Creating Account...' : 'Create Account'}
-            </Text>
-          </Pressable>
-
-          <View style={styles.footerRow}>
-            <Text style={styles.footerText}>Already have an account? </Text>
-            <Pressable onPress={() => router.replace('/login')}>
-              <Text style={styles.linkText}>Back to Login</Text>
-            </Pressable>
-          </View>
-        </View>
-      </ScrollView>
-    </View>
+      <View style={styles.footerRow}>
+        <Text style={styles.footerText}>Already have an account? </Text>
+        <Pressable onPress={() => router.replace('/login')}>
+          <Text style={styles.linkText}>Sign In</Text>
+        </Pressable>
+      </View>
+    </AuthScreenLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F7F9FC',
-  },
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    padding: 24,
-  },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 24,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3,
-  },
   title: {
-    fontSize: 28,
-    fontWeight: '800',
-    marginBottom: 8,
-    color: '#111827',
+    fontSize: 26,
+    fontWeight: '700',
+    color: '#111C2C',
+    marginBottom: 4,
+    letterSpacing: -0.3,
   },
   subtitle: {
     fontSize: 14,
@@ -145,21 +123,14 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     lineHeight: 20,
   },
-  input: {
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    marginBottom: 12,
-    backgroundColor: '#FFFFFF',
+  form: {
+    marginBottom: 8,
   },
   button: {
-    backgroundColor: '#111827',
-    paddingVertical: 14,
+    backgroundColor: '#006A69',
+    paddingVertical: 15,
     borderRadius: 12,
     alignItems: 'center',
-    marginTop: 4,
   },
   buttonDisabled: {
     opacity: 0.6,
@@ -168,11 +139,12 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 16,
+    letterSpacing: 0.2,
   },
   footerRow: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginTop: 18,
+    marginTop: 20,
     flexWrap: 'wrap',
   },
   footerText: {
@@ -180,7 +152,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   linkText: {
-    color: '#2563EB',
+    color: '#006A69',
     fontSize: 14,
     fontWeight: '700',
   },
