@@ -261,4 +261,25 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: theme.colors.textSecondary,
   },
+  selectorChip: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: theme.radius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+  },
+  selectorChipSelected: {
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
+  },
+  selectorChipText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: theme.colors.text,
+  },
+  selectorChipTextSelected: {
+    color: '#FFFFFF',
+  },
 });

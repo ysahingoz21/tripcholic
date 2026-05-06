@@ -169,6 +169,7 @@ export type CreateTripPayload = {
   budgetTl?: number;
   maxWalkingDistanceKm?: number;
   maxStops?: number;
+  weather?: 'clear' | 'cloudy' | 'rainy';
 };
 
 export type UpdateTripPayload = {
