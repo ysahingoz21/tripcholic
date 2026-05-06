@@ -17,10 +17,12 @@ import { resolve } from 'node:path';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 
+const DATASET_FILE_NAME = 'istanbul_poi_full_final_no_images.csv';
+
 const DATASET_PATH_CANDIDATES = [
-  resolve(process.cwd(), '../../data/istanbul_poi_dataset.csv'),
-  resolve(process.cwd(), '../data/istanbul_poi_dataset.csv'),
-  resolve(process.cwd(), 'data/istanbul_poi_dataset.csv'),
+  resolve(process.cwd(), `../../data/${DATASET_FILE_NAME}`),
+  resolve(process.cwd(), `../data/${DATASET_FILE_NAME}`),
+  resolve(process.cwd(), `data/${DATASET_FILE_NAME}`),
 ];
 
 // ── UUID5 ─────────────────────────────────────────────────────────────────────
@@ -44,6 +46,39 @@ function poiUuid(name: string): string {
 
 // ── CSV parsing ───────────────────────────────────────────────────────────────
 
+function parseCsvLine(line: string): string[] {
+  const values: string[] = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    const nextChar = line[i + 1];
+
+    if (char === '"' && inQuotes && nextChar === '"') {
+      current += '"';
+      i++;
+      continue;
+    }
+
+    if (char === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+
+    if (char === ',' && !inQuotes) {
+      values.push(current.trim());
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  values.push(current.trim());
+  return values;
+}
+
 async function readCsv(filePath: string): Promise<Record<string, string>[]> {
   return new Promise((res, rej) => {
     const rl = createInterface({
@@ -60,12 +95,12 @@ async function readCsv(filePath: string): Promise<Record<string, string>[]> {
       if (!trimmed) return;
 
       if (firstLine) {
-        headers = trimmed.split(',').map((h) => h.trim());
+        headers = parseCsvLine(trimmed).map((h) => h.trim());
         firstLine = false;
         return;
       }
 
-      const values = trimmed.split(',');
+      const values = parseCsvLine(trimmed);
       const row: Record<string, string> = {};
       headers.forEach((header, i) => {
         row[header] = (values[i] ?? '').trim();
@@ -125,11 +160,14 @@ const BUDGET_RANGE_MAP: Record<
 type CsvPoiRow = {
   name: string;
   category: string;
+  district?: string;
+  address?: string;
   lat: string;
   lng: string;
   avg_duration_min: string;
   budget: string;
-  opening_hours: string;
+  opening_hours?: string;
+  available_hours?: string;
 };
 
 function parseCategory(raw: string): string {
@@ -180,7 +218,8 @@ function parseIntField(raw: string, fieldName: string): number {
 }
 
 function mapCsvRowToPoi(row: CsvPoiRow) {
-  const hours = parseOpeningHours(row.opening_hours);
+  const hoursRaw = row.available_hours ?? row.opening_hours ?? '';
+  const hours = parseOpeningHours(hoursRaw);
   const costs = parseBudgetRange(row.budget);
 
   return {
@@ -188,10 +227,10 @@ function mapCsvRowToPoi(row: CsvPoiRow) {
     name: row.name,
     category: parseCategory(row.category) as never,
     description: null,
-    district: null,
-    address: null,
+    district: row.district || null,
+    address: row.address || null,
     imageUrl: null,
-    source: 'istanbul_poi_dataset.csv',
+    source: DATASET_FILE_NAME,
     lat: parseFloatField(row.lat, 'lat'),
     lng: parseFloatField(row.lng, 'lng'),
     avgDurationMin: parseIntField(row.avg_duration_min, 'avg_duration_min'),
