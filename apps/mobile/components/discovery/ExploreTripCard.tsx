@@ -1,49 +1,118 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
-import Artwork from '@/components/ui/Artwork';
-import { type TripPreview } from '@/services/trips';
+import { useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { Image } from "expo-image";
+import Artwork from "@/components/ui/Artwork";
+import { theme } from "@/constants/theme";
+import { font } from "@/constants/typography";
+import {
+  likePublicTrip,
+  unlikePublicTrip,
+  savePublicTrip,
+  unsavePublicTrip,
+} from "@/services/publicTrips";
+import { type TripPreview } from "@/services/trips";
 
 type Props = {
+  tripId: string;
   title: string;
+  categories: string[];
   preview: TripPreview;
   creatorName: string | null;
   dateLabel?: string;
-  /** Badge text shown top-right (e.g. "For You" or "Public") */
-  badgeLabel?: string;
-  /** Controls badge color — For You gets teal tint, public gets glass */
-  isForYou?: boolean;
-  /** Optional recommendation rationale line (For You only) */
-  recommendationLine?: string;
+  token: string | null;
   onPress: () => void;
 };
 
-function formatCreator(name: string | null) {
-  return name?.trim() || 'Tripcholic traveler';
+function getInitials(name: string | null): string {
+  if (!name?.trim()) return "T";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return name[0].toUpperCase();
 }
 
-function formatCategory(cat: string | null) {
-  if (!cat) return null;
-  return cat.charAt(0).toUpperCase() + cat.slice(1);
+function formatCreator(name: string | null) {
+  return name?.trim() || "Tripcholic traveler";
+}
+
+function cap(s: string) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 export default function ExploreTripCard({
+  tripId,
   title,
+  categories,
   preview,
   creatorName,
   dateLabel,
-  badgeLabel,
-  isForYou,
-  recommendationLine,
+  token,
   onPress,
 }: Props) {
   const imageUrl = preview.imageUrl?.trim() || null;
-  const category = formatCategory(preview.primaryCategory ?? null);
+  const stopCount = preview.stopCount ?? 0;
+  const districtLabel = preview.districtLabel;
+
+  const [liked, setLiked] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [likeCount, setLikeCount] = useState(0);
+  const [saveCount, setSaveCount] = useState(0);
+
+  const handleLike = async () => {
+    if (!token) {
+      onPress();
+      return;
+    }
+    const prev = liked;
+    const prevCount = likeCount;
+    setLiked(!prev);
+    setLikeCount(prev ? prevCount - 1 : prevCount + 1);
+    try {
+      if (prev) {
+        await unlikePublicTrip(tripId, token);
+      } else {
+        await likePublicTrip(tripId, token);
+      }
+    } catch {
+      setLiked(prev);
+      setLikeCount(prevCount);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!token) {
+      onPress();
+      return;
+    }
+    const prev = saved;
+    const prevCount = saveCount;
+    setSaved(!prev);
+    setSaveCount(prev ? prevCount - 1 : prevCount + 1);
+    try {
+      if (prev) {
+        await unsavePublicTrip(tripId, token);
+      } else {
+        await savePublicTrip(tripId, token);
+      }
+    } catch {
+      setSaved(prev);
+      setSaveCount(prevCount);
+    }
+  };
+
+  const categoryLine = Array.from(
+    new Set([preview.primaryCategory, ...categories].filter(Boolean)),
+  )
+    .map((c) => cap(c!))
+    .join(", ");
 
   return (
-    <Pressable style={styles.card} onPress={onPress}>
-      <View style={styles.imageArea}>
-        {/* Background: real image or branded placeholder */}
+    <Pressable
+      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+      onPress={onPress}
+    >
+      {/* Full-bleed image */}
+      <View style={styles.cardImageWrap}>
         {imageUrl ? (
           <Image
             source={{ uri: imageUrl }}
@@ -54,101 +123,126 @@ export default function ExploreTripCard({
         ) : (
           <Artwork kind="trip" variant="cover" label={title} />
         )}
+      </View>
 
-        {/* Gradient simulation — dark scrim over bottom 70% */}
-        <View style={styles.scrimBottom} />
+      {/* Depth scrim from bottom */}
+      <View style={styles.cardScrim} />
 
-        {/* Creator badge — top left */}
-        <View style={styles.creatorBadge}>
-          <Ionicons
-            name="person-outline"
-            size={11}
-            color="rgba(255,255,255,0.85)"
-          />
+      {/* ── Top row: creator block + 3-dots menu ── */}
+      <View style={styles.cardTopRow}>
+        <View style={styles.creatorBlock}>
+          <View style={styles.creatorAvatar}>
+            <Text style={styles.creatorAvatarText}>
+              {getInitials(creatorName)}
+            </Text>
+          </View>
           <Text style={styles.creatorName} numberOfLines={1}>
             {formatCreator(creatorName)}
           </Text>
         </View>
 
-        {/* Type badge — top right */}
-        {badgeLabel ? (
-          <View style={[styles.typeBadge, isForYou && styles.typeBadgeForYou]}>
-            {isForYou && (
-              <Ionicons name="sparkles" size={9} color="#00504F" />
+        <View style={styles.menuButton}>
+          <Ionicons
+            name="ellipsis-horizontal"
+            size={16}
+            color="rgba(255,255,255,0.9)"
+          />
+        </View>
+      </View>
+
+      {/* ── Bottom content panel ── */}
+      <View style={styles.cardBottom}>
+        <Text style={styles.cardTitle} numberOfLines={2}>
+          {title}
+        </Text>
+
+        {/* Date + stops + district */}
+        {dateLabel || stopCount > 0 || districtLabel ? (
+          <View style={styles.cardMeta}>
+            {dateLabel && (
+              <>
+                <Ionicons
+                  name="calendar-outline"
+                  size={12}
+                  color="rgba(255,255,255,0.75)"
+                />
+                <Text style={styles.cardMetaText}>{dateLabel}</Text>
+              </>
             )}
-            <Text
-              style={[
-                styles.typeBadgeText,
-                isForYou && styles.typeBadgeTextForYou,
-              ]}
-            >
-              {badgeLabel}
-            </Text>
+            {dateLabel && (stopCount > 0 || districtLabel) && (
+              <Text style={styles.cardMetaDot}>·</Text>
+            )}
+            {stopCount > 0 && (
+              <>
+                <Ionicons
+                  name="location-outline"
+                  size={12}
+                  color="rgba(255,255,255,0.75)"
+                />
+                <Text style={styles.cardMetaText}>
+                  {stopCount} {stopCount === 1 ? "stop" : "stops"}
+                </Text>
+              </>
+            )}
+            {stopCount > 0 && districtLabel && (
+              <Text style={styles.cardMetaDot}>·</Text>
+            )}
+            {districtLabel && (
+              <Text style={styles.cardMetaText} numberOfLines={1}>
+                {districtLabel}
+              </Text>
+            )}
           </View>
         ) : null}
 
-        {/* Bottom content area */}
-        <View style={styles.bottomContent}>
-          {/* Chips */}
-          {(category || dateLabel) && (
-            <View style={styles.chipsRow}>
-              {category && (
-                <View style={styles.categoryChip}>
-                  <Text style={styles.categoryChipText}>{category}</Text>
-                </View>
-              )}
-              {dateLabel && (
-                <View style={styles.dateChip}>
-                  <Ionicons
-                    name="calendar-outline"
-                    size={9}
-                    color="rgba(255,255,255,0.8)"
-                  />
-                  <Text style={styles.dateChipText}>{dateLabel}</Text>
-                </View>
-              )}
-            </View>
-          )}
-
-          {/* Title */}
-          <Text style={styles.title} numberOfLines={3}>
-            {title}
+        {/* Category line */}
+        {categoryLine ? (
+          <Text style={styles.cardCategoryLine} numberOfLines={1}>
+            {categoryLine}
           </Text>
+        ) : null}
 
-          {/* Recommendation line */}
-          {recommendationLine ? (
-            <View style={styles.recRow}>
+        {/* Footer: engagement icons + open button */}
+        <View style={styles.cardFooter}>
+          <View style={styles.engagementRow}>
+            <Pressable
+              style={styles.engagementItem}
+              onPress={handleLike}
+              hitSlop={8}
+            >
               <Ionicons
-                name="sparkles-outline"
-                size={11}
-                color="rgba(125,245,244,0.9)"
+                name={liked ? "heart" : "heart-outline"}
+                size={19}
+                color="#FFFFFF"
               />
-              <Text style={styles.recText} numberOfLines={2}>
-                {recommendationLine}
-              </Text>
-            </View>
-          ) : null}
-
-          {/* Footer: district + open button */}
-          <View style={styles.footer}>
-            {preview.districtLabel ? (
-              <View style={styles.districtRow}>
-                <Ionicons
-                  name="location-outline"
-                  size={11}
-                  color="rgba(255,255,255,0.6)"
-                />
-                <Text style={styles.districtText} numberOfLines={1}>
-                  {preview.districtLabel}
-                </Text>
-              </View>
-            ) : (
-              <View />
-            )}
-            <View style={styles.openButton}>
-              <Ionicons name="arrow-forward" size={14} color="#006A69" />
-            </View>
+              <Text style={styles.engagementCount}>{likeCount}</Text>
+            </Pressable>
+            <Pressable
+              style={styles.engagementItem}
+              onPress={onPress}
+              hitSlop={8}
+            >
+              <Ionicons name="chatbubble-outline" size={18} color="#FFFFFF" />
+              <Text style={styles.engagementCount}>0</Text>
+            </Pressable>
+            <Pressable
+              style={styles.engagementItem}
+              onPress={handleSave}
+              hitSlop={8}
+            >
+              <Ionicons
+                name={saved ? "bookmark" : "bookmark-outline"}
+                size={18}
+                color="#FFFFFF"
+              />
+              <Text style={styles.engagementCount}>{saveCount}</Text>
+            </Pressable>
           </View>
+
+          {/* Open button */}
+          <Pressable style={styles.openButton} onPress={onPress}>
+            <Ionicons name="arrow-forward" size={17} color="#FFFFFF" />
+          </Pressable>
         </View>
       </View>
     </Pressable>
@@ -157,155 +251,165 @@ export default function ExploreTripCard({
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 20,
-    overflow: 'hidden',
-    shadowColor: '#0B3B4A',
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
+    height: 460,
+    borderRadius: 24,
+    overflow: "hidden",
+    shadowColor: theme.colors.primaryDark,
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 5,
   },
-  imageArea: {
-    height: 340,
-    backgroundColor: '#DFF7F6',
+  cardPressed: {
+    opacity: 0.93,
   },
 
-  // Gradient simulation
-  scrimBottom: {
-    position: 'absolute',
+  cardImageWrap: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "#DFF7F6",
+  },
+
+  cardScrim: {
+    position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-    height: '72%',
-    backgroundColor: 'rgba(11,36,48,0.84)',
+    height: "36%",
+    backgroundColor: "rgba(11,36,48,0.62)",
   },
 
-  // Creator badge
-  creatorBadge: {
-    position: 'absolute',
+  // ── Top row ──
+  cardTopRow: {
+    position: "absolute",
     top: 14,
     left: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: 'rgba(0,0,0,0.32)',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    maxWidth: 180,
+    right: 14,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+
+  // Creator block
+  creatorBlock: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(0,0,0,0.38)",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    maxWidth: 220,
+    flexShrink: 1,
+  },
+  creatorAvatar: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: theme.colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  creatorAvatarText: {
+    fontFamily: font.bold,
+    fontSize: 10,
+    color: "#FFFFFF",
+    letterSpacing: 0.3,
   },
   creatorName: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.9)',
+    fontFamily: font.semiBold,
+    fontSize: 13,
+    color: "rgba(255,255,255,0.92)",
+    flexShrink: 1,
   },
 
-  // Type badge
-  typeBadge: {
-    position: 'absolute',
-    top: 14,
-    right: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  typeBadgeForYou: {
-    backgroundColor: '#DFF7F6',
-  },
-  typeBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-    color: 'rgba(255,255,255,0.9)',
-  },
-  typeBadgeTextForYou: {
-    color: '#00504F',
+  // 3-dots menu button
+  menuButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: "rgba(0,0,0,0.38)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
   },
 
-  // Bottom content
-  bottomContent: {
-    position: 'absolute',
+  // ── Bottom content ──
+  cardBottom: {
+    position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
     padding: 16,
-    gap: 8,
-  },
-  chipsRow: {
-    flexDirection: 'row',
+    paddingBottom: 18,
     gap: 6,
   },
-  categoryChip: {
-    backgroundColor: 'rgba(223,247,246,0.88)',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  categoryChipText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#00504F',
-    letterSpacing: 0.3,
-  },
-  dateChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  dateChipText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.85)',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    lineHeight: 30,
+  cardTitle: {
+    fontFamily: font.bold,
+    fontSize: 22,
+    lineHeight: 28,
+    color: "#FFFFFF",
     letterSpacing: -0.3,
   },
-  recRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+  cardMeta: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: 5,
+    flexWrap: "wrap",
   },
-  recText: {
-    flex: 1,
+  cardMetaText: {
+    fontFamily: font.medium,
+    fontSize: 13,
+    color: "rgba(255,255,255,0.8)",
+  },
+  cardMetaDot: {
+    fontFamily: font.regular,
+    fontSize: 13,
+    color: "rgba(255,255,255,0.5)",
+  },
+  cardCategoryLine: {
+    fontFamily: font.regular,
     fontSize: 12,
-    lineHeight: 17,
-    color: 'rgba(125,245,244,0.9)',
-    fontWeight: '500',
+    color: "rgba(255,255,255,0.55)",
+    letterSpacing: 0.1,
   },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 2,
+
+  // Footer row
+  cardFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 4,
   },
-  districtRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  engagementRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
+  },
+  engagementItem: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: 4,
-    flex: 1,
   },
-  districtText: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.6)',
+  engagementCount: {
+    fontFamily: font.medium,
+    fontSize: 13,
+    color: "#FFFFFF",
   },
+
+  // Open trip button
   openButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#DFF7F6',
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.16)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.28)",
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

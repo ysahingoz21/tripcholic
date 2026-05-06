@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -20,6 +20,7 @@ import {
   type ExplorePromptId,
 } from '@/constants/explorePrompts';
 import { theme } from '@/constants/theme';
+import { type, font } from '@/constants/typography';
 import { useAuth } from '@/context/AuthContext';
 import {
   getForYouPublicTrips,
@@ -33,12 +34,15 @@ import {
   type ExploreWeather,
 } from '@/services/trips';
 
-// ── Types ──────────────────────────────────────────────────────────────────
+const H_PAD = 20;
+
+// ── Types ───────────────────────────────────────────────────────────────────
 
 type ExploreMode = 'explore' | 'for-you' | 'swipe';
 type BudgetFilter = 'any' | 'under-2000' | '2000-6000' | '6000-plus';
+type ExploreSortMode = 'default' | 'title-az' | 'title-za' | 'budget-low' | 'budget-high';
 
-// ── Budget helpers ─────────────────────────────────────────────────────────
+// ── Budget helpers ──────────────────────────────────────────────────────────
 
 const BUDGET_OPTIONS: {
   value: BudgetFilter;
@@ -47,26 +51,47 @@ const BUDGET_OPTIONS: {
   budgetMaxTl?: number;
 }[] = [
   { value: 'any', label: 'Any budget' },
-  { value: 'under-2000', label: 'Budget  ≤₺2K', budgetMaxTl: 2000 },
-  {
-    value: '2000-6000',
-    label: '₺2K – ₺6K',
-    budgetMinTl: 2000,
-    budgetMaxTl: 6000,
-  },
-  { value: '6000-plus', label: 'Premium  ₺6K+', budgetMinTl: 6000 },
+  { value: 'under-2000', label: '≤ ₺2K', budgetMaxTl: 2000 },
+  { value: '2000-6000', label: '₺2K – ₺6K', budgetMinTl: 2000, budgetMaxTl: 6000 },
+  { value: '6000-plus', label: '₺6K+', budgetMinTl: 6000 },
 ];
+
+const EXPLORE_SORT_MODES: { mode: ExploreSortMode; label: string }[] = [
+  { mode: 'default', label: 'Relevance' },
+  { mode: 'title-az', label: 'Title A→Z' },
+  { mode: 'title-za', label: 'Title Z→A' },
+  { mode: 'budget-low', label: 'Budget: Low' },
+  { mode: 'budget-high', label: 'Budget: High' },
+];
+
+function formatOptimizedDate(optimizedAt: string | null | undefined): string | undefined {
+  if (!optimizedAt) return undefined;
+  const d = new Date(optimizedAt);
+  if (isNaN(d.getTime())) return undefined;
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
 
 function getBudgetQuery(value: BudgetFilter) {
   return BUDGET_OPTIONS.find((o) => o.value === value) ?? BUDGET_OPTIONS[0];
 }
 
-function getBudgetFilterForPrompt(prompt: ExplorePromptDefinition): BudgetFilter {
-  if (prompt.filters.budgetMinTl === 2000 && prompt.filters.budgetMaxTl === 6000)
+function getBudgetFilterForPrompt(
+  prompt: ExplorePromptDefinition
+): BudgetFilter {
+  if (
+    prompt.filters.budgetMinTl === 2000 &&
+    prompt.filters.budgetMaxTl === 6000
+  )
     return '2000-6000';
-  if (prompt.filters.budgetMinTl === 6000 && prompt.filters.budgetMaxTl === undefined)
+  if (
+    prompt.filters.budgetMinTl === 6000 &&
+    prompt.filters.budgetMaxTl === undefined
+  )
     return '6000-plus';
-  if (prompt.filters.budgetMinTl === undefined && prompt.filters.budgetMaxTl === 2000)
+  if (
+    prompt.filters.budgetMinTl === undefined &&
+    prompt.filters.budgetMaxTl === 2000
+  )
     return 'under-2000';
   return 'any';
 }
@@ -89,44 +114,37 @@ function promptStillMatchesState(
   const matchesBudgetMax =
     prompt.filters.budgetMaxTl === undefined ||
     prompt.filters.budgetMaxTl === selectedBudgetQuery.budgetMaxTl;
-  return matchesCategory && matchesWeather && matchesBudgetMin && matchesBudgetMax;
+  return (
+    matchesCategory && matchesWeather && matchesBudgetMin && matchesBudgetMax
+  );
 }
 
-// ── Display helpers ────────────────────────────────────────────────────────
-
-function formatShortDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-  });
-}
-
-function formatCreatorName(name: string | null) {
-  return name?.trim() || 'Tripcholic traveler';
-}
-
-// ── Main Screen ───────────────────────────────────────────────────────────
+// ── Main Screen ────────────────────────────────────────────────────────────
 
 export default function ExploreScreen() {
   const router = useRouter();
   const { token, isLoading: isAuthLoading } = useAuth();
-  const initialModeResolvedRef = useRef(false);
 
   const [mode, setMode] = useState<ExploreMode>('explore');
 
   // ── Explore state ──
   const [searchInput, setSearchInput] = useState('');
   const [appliedQuery, setAppliedQuery] = useState('');
-  const [activePromptId, setActivePromptId] = useState<ExplorePromptId | null>(null);
+  const [activePromptId, setActivePromptId] =
+    useState<ExplorePromptId | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [selectedWeather, setSelectedWeather] = useState<ExploreWeather | null>(null);
+  const [selectedWeather, setSelectedWeather] =
+    useState<ExploreWeather | null>(null);
   const [selectedBudget, setSelectedBudget] = useState<BudgetFilter>('any');
-  const [exploreData, setExploreData] = useState<ExploreTripsResponse | null>(null);
+  const [exploreSortIdx, setExploreSortIdx] = useState(0);
+  const [exploreData, setExploreData] =
+    useState<ExploreTripsResponse | null>(null);
   const [isExploreLoading, setIsExploreLoading] = useState(true);
   const [exploreError, setExploreError] = useState<string | null>(null);
 
   // ── For You state ──
-  const [forYouData, setForYouData] = useState<ForYouTripsResponse | null>(null);
+  const [forYouData, setForYouData] =
+    useState<ForYouTripsResponse | null>(null);
   const [isForYouLoading, setIsForYouLoading] = useState(true);
   const [forYouError, setForYouError] = useState<string | null>(null);
 
@@ -142,14 +160,6 @@ export default function ExploreScreen() {
         : (EXPLORE_PROMPTS.find((p) => p.id === activePromptId) ?? null),
     [activePromptId]
   );
-
-  // ── Auth-based mode default ──
-  useEffect(() => {
-    if (!initialModeResolvedRef.current && !isAuthLoading) {
-      setMode(token ? 'for-you' : 'explore');
-      initialModeResolvedRef.current = true;
-    }
-  }, [isAuthLoading, token]);
 
   // ── Auto-clear prompt when filters diverge ──
   useEffect(() => {
@@ -188,7 +198,12 @@ export default function ExploreScreen() {
     } finally {
       setIsExploreLoading(false);
     }
-  }, [appliedQuery, selectedBudgetQuery, selectedCategory, selectedWeather]);
+  }, [
+    appliedQuery,
+    selectedBudgetQuery,
+    selectedCategory,
+    selectedWeather,
+  ]);
 
   const loadForYouTrips = useCallback(async () => {
     if (isAuthLoading) return;
@@ -205,7 +220,9 @@ export default function ExploreScreen() {
       setForYouData(data);
     } catch (err) {
       setForYouError(
-        err instanceof Error ? err.message : 'Unable to load personalized trips.'
+        err instanceof Error
+          ? err.message
+          : 'Unable to load personalized trips.'
       );
       setForYouData(null);
     } finally {
@@ -267,36 +284,38 @@ export default function ExploreScreen() {
     setSelectedCategory(null);
     setSelectedWeather(null);
     setSelectedBudget('any');
+    setExploreSortIdx(0);
   };
 
   const availableCategories = exploreData?.meta.availableCategories ?? [];
   const exploreItems = exploreData?.items ?? [];
   const forYouItems = forYouData?.items ?? [];
 
+  const hasActiveFilters =
+    !!activePromptId ||
+    !!selectedCategory ||
+    selectedBudget !== 'any' ||
+    !!searchInput.trim() ||
+    exploreSortIdx !== 0;
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-      {/* ─── Header ─── */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.eyebrow}>ISTANBUL</Text>
-          <Text style={styles.title}>Discover</Text>
-        </View>
-
-        {/* 3-way tab pill */}
-        <View style={styles.tabPill}>
-          <TabButton
+    <SafeAreaView style={styles.safe} edges={['left', 'right']}>
+      {/* ─── Mode switch (centered, full-width) ─── */}
+      <View style={styles.modeArea}>
+        <View style={styles.modeSwitch}>
+          <ModeTab
             label="Explore"
             active={mode === 'explore'}
             onPress={() => setMode('explore')}
           />
-          <TabButton
+          <ModeTab
             label="For You"
             active={mode === 'for-you'}
             onPress={() => setMode('for-you')}
           />
-          <TabButton
+          <ModeTab
             label="Swipe"
             active={mode === 'swipe'}
             onPress={() => setMode('swipe')}
@@ -304,7 +323,7 @@ export default function ExploreScreen() {
         </View>
       </View>
 
-      {/* ─── Swipe mode (no ScrollView — deck takes full height) ─── */}
+      {/* ─── Swipe mode fills full height ─── */}
       {mode === 'swipe' ? (
         <InlineSwipePanel token={token} isAuthLoading={isAuthLoading} />
       ) : (
@@ -320,6 +339,7 @@ export default function ExploreScreen() {
               onSearchChange={setSearchInput}
               onApplySearch={handleApplySearch}
               onReset={handleReset}
+              hasActiveFilters={hasActiveFilters}
               activePromptId={activePromptId}
               activePrompt={activePrompt}
               onPromptPress={handlePromptPress}
@@ -327,12 +347,15 @@ export default function ExploreScreen() {
               onCategoryChange={setSelectedCategory}
               selectedBudget={selectedBudget}
               onBudgetChange={setSelectedBudget}
+              sortModeIdx={exploreSortIdx}
+              onSortChange={setExploreSortIdx}
               availableCategories={availableCategories}
               isLoading={isExploreLoading}
               error={exploreError}
               items={exploreItems}
               onRetry={() => void loadExploreTrips()}
               onTripPress={(id) => router.push(`/public-trip/${id}` as any)}
+              token={token}
             />
           ) : (
             <ForYouContent
@@ -344,6 +367,7 @@ export default function ExploreScreen() {
               onTripPress={(id) => router.push(`/public-trip/${id}` as any)}
               onSwitchToExplore={() => setMode('explore')}
               onSwitchToSwipe={() => setMode('swipe')}
+              token={token}
             />
           )}
         </ScrollView>
@@ -352,9 +376,9 @@ export default function ExploreScreen() {
   );
 }
 
-// ── Tab button ─────────────────────────────────────────────────────────────
+// ── Mode switch tab ────────────────────────────────────────────────────────
 
-function TabButton({
+function ModeTab({
   label,
   active,
   onPress,
@@ -365,10 +389,10 @@ function TabButton({
 }) {
   return (
     <Pressable
-      style={[styles.tabButton, active && styles.tabButtonActive]}
+      style={[styles.modeTab, active && styles.modeTabActive]}
       onPress={onPress}
     >
-      <Text style={[styles.tabButtonText, active && styles.tabButtonTextActive]}>
+      <Text style={[styles.modeTabText, active && styles.modeTabTextActive]}>
         {label}
       </Text>
     </Pressable>
@@ -382,6 +406,7 @@ type ExploreContentProps = {
   onSearchChange: (v: string) => void;
   onApplySearch: () => void;
   onReset: () => void;
+  hasActiveFilters: boolean;
   activePromptId: ExplorePromptId | null;
   activePrompt: ExplorePromptDefinition | null;
   onPromptPress: (p: ExplorePromptDefinition) => void;
@@ -389,12 +414,15 @@ type ExploreContentProps = {
   onCategoryChange: (c: string | null) => void;
   selectedBudget: BudgetFilter;
   onBudgetChange: (b: BudgetFilter) => void;
+  sortModeIdx: number;
+  onSortChange: (idx: number) => void;
   availableCategories: string[];
   isLoading: boolean;
   error: string | null;
   items: ExploreTripItem[];
   onRetry: () => void;
   onTripPress: (id: string) => void;
+  token: string | null;
 };
 
 function ExploreContent({
@@ -402,6 +430,7 @@ function ExploreContent({
   onSearchChange,
   onApplySearch,
   onReset,
+  hasActiveFilters,
   activePromptId,
   activePrompt,
   onPromptPress,
@@ -409,22 +438,55 @@ function ExploreContent({
   onCategoryChange,
   selectedBudget,
   onBudgetChange,
+  sortModeIdx,
+  onSortChange,
   availableCategories,
   isLoading,
   error,
   items,
   onRetry,
   onTripPress,
+  token,
 }: ExploreContentProps) {
-  const hasActiveFilters =
-    !!activePromptId ||
-    !!selectedCategory ||
-    selectedBudget !== 'any' ||
-    !!searchInput.trim();
+  const currentSort = EXPLORE_SORT_MODES[sortModeIdx];
+  const currentBudget = BUDGET_OPTIONS.find((b) => b.value === selectedBudget)!;
+
+  const sortedItems = useMemo(() => {
+    if (currentSort.mode === 'default') return items;
+    const sorted = [...items];
+    switch (currentSort.mode) {
+      case 'title-az':
+        sorted.sort((a, b) => a.title.localeCompare(b.title));
+        break;
+      case 'title-za':
+        sorted.sort((a, b) => b.title.localeCompare(a.title));
+        break;
+      case 'budget-low':
+        sorted.sort(
+          (a, b) => (a.routeTotalCostTl ?? 0) - (b.routeTotalCostTl ?? 0)
+        );
+        break;
+      case 'budget-high':
+        sorted.sort(
+          (a, b) => (b.routeTotalCostTl ?? 0) - (a.routeTotalCostTl ?? 0)
+        );
+        break;
+    }
+    return sorted;
+  }, [items, currentSort.mode]);
+
+  function cycleSortMode() {
+    onSortChange((sortModeIdx + 1) % EXPLORE_SORT_MODES.length);
+  }
+
+  function cycleBudgetFilter() {
+    const idx = BUDGET_OPTIONS.findIndex((b) => b.value === selectedBudget);
+    onBudgetChange(BUDGET_OPTIONS[(idx + 1) % BUDGET_OPTIONS.length].value);
+  }
 
   return (
     <>
-      {/* Search bar */}
+      {/* ── Search bar ── */}
       <View style={styles.searchRow}>
         <View style={styles.searchBar}>
           <Ionicons
@@ -434,7 +496,7 @@ function ExploreContent({
           />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search trips, routes, creators…"
+            placeholder="Search trips, creators…"
             placeholderTextColor={theme.colors.textSecondary}
             value={searchInput}
             onChangeText={onSearchChange}
@@ -458,17 +520,17 @@ function ExploreContent({
           )}
         </View>
         {hasActiveFilters && (
-          <Pressable style={styles.resetButton} onPress={onReset} hitSlop={8}>
+          <Pressable onPress={onReset} hitSlop={8}>
             <Text style={styles.resetText}>Reset</Text>
           </Pressable>
         )}
       </View>
 
-      {/* Mood prompts (horizontal scroll) */}
+      {/* ── Mood prompts ── */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.chipScrollContent}
+        contentContainerStyle={styles.chipRow}
         style={styles.chipScroll}
       >
         {EXPLORE_PROMPTS.map((prompt) => (
@@ -492,12 +554,12 @@ function ExploreContent({
         ))}
       </ScrollView>
 
-      {/* Category chips (only once data loaded) */}
+      {/* ── Category chips (dynamic from API) ── */}
       {availableCategories.length > 0 && (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.chipScrollContent}
+          contentContainerStyle={styles.chipRow}
           style={styles.chipScroll}
         >
           <Pressable
@@ -540,39 +602,46 @@ function ExploreContent({
         </ScrollView>
       )}
 
-      {/* Budget chips (horizontal scroll) */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.chipScrollContent}
-        style={[styles.chipScroll, styles.chipScrollLast]}
-      >
-        {BUDGET_OPTIONS.map((opt) => (
-          <Pressable
-            key={opt.value}
+      {/* ── Sort + Budget control row ── */}
+      <View style={styles.controlRow}>
+        <Pressable style={styles.controlPill} onPress={cycleSortMode}>
+          <Ionicons
+            name="swap-vertical-outline"
+            size={14}
+            color={theme.colors.primaryDark}
+          />
+          <Text style={styles.controlPillText}>{currentSort.label}</Text>
+        </Pressable>
+        <Pressable
+          style={[
+            styles.controlPill,
+            selectedBudget !== 'any' && styles.controlPillActive,
+          ]}
+          onPress={cycleBudgetFilter}
+        >
+          <Ionicons
+            name="wallet-outline"
+            size={14}
+            color={
+              selectedBudget !== 'any' ? '#FFFFFF' : theme.colors.primaryDark
+            }
+          />
+          <Text
             style={[
-              styles.filterChip,
-              selectedBudget === opt.value && styles.filterChipActive,
+              styles.controlPillText,
+              selectedBudget !== 'any' && styles.controlPillTextActive,
             ]}
-            onPress={() => onBudgetChange(opt.value)}
           >
-            <Text
-              style={[
-                styles.filterChipText,
-                selectedBudget === opt.value && styles.filterChipTextActive,
-              ]}
-            >
-              {opt.label}
-            </Text>
-          </Pressable>
-        ))}
-      </ScrollView>
+            {currentBudget.label}
+          </Text>
+        </Pressable>
+      </View>
 
-      {/* Active prompt banner */}
+      {/* ── Active prompt banner ── */}
       {activePrompt && (
         <View style={styles.promptBanner}>
           <View style={styles.promptBannerLeft}>
-            <Text style={styles.promptBannerLabel}>ACTIVE PROMPT</Text>
+            <Text style={styles.promptBannerLabel}>ACTIVE PRESET</Text>
             <Text style={styles.promptBannerTitle}>{activePrompt.label}</Text>
             <Text style={styles.promptBannerDesc}>
               {activePrompt.description}
@@ -588,19 +657,21 @@ function ExploreContent({
         </View>
       )}
 
-      {/* Results */}
+      {/* ── Results ── */}
       {isLoading ? (
-        <View style={styles.feedLoader}>
-          <ActivityIndicator color={theme.colors.primary} />
-          <Text style={styles.feedLoaderText}>Loading trips…</Text>
+        <View style={styles.feedState}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <Text style={styles.feedStateBody}>Loading trips…</Text>
         </View>
       ) : error ? (
         <View style={styles.feedState}>
-          <Ionicons
-            name="alert-circle-outline"
-            size={36}
-            color={theme.colors.textSecondary}
-          />
+          <View style={styles.stateIconWrap}>
+            <Ionicons
+              name="alert-circle-outline"
+              size={28}
+              color={theme.colors.primary}
+            />
+          </View>
           <Text style={styles.feedStateTitle}>Couldn't load trips</Text>
           <Text style={styles.feedStateBody}>{error}</Text>
           <Pressable style={styles.feedStateButton} onPress={onRetry}>
@@ -609,11 +680,13 @@ function ExploreContent({
         </View>
       ) : items.length === 0 ? (
         <View style={styles.feedState}>
-          <Ionicons
-            name="search-outline"
-            size={36}
-            color={theme.colors.textSecondary}
-          />
+          <View style={styles.stateIconWrap}>
+            <Ionicons
+              name="search-outline"
+              size={28}
+              color={theme.colors.primary}
+            />
+          </View>
           <Text style={styles.feedStateTitle}>No trips found</Text>
           <Text style={styles.feedStateBody}>
             Try a broader keyword or clear one of the filters.
@@ -624,15 +697,16 @@ function ExploreContent({
         </View>
       ) : (
         <View style={styles.feedList}>
-          {items.map((trip) => (
+          {sortedItems.map((trip) => (
             <ExploreTripCard
               key={trip.id}
+              tripId={trip.id}
               title={trip.title}
+              categories={trip.categories}
               preview={trip.preview}
               creatorName={trip.creator.displayName}
-              dateLabel={trip.date ? formatShortDate(trip.date) : undefined}
-              badgeLabel="Public"
-              isForYou={false}
+              dateLabel={formatOptimizedDate(trip.optimizedAt)}
+              token={token}
               onPress={() => onTripPress(trip.id)}
             />
           ))}
@@ -653,6 +727,7 @@ type ForYouContentProps = {
   onTripPress: (id: string) => void;
   onSwitchToExplore: () => void;
   onSwitchToSwipe: () => void;
+  token: string | null;
 };
 
 function ForYouContent({
@@ -664,6 +739,7 @@ function ForYouContent({
   onTripPress,
   onSwitchToExplore,
   onSwitchToSwipe,
+  token,
 }: ForYouContentProps) {
   const isColdStart = data?.meta.personalizationState === 'cold_start';
 
@@ -672,18 +748,18 @@ function ForYouContent({
       {/* Cold-start notice */}
       {isColdStart && (
         <View style={styles.coldStartBanner}>
-          <Ionicons name="sparkles-outline" size={16} color="#006A69" />
+          <Ionicons name="sparkles-outline" size={15} color={theme.colors.primary} />
           <Text style={styles.coldStartText}>
-            Still learning your taste — these start broader and improve as you
-            save, like, and complete trips.
+            Still learning your taste — results improve as you save, like, and
+            complete trips.
           </Text>
         </View>
       )}
 
-      {/* Swipe CTA */}
+      {/* Swipe mode CTA */}
       <Pressable style={styles.swipeCta} onPress={onSwitchToSwipe}>
         <View style={styles.swipeCtaIcon}>
-          <Ionicons name="swap-horizontal" size={18} color="#006A69" />
+          <Ionicons name="swap-horizontal" size={18} color={theme.colors.primary} />
         </View>
         <View style={styles.swipeCtaText}>
           <Text style={styles.swipeCtaTitle}>Try Swipe mode</Text>
@@ -691,40 +767,45 @@ function ForYouContent({
             Move through picks faster — save or pass in one swipe.
           </Text>
         </View>
-        <Ionicons name="arrow-forward" size={16} color="#006A69" />
+        <Ionicons
+          name="arrow-forward"
+          size={15}
+          color={theme.colors.textSecondary}
+        />
       </Pressable>
 
       {/* Results */}
       {isLoading ? (
-        <View style={styles.feedLoader}>
-          <ActivityIndicator color={theme.colors.primary} />
-          <Text style={styles.feedLoaderText}>Personalizing your feed…</Text>
+        <View style={styles.feedState}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <Text style={styles.feedStateBody}>Personalizing your feed…</Text>
         </View>
       ) : error ? (
         <View style={styles.feedState}>
-          <Ionicons
-            name="alert-circle-outline"
-            size={36}
-            color={theme.colors.textSecondary}
-          />
+          <View style={styles.stateIconWrap}>
+            <Ionicons
+              name="alert-circle-outline"
+              size={28}
+              color={theme.colors.primary}
+            />
+          </View>
           <Text style={styles.feedStateTitle}>For You unavailable</Text>
           <Text style={styles.feedStateBody}>{error}</Text>
           <Pressable style={styles.feedStateButton} onPress={onRetry}>
             <Text style={styles.feedStateButtonText}>Try again</Text>
           </Pressable>
-          <Pressable
-            style={styles.feedStateSecondary}
-            onPress={onSwitchToExplore}
-          >
-            <Text style={styles.feedStateSecondaryText}>
-              Switch to Explore instead
-            </Text>
+          <Pressable onPress={onSwitchToExplore} hitSlop={8}>
+            <Text style={styles.feedStateLinkText}>Switch to Explore</Text>
           </Pressable>
         </View>
       ) : items.length === 0 ? (
         <View style={styles.feedState}>
-          <View style={styles.emptyIconWrap}>
-            <Ionicons name="compass-outline" size={26} color="#006A69" />
+          <View style={styles.stateIconWrap}>
+            <Ionicons
+              name="compass-outline"
+              size={28}
+              color={theme.colors.primary}
+            />
           </View>
           <Text style={styles.feedStateTitle}>No For You picks yet</Text>
           <Text style={styles.feedStateBody}>
@@ -740,19 +821,13 @@ function ForYouContent({
           {items.map((trip) => (
             <ExploreTripCard
               key={trip.id}
+              tripId={trip.id}
               title={trip.title}
+              categories={trip.categories}
               preview={trip.preview}
               creatorName={trip.creator.displayName}
-              dateLabel={trip.date ? formatShortDate(trip.date) : undefined}
-              badgeLabel={
-                trip.recommendation.kind === 'personalized'
-                  ? 'For You'
-                  : 'Public'
-              }
-              isForYou={trip.recommendation.kind === 'personalized'}
-              recommendationLine={
-                trip.recommendation.primaryReason ?? undefined
-              }
+              dateLabel={formatOptimizedDate(trip.optimizedAt)}
+              token={token}
               onPress={() => onTripPress(trip.id)}
             />
           ))}
@@ -762,7 +837,7 @@ function ForYouContent({
   );
 }
 
-// ── Styles ─────────────────────────────────────────────────────────────────
+// ── Styles ──────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   safe: {
@@ -770,59 +845,40 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.background,
   },
 
-  // ── Header ──
-  header: {
-    paddingHorizontal: 24,
-    paddingTop: 16,
-    paddingBottom: 14,
+  // ── Mode switch ──
+  modeArea: {
+    paddingHorizontal: H_PAD,
+    paddingTop: 10,
+    paddingBottom: 10,
+  },
+  modeSwitch: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-  },
-  eyebrow: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1.8,
-    color: theme.colors.primary,
-    marginBottom: 3,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#111C2C',
-    letterSpacing: -0.4,
-  },
-
-  // ── Tab pill ──
-  tabPill: {
-    flexDirection: 'row',
-    backgroundColor: '#EBEEF0',
-    borderRadius: 999,
+    backgroundColor: '#E8ECEE',
+    borderRadius: 14,
     padding: 3,
-    alignSelf: 'flex-end',
-    marginBottom: 2,
   },
-  tabButton: {
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+  modeTab: {
+    flex: 1,
+    borderRadius: 11,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  tabButtonActive: {
-    backgroundColor: '#0B3B4A',
-    shadowColor: '#0B3B4A',
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+  modeTabActive: {
+    backgroundColor: theme.colors.primaryDark,
+    shadowColor: theme.colors.primaryDark,
+    shadowOpacity: 0.22,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
   },
-  tabButtonText: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.4,
-    color: '#64748B',
+  modeTabText: {
+    fontFamily: font.semiBold,
+    fontSize: 13,
+    color: theme.colors.textSecondary,
   },
-  tabButtonTextActive: {
-    color: '#7DF5F4',
+  modeTabTextActive: {
+    color: '#FFFFFF',
   },
 
   // ── Scroll ──
@@ -830,9 +886,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 4,
-    paddingBottom: 32,
+    paddingHorizontal: H_PAD,
+    paddingTop: 8,
+    paddingBottom: 40,
   },
 
   // ── Search ──
@@ -849,60 +905,84 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surface,
     borderWidth: 1,
     borderColor: theme.colors.border,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 8,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    gap: 10,
   },
   searchInput: {
     flex: 1,
-    fontSize: 14,
-    color: '#111C2C',
-  },
-  resetButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    fontFamily: font.regular,
+    fontSize: 15,
+    color: theme.colors.primaryDark,
+    padding: 0,
   },
   resetText: {
+    fontFamily: font.semiBold,
     fontSize: 13,
-    fontWeight: '700',
     color: theme.colors.primary,
   },
 
-  // ── Chip scrolls ──
+  // ── Chips ──
   chipScroll: {
-    marginBottom: 8,
+    marginBottom: 10,
   },
-  chipScrollLast: {
-    marginBottom: 16,
-  },
-  chipScrollContent: {
-    paddingRight: 4,
+  chipRow: {
     gap: 8,
   },
   filterChip: {
     paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
+    paddingVertical: 7,
+    borderRadius: 9999,
     backgroundColor: theme.colors.surface,
     borderWidth: 1,
     borderColor: theme.colors.border,
   },
   filterChipActive: {
-    backgroundColor: '#DFF7F6',
-    borderColor: '#006A69',
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
   },
   filterChipText: {
+    fontFamily: font.semiBold,
     fontSize: 13,
-    fontWeight: '500',
-    color: '#64748B',
+    color: theme.colors.primaryDark,
   },
   filterChipTextActive: {
-    fontWeight: '700',
-    color: '#006A69',
+    color: '#FFFFFF',
   },
 
-  // ── Prompt banner ──
+  // ── Sort + Budget control row ──
+  controlRow: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
+    marginBottom: 14,
+  },
+  controlPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: theme.colors.surface,
+    borderRadius: 9999,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+  },
+  controlPillActive: {
+    backgroundColor: theme.colors.primaryDark,
+    borderColor: theme.colors.primaryDark,
+  },
+  controlPillText: {
+    fontFamily: font.semiBold,
+    fontSize: 13,
+    color: theme.colors.primaryDark,
+  },
+  controlPillTextActive: {
+    color: '#FFFFFF',
+  },
+
+  // ── Active prompt banner ──
   promptBanner: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -912,90 +992,79 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#BEEDE7',
     padding: 14,
-    marginBottom: 16,
+    marginBottom: 14,
   },
   promptBannerLeft: {
     flex: 1,
     gap: 3,
   },
   promptBannerLabel: {
+    fontFamily: font.bold,
     fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 1,
-    color: '#006A69',
+    letterSpacing: 1.2,
+    color: theme.colors.primary,
+    textTransform: 'uppercase',
   },
   promptBannerTitle: {
+    fontFamily: font.bold,
     fontSize: 14,
-    fontWeight: '700',
-    color: '#111C2C',
+    color: theme.colors.primaryDark,
   },
   promptBannerDesc: {
-    fontSize: 12,
-    lineHeight: 18,
+    ...type.bodySm,
     color: theme.colors.textSecondary,
   },
 
   // ── Feed states ──
-  feedLoader: {
-    alignItems: 'center',
-    paddingVertical: 48,
-    gap: 10,
-  },
-  feedLoaderText: {
-    fontSize: 14,
-    color: theme.colors.textSecondary,
-  },
   feedState: {
     alignItems: 'center',
-    paddingVertical: 48,
-    paddingHorizontal: 24,
+    paddingVertical: 52,
+    paddingHorizontal: 32,
     gap: 10,
   },
-  emptyIconWrap: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+  stateIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: '#DFF7F6',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 4,
   },
   feedStateTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#111C2C',
+    fontFamily: font.bold,
+    fontSize: 18,
+    color: theme.colors.primaryDark,
     textAlign: 'center',
   },
   feedStateBody: {
-    fontSize: 14,
-    lineHeight: 21,
+    ...type.bodySm,
     color: theme.colors.textSecondary,
     textAlign: 'center',
     marginBottom: 4,
   },
   feedStateButton: {
-    backgroundColor: '#006A69',
+    backgroundColor: theme.colors.primary,
     paddingHorizontal: 22,
-    paddingVertical: 11,
-    borderRadius: 12,
-  },
-  feedStateButtonText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  feedStateSecondary: {
+    paddingVertical: 13,
+    borderRadius: 14,
     marginTop: 4,
   },
-  feedStateSecondaryText: {
+  feedStateButtonText: {
+    fontFamily: font.semiBold,
+    fontSize: 15,
+    color: '#FFFFFF',
+  },
+  feedStateLinkText: {
+    fontFamily: font.semiBold,
     fontSize: 13,
-    fontWeight: '700',
-    color: '#0B3B4A',
+    color: theme.colors.primaryDark,
+    marginTop: 4,
   },
 
   // ── Feed list ──
   feedList: {
-    gap: 16,
+    gap: 20,
   },
 
   // ── For You specifics ──
@@ -1004,26 +1073,25 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: 10,
     backgroundColor: '#F0FDFA',
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: '#BEEDE7',
-    padding: 12,
+    padding: 14,
     marginBottom: 12,
   },
   coldStartText: {
     flex: 1,
-    fontSize: 13,
-    lineHeight: 19,
+    ...type.bodySm,
     color: '#065F46',
   },
   swipeCta: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: '#DFF7F6',
+    backgroundColor: theme.colors.surface,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#BEEDE7',
+    borderColor: theme.colors.border,
     padding: 14,
     marginBottom: 16,
   },
@@ -1031,7 +1099,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(0,106,105,0.1)',
+    backgroundColor: '#DFF7F6',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1040,13 +1108,13 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   swipeCtaTitle: {
+    fontFamily: font.bold,
     fontSize: 14,
-    fontWeight: '700',
-    color: '#111C2C',
+    color: theme.colors.primaryDark,
   },
   swipeCtaSubtitle: {
-    fontSize: 12,
-    lineHeight: 17,
-    color: '#0B3B4A',
+    ...type.bodySm,
+    color: theme.colors.textSecondary,
+    lineHeight: 18,
   },
 });

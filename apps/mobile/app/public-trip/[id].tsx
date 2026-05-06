@@ -1,25 +1,28 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
-} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import Artwork from '@/components/ui/Artwork';
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { Image } from "expo-image";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import {
-  getSortedTripStops,
-  getTripStopLabel,
-} from '@/components/trip/tripMapUtils';
-import TimelineItem from '@/components/ui/TimelineItem';
-import { theme } from '@/constants/theme';
-import { useAuth } from '@/context/AuthContext';
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
+import Artwork from "@/components/ui/Artwork";
+import { getSortedTripStops } from "@/components/trip/tripMapUtils";
+import { theme } from "@/constants/theme";
+import { font } from "@/constants/typography";
+import { useAuth } from "@/context/AuthContext";
 import {
   completePublicTrip,
   createPublicTripComment,
@@ -35,77 +38,180 @@ import {
   type PublicTripComment,
   type PublicTripDetailResponse,
   type PublicTripEngagement,
-} from '@/services/publicTrips';
-import { followUser, unfollowUser } from '@/services/users';
-import TripStopsMap from '../../components/trip/TripStopsMap';
+} from "@/services/publicTrips";
+import { followUser, unfollowUser } from "@/services/users";
+import TripStopsMap from "../../components/trip/TripStopsMap";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+function getInitials(name: string | null): string {
+  if (!name?.trim()) return "T";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) {
+    return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase();
+  }
+  return (name[0] ?? "T").toUpperCase();
+}
+
 function formatCreatorName(displayName: string | null) {
-  return displayName?.trim() || 'Tripcholic traveler';
+  return displayName?.trim() || "Tripcholic traveler";
 }
 
 function formatDateLabel(value: string) {
   return new Date(value).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
+    month: "short",
+    day: "numeric",
+    year: "numeric",
   });
 }
 
-function formatCount(value: number, singular: string, plural: string) {
-  return `${value} ${value === 1 ? singular : plural}`;
-}
-
-function formatCommentTimestamp(value: string) {
+function formatCommentDate(value: string) {
   return new Date(value).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
+    month: "short",
+    day: "numeric",
+    year: "numeric",
   });
+}
+
+function capFirst(s: string) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 function isNotFoundErrorMessage(message: string) {
-  return message.toLowerCase().includes('not found');
+  return message.toLowerCase().includes("not found");
 }
 
-function buildRouteSummary(detail: PublicTripDetailResponse) {
-  const { optimization } = detail;
-  return `${optimization.stopCount} stops • ${
-    optimization.routeTotalDurationMin !== null
-      ? `${optimization.routeTotalDurationMin} min`
-      : 'duration N/A'
-  } • ${
-    optimization.routeTotalCostTl !== null
-      ? `${optimization.routeTotalCostTl} TL`
-      : 'cost N/A'
-  }`;
-}
+// ── PageHeader ────────────────────────────────────────────────────────────────
+// Back button (left) · TRIPCHOLIC wordmark (center) · initials avatar (right).
+// Handles safe-area top inset internally so SafeAreaView can skip edges: top.
 
-function buildPreferenceSummary(detail: PublicTripDetailResponse) {
-  const { trip } = detail;
-  return `Categories: ${trip.categories.join(', ') || 'None'} • Weather: ${
-    trip.weather ?? 'Not set'
-  } • Budget: ${trip.budgetTl !== null ? `${trip.budgetTl} TL` : 'Not set'}`;
-}
+function PageHeader({ onBack }: { onBack: () => void }) {
+  const insets = useSafeAreaInsets();
+  const { user } = useAuth();
 
-// ── Sub-components ────────────────────────────────────────────────────────────
-
-function HeroCard({
-  detail,
-  onBack,
-}: {
-  detail: PublicTripDetailResponse;
-  onBack: () => void;
-}) {
-  const imageUrl = detail.preview.imageUrl?.trim() || null;
-  const category = detail.preview.primaryCategory
-    ? detail.preview.primaryCategory.charAt(0).toUpperCase() +
-      detail.preview.primaryCategory.slice(1)
-    : null;
+  const initials = user?.displayName
+    ? user.displayName
+        .split(" ")
+        .map((w) => w[0] ?? "")
+        .join("")
+        .slice(0, 2)
+        .toUpperCase()
+    : (user?.email?.[0]?.toUpperCase() ?? "T");
 
   return (
-    <View style={heroStyles.card}>
+    <View style={[hdrStyles.header, { paddingTop: insets.top }]}>
+      <View style={hdrStyles.inner}>
+        <View style={hdrStyles.side}>
+          <Pressable
+            style={({ pressed }) => [
+              hdrStyles.iconBtn,
+              pressed && { opacity: 0.7 },
+            ]}
+            onPress={onBack}
+            hitSlop={8}
+          >
+            <Ionicons
+              name="arrow-back"
+              size={22}
+              color={theme.colors.primaryDark}
+            />
+          </Pressable>
+        </View>
+
+        <Text style={hdrStyles.wordmark} numberOfLines={1}>
+          TRIPCHOLIC
+        </Text>
+
+        <View style={[hdrStyles.side, hdrStyles.sideRight]}>
+          <View style={hdrStyles.avatar}>
+            <Text style={hdrStyles.avatarText}>{initials}</Text>
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+const hdrStyles = StyleSheet.create({
+  header: {
+    backgroundColor: theme.colors.surface,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.colors.border,
+  },
+  inner: {
+    height: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+  },
+  side: {
+    width: 44,
+    alignItems: "flex-start",
+    justifyContent: "center",
+  },
+  sideRight: { alignItems: "flex-end" },
+  iconBtn: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  wordmark: {
+    flex: 1,
+    textAlign: "center",
+    fontFamily: font.bold,
+    fontSize: 15,
+    letterSpacing: 3,
+    color: theme.colors.primaryDark,
+  },
+  avatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: theme.colors.primaryDark,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarText: {
+    fontFamily: font.bold,
+    fontSize: 13,
+    lineHeight: 15,
+    color: "#FFFFFF",
+  },
+});
+
+// ── HeroSection ───────────────────────────────────────────────────────────────
+
+type HeroProps = {
+  detail: PublicTripDetailResponse;
+  canToggleFollow: boolean;
+  isFollowPending: boolean;
+  onToggleFollow: () => void;
+  isOwnTrip: boolean;
+};
+
+function HeroSection({
+  detail,
+  canToggleFollow,
+  isFollowPending,
+  onToggleFollow,
+  isOwnTrip,
+}: HeroProps) {
+  const imageUrl = detail.preview.imageUrl?.trim() || null;
+
+  const categories = Array.from(
+    new Set(
+      [detail.preview.primaryCategory, ...detail.trip.categories].filter(
+        (c): c is string => Boolean(c),
+      ),
+    ),
+  ).map(capFirst);
+
+  const creatorName = formatCreatorName(detail.creator.displayName);
+  const creatorInitials = getInitials(detail.creator.displayName);
+
+  return (
+    <View style={heroStyles.container}>
       {imageUrl ? (
         <Image
           source={{ uri: imageUrl }}
@@ -119,133 +225,671 @@ function HeroCard({
 
       <View style={heroStyles.scrim} />
 
-      {/* Top overlay row: back button left, badges right */}
-      <View style={heroStyles.topRow}>
-        <Pressable style={heroStyles.backBtn} onPress={onBack}>
-          <Ionicons name="arrow-back" size={20} color="#FFFFFF" />
-        </Pressable>
-
-        <View style={heroStyles.topBadges}>
-          {category && (
-            <View style={heroStyles.categoryChip}>
-              <Text style={heroStyles.categoryText}>{category}</Text>
-            </View>
-          )}
-          <View style={heroStyles.publicBadge}>
-            <Ionicons name="globe-outline" size={10} color="#166534" />
-            <Text style={heroStyles.publicBadgeText}>Public</Text>
-          </View>
-        </View>
-      </View>
-
-      {/* Bottom content */}
       <View style={heroStyles.bottomContent}>
         <Text style={heroStyles.title} numberOfLines={3}>
           {detail.trip.title}
         </Text>
-        <Text style={heroStyles.dateText}>
-          {formatDateLabel(detail.trip.date)}
-        </Text>
+
+        {categories.length > 0 && (
+          <Text style={heroStyles.categories}>{categories.join(", ")}</Text>
+        )}
+
+        {/* Creator bar (follow inside) + trip date pill on the right */}
+        <View style={heroStyles.creatorRow}>
+          <View style={heroStyles.creatorBar}>
+            <View style={heroStyles.creatorAvatar}>
+              <Text style={heroStyles.creatorInitials}>{creatorInitials}</Text>
+            </View>
+            <View style={heroStyles.creatorInfo}>
+              <Text style={heroStyles.creatorName} numberOfLines={1}>
+                {creatorName}
+              </Text>
+              <Text style={heroStyles.creatorFollowers}>
+                {detail.creator.followerCount}{" "}
+                {detail.creator.followerCount === 1 ? "Follower" : "Followers"}
+              </Text>
+            </View>
+
+            {isOwnTrip ? (
+              <View style={heroStyles.youPill}>
+                <Text style={heroStyles.youPillText}>You</Text>
+              </View>
+            ) : canToggleFollow ? (
+              <Pressable
+                style={[
+                  heroStyles.followBtn,
+                  detail.creator.isFollowedByMe && heroStyles.followBtnActive,
+                  isFollowPending && heroStyles.followBtnDimmed,
+                ]}
+                onPress={onToggleFollow}
+                disabled={isFollowPending}
+              >
+                <Text
+                  style={[
+                    heroStyles.followBtnText,
+                    detail.creator.isFollowedByMe &&
+                      heroStyles.followBtnTextActive,
+                  ]}
+                >
+                  {isFollowPending
+                    ? "…"
+                    : detail.creator.isFollowedByMe
+                      ? "Following"
+                      : "Follow"}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+
+          <View style={heroStyles.datePill}>
+            <Text style={heroStyles.datePillText}>
+              {formatDateLabel(detail.trip.date)}
+            </Text>
+          </View>
+        </View>
       </View>
     </View>
   );
 }
 
 const heroStyles = StyleSheet.create({
-  card: {
-    aspectRatio: 3 / 2,
-    borderRadius: 0,
-    overflow: 'hidden',
-    backgroundColor: '#DFF7F6',
+  container: {
+    height: 432,
+    overflow: "hidden",
+    backgroundColor: theme.colors.primaryDark,
   },
   scrim: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-    height: '65%',
-    backgroundColor: 'rgba(11,36,48,0.82)',
-  },
-  topRow: {
-    position: 'absolute',
-    top: 14,
-    left: 14,
-    right: 14,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  backBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  topBadges: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  categoryChip: {
-    backgroundColor: 'rgba(223,247,246,0.9)',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  categoryText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#00504F',
-    letterSpacing: 0.3,
-  },
-  publicBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#E8F7EE',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  publicBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#166534',
+    height: "40%",
+    backgroundColor: "rgba(11,36,48,0.80)",
   },
   bottomContent: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
     padding: 16,
+    paddingBottom: 20,
     gap: 4,
   },
   title: {
+    fontFamily: font.bold,
     fontSize: 26,
-    fontWeight: '800',
-    color: '#FFFFFF',
     lineHeight: 32,
-    letterSpacing: -0.3,
+    color: "#FFFFFF",
+    letterSpacing: -0.4,
+    marginBottom: 4,
   },
-  dateText: {
+  categories: {
+    fontFamily: font.regular,
     fontSize: 12,
-    color: 'rgba(255,255,255,0.65)',
-    fontWeight: '500',
+    color: "rgba(255,255,255,0.50)",
+    letterSpacing: 0.1,
+  },
+  creatorRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 14,
+  },
+  creatorBar: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(0,0,0,0.42)",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    minWidth: 0,
+  },
+  creatorAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: theme.colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  creatorInitials: {
+    fontFamily: font.bold,
+    fontSize: 11,
+    color: "#FFFFFF",
+    letterSpacing: 0.3,
+  },
+  creatorInfo: {
+    flex: 1,
+    gap: 1,
+    minWidth: 0,
+  },
+  creatorName: {
+    fontFamily: font.semiBold,
+    fontSize: 13,
+    color: "rgba(255,255,255,0.92)",
+  },
+  creatorFollowers: {
+    fontFamily: font.regular,
+    fontSize: 11,
+    color: "rgba(255,255,255,0.55)",
+  },
+  followBtn: {
+    backgroundColor: theme.colors.primary,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    flexShrink: 0,
+  },
+  followBtnActive: {
+    backgroundColor: "rgba(255,255,255,0.18)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.28)",
+  },
+  followBtnDimmed: { opacity: 0.55 },
+  followBtnText: {
+    fontFamily: font.bold,
+    fontSize: 13,
+    color: "#FFFFFF",
+  },
+  followBtnTextActive: {
+    color: "rgba(255,255,255,0.85)",
+  },
+  youPill: {
+    backgroundColor: "rgba(255,255,255,0.18)",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.28)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    flexShrink: 0,
+  },
+  youPillText: {
+    fontFamily: font.bold,
+    fontSize: 13,
+    color: "rgba(255,255,255,0.85)",
+  },
+  datePill: {
+    flexShrink: 0,
+    alignItems: "flex-end",
+    justifyContent: "center",
+    minWidth: 64,
+  },
+  datePillText: {
+    fontFamily: font.medium,
+    fontSize: 11,
+    color: "rgba(255,255,255,0.65)",
+    textAlign: "right",
+    lineHeight: 16,
   },
 });
 
-// ── Screen ─────────────────────────────────────────────────────────────────────
+// ── CommentsModal ─────────────────────────────────────────────────────────────
+
+type CommentsModalProps = {
+  visible: boolean;
+  onClose: () => void;
+  comments: PublicTripComment[];
+  commentCount: number;
+  tripId: string;
+  token: string | null;
+  onCommentCreated: (
+    comments: PublicTripComment[],
+    engagement: PublicTripEngagement,
+  ) => void;
+};
+
+function CommentsModal({
+  visible,
+  onClose,
+  comments,
+  commentCount,
+  tripId,
+  token,
+  onCommentCreated,
+}: CommentsModalProps) {
+  const [input, setInput] = useState("");
+  const [isPending, setIsPending] = useState(false);
+  const [postError, setPostError] = useState<string | null>(null);
+
+  const handlePost = async () => {
+    if (!token || !input.trim() || isPending) return;
+    try {
+      setIsPending(true);
+      setPostError(null);
+      await createPublicTripComment(tripId, token, input.trim());
+      const response = await getPublicTripComments(tripId, token);
+      onCommentCreated(response.items, response.engagement);
+      setInput("");
+    } catch (err) {
+      setPostError(
+        err instanceof Error ? err.message : "Unable to post comment.",
+      );
+    } finally {
+      setIsPending(false);
+    }
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={onClose}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
+      >
+        <View style={modalStyles.container}>
+          {/* Header */}
+          <View style={modalStyles.header}>
+            <View style={modalStyles.dragHandle} />
+            <View style={modalStyles.headerRow}>
+              <Text style={modalStyles.headerTitle}>
+                Comments ({commentCount})
+              </Text>
+              <Pressable
+                style={modalStyles.closeBtn}
+                onPress={onClose}
+                hitSlop={8}
+              >
+                <Ionicons
+                  name="close"
+                  size={20}
+                  color={theme.colors.primaryDark}
+                />
+              </Pressable>
+            </View>
+          </View>
+
+          {/* Comment list */}
+          <ScrollView
+            style={modalStyles.list}
+            contentContainerStyle={modalStyles.listContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {comments.length === 0 ? (
+              <View style={modalStyles.empty}>
+                <Ionicons
+                  name="chatbubbles-outline"
+                  size={36}
+                  color={theme.colors.textSecondary}
+                />
+                <Text style={modalStyles.emptyText}>
+                  No comments yet. Be the first!
+                </Text>
+              </View>
+            ) : (
+              comments.map((comment) => (
+                <View key={comment.id} style={modalStyles.commentRow}>
+                  <View style={modalStyles.commentAvatar}>
+                    <Text style={modalStyles.commentAvatarText}>
+                      {getInitials(comment.author.displayName)}
+                    </Text>
+                  </View>
+                  <View style={modalStyles.commentCard}>
+                    <View style={modalStyles.commentMeta}>
+                      <Text style={modalStyles.commentAuthor}>
+                        {formatCreatorName(comment.author.displayName)}
+                      </Text>
+                      <Text style={modalStyles.commentDate}>
+                        {formatCommentDate(comment.createdAt)}
+                      </Text>
+                    </View>
+                    <Text style={modalStyles.commentText}>{comment.body}</Text>
+                  </View>
+                </View>
+              ))
+            )}
+          </ScrollView>
+
+          {postError ? (
+            <View style={modalStyles.errorRow}>
+              <Text style={modalStyles.errorText}>{postError}</Text>
+            </View>
+          ) : null}
+
+          {/* Composer */}
+          <View style={modalStyles.composer}>
+            <TextInput
+              style={modalStyles.composerInput}
+              placeholder="Add a comment…"
+              placeholderTextColor={theme.colors.textSecondary}
+              value={input}
+              onChangeText={setInput}
+              multiline
+              textAlignVertical="top"
+            />
+            <Pressable
+              style={[
+                modalStyles.postBtn,
+                (!input.trim() || isPending) && modalStyles.postBtnDisabled,
+              ]}
+              onPress={() => void handlePost()}
+              disabled={!input.trim() || isPending}
+            >
+              <Ionicons name="send" size={17} color="#FFFFFF" />
+            </Pressable>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+const modalStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+  },
+  header: {
+    backgroundColor: theme.colors.surface,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.colors.border,
+    paddingTop: 12,
+    paddingHorizontal: 20,
+    paddingBottom: 14,
+  },
+  dragHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#CBD5E1",
+    alignSelf: "center",
+    marginBottom: 12,
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  headerTitle: {
+    flex: 1,
+    fontFamily: font.bold,
+    fontSize: 17,
+    color: theme.colors.primaryDark,
+  },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#F1F5F9",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  list: { flex: 1 },
+  listContent: {
+    paddingHorizontal: 20,
+    paddingVertical: 4,
+    paddingBottom: 16,
+  },
+  empty: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 56,
+    gap: 12,
+  },
+  emptyText: {
+    fontFamily: font.regular,
+    fontSize: 14,
+    color: theme.colors.textSecondary,
+    textAlign: "center",
+  },
+  commentRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    paddingVertical: 7,
+  },
+  commentAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: theme.colors.primaryDark,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    marginTop: 2,
+  },
+  commentAvatarText: {
+    fontFamily: font.bold,
+    fontSize: 12,
+    color: "#FFFFFF",
+  },
+  commentCard: {
+    flex: 1,
+    backgroundColor: "#F1F5F9",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 4,
+  },
+  commentMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  commentAuthor: {
+    fontFamily: font.semiBold,
+    fontSize: 13,
+    color: theme.colors.primaryDark,
+  },
+  commentDate: {
+    fontFamily: font.regular,
+    fontSize: 12,
+    color: theme.colors.textSecondary,
+  },
+  commentText: {
+    fontFamily: font.regular,
+    fontSize: 14,
+    lineHeight: 21,
+    color: "#334155",
+  },
+  errorRow: {
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    backgroundColor: "#FFF7ED",
+  },
+  errorText: {
+    fontFamily: font.regular,
+    fontSize: 13,
+    color: "#9A3412",
+  },
+  composer: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingBottom: 24,
+    backgroundColor: theme.colors.surface,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: theme.colors.border,
+  },
+  composerInput: {
+    flex: 1,
+    minHeight: 44,
+    maxHeight: 120,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: 22,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    fontFamily: font.regular,
+    fontSize: 14,
+    color: theme.colors.primaryDark,
+    backgroundColor: "#F8FAFC",
+  },
+  postBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: theme.colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  postBtnDisabled: { opacity: 0.45 },
+});
+
+// ── NewTimelineItem ───────────────────────────────────────────────────────────
+// Left column: continuous teal line + circular marker dot.
+// Right card: time in green · category badge · POI name · image · description.
+
+type StopData = PublicTripDetailResponse["stops"][number];
+
+function NewTimelineItem({
+  stop,
+  isLast,
+}: {
+  stop: StopData;
+  isLast: boolean;
+}) {
+  const imageUrl = stop.poi.imageUrl?.trim() || null;
+  const poiName =
+    stop.poi.title.trim() || stop.title.trim() || `Stop ${stop.order}`;
+  const description =
+    stop.poi.description?.trim() ||
+    `${capFirst(stop.poi.category)} spot${stop.poi.district ? ` in ${stop.poi.district}` : ""}.`;
+
+  return (
+    <View style={tlStyles.row}>
+      {/* Marker column */}
+      <View style={tlStyles.markerCol}>
+        <View style={tlStyles.dot}>
+          <Ionicons name="location" size={11} color="#FFFFFF" />
+        </View>
+        {!isLast && <View style={tlStyles.line} />}
+      </View>
+
+      {/* Content */}
+      <View style={[tlStyles.card, isLast && tlStyles.cardLast]}>
+        <View style={tlStyles.topRow}>
+          <Text style={tlStyles.stopTime}>{stop.arrivalTime}</Text>
+          <View style={tlStyles.categoryBadge}>
+            <Text style={tlStyles.categoryText}>
+              {capFirst(stop.poi.category)}
+            </Text>
+          </View>
+        </View>
+
+        <Text style={tlStyles.poiName} numberOfLines={2}>
+          {poiName}
+        </Text>
+
+        <Image
+          source={
+            imageUrl
+              ? { uri: imageUrl }
+              : require("../../assets/images/placeholders/default-poi.png")
+          }
+          style={tlStyles.poiImage}
+          contentFit="cover"
+          transition={150}
+        />
+
+        <Text style={tlStyles.description} numberOfLines={3}>
+          {description}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+const tlStyles = StyleSheet.create({
+  row: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+  markerCol: {
+    width: 28,
+    alignItems: "center",
+    alignSelf: "stretch",
+  },
+  dot: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: theme.colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 2,
+    flexShrink: 0,
+  },
+  line: {
+    flex: 1,
+    width: 2,
+    backgroundColor: theme.colors.primary,
+    opacity: 0.25,
+    marginTop: 4,
+  },
+  card: {
+    flex: 1,
+    paddingLeft: 14,
+    paddingBottom: 24,
+    gap: 8,
+  },
+  cardLast: { paddingBottom: 4 },
+  topRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  stopTime: {
+    fontFamily: font.semiBold,
+    fontSize: 12,
+    color: theme.colors.primary,
+    letterSpacing: 0.1,
+  },
+  categoryBadge: {
+    backgroundColor: "#DFF7F6",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  categoryText: {
+    fontFamily: font.bold,
+    fontSize: 10,
+    color: "#006A69",
+    letterSpacing: 0.2,
+  },
+  poiName: {
+    fontFamily: font.bold,
+    fontSize: 16,
+    lineHeight: 22,
+    color: theme.colors.primaryDark,
+    marginTop: -2,
+  },
+  poiImage: {
+    height: 252,
+    borderRadius: 12,
+  },
+  description: {
+    fontFamily: font.regular,
+    fontSize: 13,
+    lineHeight: 19,
+    color: theme.colors.textSecondary,
+  },
+});
+
+// ── Screen ────────────────────────────────────────────────────────────────────
 
 export default function PublicTripDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const { user, token, isLoading: isAuthLoading } = useAuth();
-  const [tripDetail, setTripDetail] = useState<PublicTripDetailResponse | null>(null);
+
+  const [tripDetail, setTripDetail] = useState<PublicTripDetailResponse | null>(
+    null,
+  );
   const [comments, setComments] = useState<PublicTripComment[]>([]);
-  const [commentInput, setCommentInput] = useState('');
-  const [engagement, setEngagement] = useState<PublicTripEngagement | null>(null);
+  const [engagement, setEngagement] = useState<PublicTripEngagement | null>(
+    null,
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [screenError, setScreenError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -253,22 +897,24 @@ export default function PublicTripDetailScreen() {
   const [isSavePending, setIsSavePending] = useState(false);
   const [isFollowPending, setIsFollowPending] = useState(false);
   const [isCompletePending, setIsCompletePending] = useState(false);
-  const [selectedFeedbackSignals, setSelectedFeedbackSignals] = useState<string[]>([]);
+  const [selectedFeedbackSignals, setSelectedFeedbackSignals] = useState<
+    string[]
+  >([]);
   const [isFeedbackPending, setIsFeedbackPending] = useState(false);
   const [isRemixPending, setIsRemixPending] = useState(false);
-  const [isCommentPending, setIsCommentPending] = useState(false);
+  const [commentsModalOpen, setCommentsModalOpen] = useState(false);
 
   const loadPublicTrip = useCallback(async () => {
     if (isAuthLoading) return;
 
     if (!token) {
-      setScreenError('Authentication required. Please sign in again.');
+      setScreenError("Authentication required. Please sign in again.");
       setIsLoading(false);
       return;
     }
 
-    if (!id || typeof id !== 'string') {
-      setScreenError('Missing public trip id.');
+    if (!id || typeof id !== "string") {
+      setScreenError("Missing public trip id.");
       setIsLoading(false);
       return;
     }
@@ -290,7 +936,7 @@ export default function PublicTripDetailScreen() {
       setScreenError(
         loadError instanceof Error
           ? loadError.message
-          : 'Unable to load public trip.'
+          : "Unable to load public trip.",
       );
     } finally {
       setIsLoading(false);
@@ -303,31 +949,43 @@ export default function PublicTripDetailScreen() {
 
   const sortedStops = useMemo(
     () => getSortedTripStops(tripDetail?.stops ?? []),
-    [tripDetail?.stops]
+    [tripDetail?.stops],
   );
+
   const creatorId = tripDetail?.creator.id ?? null;
   const isOwnCreatorTrip = creatorId !== null && creatorId === user?.id;
   const canToggleFollow = Boolean(token && creatorId && !isOwnCreatorTrip);
 
-  const handleToggleFollow = async () => {
-    if (!token || !tripDetail || !creatorId || isOwnCreatorTrip || isFollowPending) return;
+  const hasFeedbackChanges =
+    tripDetail !== null &&
+    selectedFeedbackSignals.length === tripDetail.feedback.mine.length &&
+    selectedFeedbackSignals.every((s) => tripDetail.feedback.mine.includes(s))
+      ? false
+      : true;
 
+  const handleToggleFollow = async () => {
+    if (
+      !token ||
+      !tripDetail ||
+      !creatorId ||
+      isOwnCreatorTrip ||
+      isFollowPending
+    )
+      return;
     try {
       setIsFollowPending(true);
       const response = tripDetail.creator.isFollowedByMe
         ? await unfollowUser(creatorId, token)
         : await followUser(creatorId, token);
-      setTripDetail((current) =>
-        current
-          ? { ...current, creator: { ...current.creator, ...response.creator } }
-          : current
+      setTripDetail((cur) =>
+        cur
+          ? { ...cur, creator: { ...cur.creator, ...response.creator } }
+          : cur,
       );
       setActionError(null);
-    } catch (followError) {
+    } catch (err) {
       setActionError(
-        followError instanceof Error
-          ? followError.message
-          : 'Unable to update follow state.'
+        err instanceof Error ? err.message : "Unable to update follow state.",
       );
     } finally {
       setIsFollowPending(false);
@@ -335,8 +993,8 @@ export default function PublicTripDetailScreen() {
   };
 
   const handleToggleLike = async () => {
-    if (!token || !id || typeof id !== 'string' || !engagement || isLikePending) return;
-
+    if (!token || !id || typeof id !== "string" || !engagement || isLikePending)
+      return;
     try {
       setIsLikePending(true);
       const response = engagement.likedByMe
@@ -346,7 +1004,7 @@ export default function PublicTripDetailScreen() {
       setActionError(null);
     } catch (err) {
       setActionError(
-        err instanceof Error ? err.message : 'Unable to update like.'
+        err instanceof Error ? err.message : "Unable to update like.",
       );
     } finally {
       setIsLikePending(false);
@@ -354,8 +1012,8 @@ export default function PublicTripDetailScreen() {
   };
 
   const handleToggleSave = async () => {
-    if (!token || !id || typeof id !== 'string' || !engagement || isSavePending) return;
-
+    if (!token || !id || typeof id !== "string" || !engagement || isSavePending)
+      return;
     try {
       setIsSavePending(true);
       const response = engagement.savedByMe
@@ -365,7 +1023,7 @@ export default function PublicTripDetailScreen() {
       setActionError(null);
     } catch (err) {
       setActionError(
-        err instanceof Error ? err.message : 'Unable to update saved state.'
+        err instanceof Error ? err.message : "Unable to update saved state.",
       );
     } finally {
       setIsSavePending(false);
@@ -373,32 +1031,37 @@ export default function PublicTripDetailScreen() {
   };
 
   const handleToggleCompletion = async () => {
-    if (!token || !id || typeof id !== 'string' || !engagement || isCompletePending) return;
-
+    if (
+      !token ||
+      !id ||
+      typeof id !== "string" ||
+      !engagement ||
+      isCompletePending
+    )
+      return;
     try {
       setIsCompletePending(true);
       engagement.completedByMe
         ? await uncompletePublicTrip(id, token)
         : await completePublicTrip(id, token);
-      const refreshedDetail = await getPublicTrip(id, token);
-      setTripDetail(refreshedDetail);
-      setComments(refreshedDetail.comments);
-      setEngagement(refreshedDetail.engagement);
-      setSelectedFeedbackSignals(refreshedDetail.feedback.mine);
+      const refreshed = await getPublicTrip(id, token);
+      setTripDetail(refreshed);
+      setComments(refreshed.comments);
+      setEngagement(refreshed.engagement);
+      setSelectedFeedbackSignals(refreshed.feedback.mine);
       setActionError(null);
-    } catch (completionError) {
+    } catch (err) {
       const message =
-        completionError instanceof Error
-          ? completionError.message
-          : 'Unable to update completion state.';
-
+        err instanceof Error
+          ? err.message
+          : "Unable to update completion state.";
       if (isNotFoundErrorMessage(message)) {
         setTripDetail(null);
         setComments([]);
         setEngagement(null);
         setSelectedFeedbackSignals([]);
         setScreenError(
-          'This public trip is no longer available for completion.'
+          "This public trip is no longer available for completion.",
         );
         setActionError(null);
       } else {
@@ -409,11 +1072,9 @@ export default function PublicTripDetailScreen() {
     }
   };
 
-  const handleToggleFeedbackSignal = (signalKey: string) => {
-    setSelectedFeedbackSignals((current) =>
-      current.includes(signalKey)
-        ? current.filter((s) => s !== signalKey)
-        : [...current, signalKey]
+  const handleToggleFeedbackSignal = (key: string) => {
+    setSelectedFeedbackSignals((cur) =>
+      cur.includes(key) ? cur.filter((s) => s !== key) : [...cur, key],
     );
   };
 
@@ -421,32 +1082,33 @@ export default function PublicTripDetailScreen() {
     if (
       !token ||
       !id ||
-      typeof id !== 'string' ||
+      typeof id !== "string" ||
       !tripDetail ||
       !engagement?.completedByMe ||
       isFeedbackPending
-    ) return;
-
+    )
+      return;
     try {
       setIsFeedbackPending(true);
-      const response = await updatePublicTripFeedback(id, token, selectedFeedbackSignals);
-      setTripDetail((current) =>
-        current ? { ...current, feedback: response.feedback } : current
+      const response = await updatePublicTripFeedback(
+        id,
+        token,
+        selectedFeedbackSignals,
+      );
+      setTripDetail((cur) =>
+        cur ? { ...cur, feedback: response.feedback } : cur,
       );
       setSelectedFeedbackSignals(response.feedback.mine);
       setActionError(null);
-    } catch (feedbackError) {
+    } catch (err) {
       const message =
-        feedbackError instanceof Error
-          ? feedbackError.message
-          : 'Unable to update structured feedback.';
-
+        err instanceof Error ? err.message : "Unable to update feedback.";
       if (isNotFoundErrorMessage(message)) {
         setTripDetail(null);
         setComments([]);
         setEngagement(null);
         setSelectedFeedbackSignals([]);
-        setScreenError('This public trip is no longer available.');
+        setScreenError("This public trip is no longer available.");
         setActionError(null);
       } else {
         setActionError(message);
@@ -461,55 +1123,19 @@ export default function PublicTripDetailScreen() {
     setActionError(null);
   };
 
-  const hasFeedbackChanges =
-    tripDetail !== null &&
-    selectedFeedbackSignals.length === tripDetail.feedback.mine.length &&
-    selectedFeedbackSignals.every((s) => tripDetail.feedback.mine.includes(s))
-      ? false
-      : true;
-
-  const handleCreateComment = async () => {
-    if (!token || !id || typeof id !== 'string' || isCommentPending) return;
-
-    const trimmedBody = commentInput.trim();
-    if (!trimmedBody) {
-      setActionError('Comment body cannot be empty.');
-      return;
-    }
-
-    try {
-      setIsCommentPending(true);
-      setActionError(null);
-      await createPublicTripComment(id, token, trimmedBody);
-      const commentsResponse = await getPublicTripComments(id, token);
-      setComments(commentsResponse.items);
-      setEngagement(commentsResponse.engagement);
-      setCommentInput('');
-    } catch (err) {
-      setActionError(
-        err instanceof Error ? err.message : 'Unable to post comment.'
-      );
-    } finally {
-      setIsCommentPending(false);
-    }
-  };
-
   const handleRemixTrip = async () => {
-    if (!token || !id || typeof id !== 'string' || isRemixPending) return;
-
+    if (!token || !id || typeof id !== "string" || isRemixPending) return;
     try {
       setIsRemixPending(true);
       setActionError(null);
       const response = await remixPublicTrip(id, token);
       router.push({
-        pathname: '/trip/[id]/edit',
-        params: { id: response.tripId, remix: '1' },
+        pathname: "/trip/[id]/edit",
+        params: { id: response.tripId, remix: "1" },
       });
-    } catch (remixError) {
+    } catch (err) {
       setActionError(
-        remixError instanceof Error
-          ? remixError.message
-          : 'Unable to remix this public trip.'
+        err instanceof Error ? err.message : "Unable to remix this trip.",
       );
     } finally {
       setIsRemixPending(false);
@@ -520,7 +1146,8 @@ export default function PublicTripDetailScreen() {
 
   if (isLoading || isAuthLoading) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={styles.safe} edges={["left", "right", "bottom"]}>
+        <PageHeader onBack={() => router.back()} />
         <View style={styles.centerState}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
           <Text style={styles.stateText}>Loading trip…</Text>
@@ -532,10 +1159,11 @@ export default function PublicTripDetailScreen() {
   // ── Error ────────────────────────────────────────────────────────────────────
 
   if (screenError || !tripDetail || !engagement) {
-    const isUnavailable = screenError?.toLowerCase().includes('not found') ?? false;
-
+    const isUnavailable =
+      screenError?.toLowerCase().includes("not found") ?? false;
     return (
-      <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={styles.safe} edges={["left", "right", "bottom"]}>
+        <PageHeader onBack={() => router.back()} />
         <View style={styles.centerState}>
           <Ionicons
             name="alert-circle-outline"
@@ -543,16 +1171,16 @@ export default function PublicTripDetailScreen() {
             color={theme.colors.textSecondary}
           />
           <Text style={styles.stateTitle}>
-            {isUnavailable ? 'Trip Unavailable' : "Couldn't load trip"}
+            {isUnavailable ? "Trip Unavailable" : "Couldn't load trip"}
           </Text>
           <Text style={styles.stateText}>
-            {screenError ?? 'This public trip could not be loaded.'}
+            {screenError ?? "This public trip could not be loaded."}
           </Text>
           <Pressable
-            style={styles.primaryButton}
-            onPress={() => router.replace('/(tabs)/explore')}
+            style={styles.primaryBtn}
+            onPress={() => router.replace("/(tabs)/explore")}
           >
-            <Text style={styles.primaryButtonText}>Back to Explore</Text>
+            <Text style={styles.primaryBtnText}>Back to Explore</Text>
           </Pressable>
         </View>
       </SafeAreaView>
@@ -561,19 +1189,47 @@ export default function PublicTripDetailScreen() {
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
+  const recentComments = comments.slice(0, 2);
+  const tripIdStr = typeof id === "string" ? id : "";
+
   return (
-    <SafeAreaView style={styles.safe} edges={['left', 'right', 'bottom']}>
+    <SafeAreaView style={styles.safe} edges={["left", "right", "bottom"]}>
+      {/* 1. Header */}
+      <PageHeader onBack={() => router.back()} />
+
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* ── Hero (full-bleed, no horizontal margin, back button overlaid) ── */}
-        <HeroCard detail={tripDetail} onBack={() => router.back()} />
+        {/* 2 + 3. Hero image + creator bar */}
+        <HeroSection
+          detail={tripDetail}
+          canToggleFollow={canToggleFollow}
+          isFollowPending={isFollowPending}
+          onToggleFollow={() => void handleToggleFollow()}
+          isOwnTrip={isOwnCreatorTrip}
+        />
 
-        {/* ── Content area (16px horizontal padding) ── */}
-        <View style={styles.contentArea}>
+        {/* Edit Trip button — owner only, between hero and details */}
+        {isOwnCreatorTrip ? (
+          <View style={styles.editBtnWrapper}>
+            <Pressable
+              style={({ pressed }) => [styles.editBtn, pressed && { opacity: 0.82 }]}
+              onPress={() =>
+                router.push({
+                  pathname: "/trip/[id]/edit",
+                  params: { id: tripIdStr },
+                })
+              }
+            >
+              <Ionicons name="pencil-outline" size={17} color="#FFFFFF" />
+              <Text style={styles.editBtnText}>Edit Trip</Text>
+            </Pressable>
+          </View>
+        ) : null}
 
-          {/* ── Action error ── */}
+        {/* ── Content block 1 ─────────────────────────────────────────────── */}
+        <View style={styles.content}>
           {actionError ? (
             <View style={styles.errorBanner}>
               <Ionicons name="alert-circle-outline" size={14} color="#9A3412" />
@@ -581,965 +1237,763 @@ export default function PublicTripDetailScreen() {
             </View>
           ) : null}
 
-          {/* ── Creator card ── */}
-          <View style={styles.creatorCard}>
-            {/* CREATOR eyebrow label */}
-            <Text style={styles.creatorEyebrow}>CREATOR</Text>
-            <View style={styles.creatorDivider} />
-
-            <View style={styles.creatorCardRow}>
-              {/* Avatar */}
-              <View style={styles.creatorAvatar}>
-                <Ionicons name="person-outline" size={24} color="#0B3B4A" />
+          {/* 4. Trip metrics grid */}
+          <View style={styles.metricsGrid}>
+            {(
+              [
+                {
+                  icon: "location-outline" as const,
+                  label: "Stops",
+                  value: String(tripDetail.optimization.stopCount),
+                },
+                {
+                  icon: "time-outline" as const,
+                  label: "Duration",
+                  value:
+                    tripDetail.optimization.routeTotalDurationMin !== null
+                      ? `${tripDetail.optimization.routeTotalDurationMin} min`
+                      : "—",
+                },
+                {
+                  icon: "cash-outline" as const,
+                  label: "Est. Cost",
+                  value:
+                    tripDetail.optimization.routeTotalCostTl !== null
+                      ? `${tripDetail.optimization.routeTotalCostTl} TL`
+                      : "—",
+                },
+                {
+                  icon: "walk-outline" as const,
+                  label: "Distance",
+                  value:
+                    tripDetail.optimization.routeTotalDistanceKm !== null
+                      ? `${tripDetail.optimization.routeTotalDistanceKm} km`
+                      : "—",
+                },
+              ] as const
+            ).map(({ icon, label, value }) => (
+              <View key={label} style={styles.metricCell}>
+                <View style={styles.metricIconCircle}>
+                  <Ionicons
+                    name={icon}
+                    size={16}
+                    color={theme.colors.primary}
+                  />
+                </View>
+                <Text style={styles.metricValue}>{value}</Text>
+                <Text style={styles.metricLabel}>{label}</Text>
               </View>
-
-              {/* Name + meta */}
-              <View style={styles.creatorInfo}>
-                <Text style={styles.creatorName}>
-                  {formatCreatorName(tripDetail.creator.displayName)}
-                </Text>
-                <Text style={styles.creatorMeta}>
-                  {formatCount(
-                    tripDetail.creator.followerCount,
-                    'follower',
-                    'followers'
-                  )}
-                  {isOwnCreatorTrip ? ' · Your trip' : ''}
-                </Text>
-              </View>
-
-              {/* Follow pill */}
-              {canToggleFollow ? (
-                <Pressable
-                  style={[
-                    styles.followPill,
-                    tripDetail.creator.isFollowedByMe && styles.followPillActive,
-                    isFollowPending && styles.disabledOp,
-                  ]}
-                  onPress={() => void handleToggleFollow()}
-                  disabled={isFollowPending}
-                >
-                  <Text
-                    style={[
-                      styles.followPillText,
-                      tripDetail.creator.isFollowedByMe && styles.followPillTextActive,
-                    ]}
-                  >
-                    {isFollowPending
-                      ? '…'
-                      : tripDetail.creator.isFollowedByMe
-                        ? 'Following'
-                        : 'Follow'}
-                  </Text>
-                </Pressable>
-              ) : null}
-            </View>
+            ))}
           </View>
 
-          {/* ── Engagement pills row ── */}
-          <View style={styles.engagementBar}>
-            {/* Like */}
+          {/* 5. Social interaction row */}
+          <View style={styles.socialBar}>
             <Pressable
-              style={[styles.engagementPill, isLikePending && styles.disabledOp]}
+              style={[styles.socialItem, isLikePending && styles.dimmed]}
               onPress={() => void handleToggleLike()}
               disabled={isLikePending}
             >
               <Ionicons
-                name={engagement.likedByMe ? 'heart' : 'heart-outline'}
-                size={18}
-                color={engagement.likedByMe ? '#EF4444' : '#64748B'}
+                name={engagement.likedByMe ? "heart" : "heart-outline"}
+                size={22}
+                color={engagement.likedByMe ? "#EF4444" : "#64748B"}
               />
               <Text
                 style={[
-                  styles.engagementCount,
-                  engagement.likedByMe && styles.engagementCountLiked,
+                  styles.socialCount,
+                  engagement.likedByMe && styles.socialCountLiked,
                 ]}
               >
                 {engagement.likeCount}
               </Text>
             </Pressable>
+            <View style={styles.socialSep} />
 
-            <View style={styles.engagementSep} />
-
-            {/* Comments */}
-            <View style={styles.engagementPill}>
-              <Ionicons name="chatbubble-outline" size={18} color="#64748B" />
-              <Text style={styles.engagementCount}>{engagement.commentCount}</Text>
-            </View>
-
-            <View style={styles.engagementSep} />
-
-            {/* Save */}
             <Pressable
-              style={[styles.engagementPill, isSavePending && styles.disabledOp]}
+              style={styles.socialItem}
+              onPress={() => setCommentsModalOpen(true)}
+            >
+              <Ionicons name="chatbubble-outline" size={21} color="#64748B" />
+              <Text style={styles.socialCount}>{engagement.commentCount}</Text>
+            </Pressable>
+            <View style={styles.socialSep} />
+
+            <Pressable
+              style={[styles.socialItem, isSavePending && styles.dimmed]}
               onPress={() => void handleToggleSave()}
               disabled={isSavePending}
             >
               <Ionicons
-                name={engagement.savedByMe ? 'bookmark' : 'bookmark-outline'}
-                size={18}
-                color={engagement.savedByMe ? '#006A69' : '#64748B'}
+                name={engagement.savedByMe ? "bookmark" : "bookmark-outline"}
+                size={21}
+                color={engagement.savedByMe ? "#006A69" : "#64748B"}
               />
               <Text
                 style={[
-                  styles.engagementCount,
-                  engagement.savedByMe && styles.engagementCountSaved,
+                  styles.socialCount,
+                  engagement.savedByMe && styles.socialCountSaved,
                 ]}
               >
                 {engagement.saveCount}
               </Text>
             </Pressable>
+            <View style={styles.socialSep} />
 
-            <View style={styles.engagementSep} />
-
-            {/* Tried */}
-            <View style={styles.engagementPill}>
-              <Ionicons name="footsteps-outline" size={18} color="#64748B" />
-              <Text style={styles.engagementCount}>{engagement.completionCount}</Text>
+            <View style={styles.socialItem}>
+              <Ionicons name="footsteps-outline" size={21} color="#64748B" />
+              <Text style={styles.socialCount}>
+                {engagement.completionCount}
+              </Text>
             </View>
           </View>
 
-          {/* ── Stats grid ── */}
-          <View style={styles.statsGrid}>
-            {[
-              {
-                icon: 'location-outline' as const,
-                label: 'Stops',
-                value: String(tripDetail.optimization.stopCount),
-              },
-              {
-                icon: 'time-outline' as const,
-                label: 'Duration',
-                value:
-                  tripDetail.optimization.routeTotalDurationMin !== null
-                    ? `${tripDetail.optimization.routeTotalDurationMin} min`
-                    : '—',
-              },
-              {
-                icon: 'cash-outline' as const,
-                label: 'Est. Cost',
-                value:
-                  tripDetail.optimization.routeTotalCostTl !== null
-                    ? `${tripDetail.optimization.routeTotalCostTl} TL`
-                    : '—',
-              },
-              {
-                icon: 'walk-outline' as const,
-                label: 'Distance',
-                value:
-                  tripDetail.optimization.routeTotalDistanceKm !== null
-                    ? `${tripDetail.optimization.routeTotalDistanceKm} km`
-                    : '—',
-              },
-            ].map(({ icon, label, value }) => (
-              <View key={label} style={styles.statGridCell}>
-                <View style={styles.statIconCircle}>
-                  <Ionicons name={icon} size={16} color={theme.colors.primary} />
-                </View>
-                <Text style={styles.statGridValue}>{value}</Text>
-                <Text style={styles.statGridLabel}>{label}</Text>
-              </View>
-            ))}
+          {/* 7. Recent comments — above the Mark as tried button */}
+          <View style={styles.commentsSection}>
+            <Text style={styles.commentsSectionTitle}>Recent comments</Text>
+
+            {recentComments.length > 0
+              ? recentComments.map((comment) => (
+                  <View key={comment.id} style={styles.commentRow}>
+                    <View style={styles.commentAvatar}>
+                      <Text style={styles.commentAvatarText}>
+                        {getInitials(comment.author.displayName)}
+                      </Text>
+                    </View>
+                    <View style={styles.commentCard}>
+                      <Text style={styles.commentAuthor}>
+                        {formatCreatorName(comment.author.displayName)}
+                      </Text>
+                      <Text style={styles.commentBody} numberOfLines={3}>
+                        {comment.body}
+                      </Text>
+                    </View>
+                  </View>
+                ))
+              : null}
+
+            <Pressable
+              style={styles.viewAllBtn}
+              onPress={() => setCommentsModalOpen(true)}
+            >
+              <Text style={styles.viewAllBtnText}>
+                {engagement.commentCount > 0
+                  ? `View all ${engagement.commentCount} ${engagement.commentCount === 1 ? "comment" : "comments"}`
+                  : "Add the first comment"}
+              </Text>
+            </Pressable>
           </View>
 
-          {/* ── Remix CTA (below stats) ── */}
+          {/* 6. Mark as actually tried */}
           <Pressable
-            style={[styles.remixButton, isRemixPending && styles.disabledOp]}
-            onPress={() => void handleRemixTrip()}
-            disabled={isRemixPending}
+            style={[
+              styles.triedBtn,
+              engagement.completedByMe && styles.triedBtnDone,
+              isCompletePending && styles.dimmed,
+            ]}
+            onPress={() => void handleToggleCompletion()}
+            disabled={isCompletePending}
           >
-            <Ionicons name="copy-outline" size={20} color="#FFFFFF" />
-            <Text style={styles.remixButtonText}>
-              {isRemixPending ? 'Creating Draft…' : 'Remix This Trip'}
+            <Ionicons
+              name={
+                engagement.completedByMe
+                  ? "checkmark-done-circle"
+                  : "checkmark-circle-outline"
+              }
+              size={20}
+              color="#FFFFFF"
+            />
+            <Text style={styles.triedBtnText}>
+              {isCompletePending
+                ? "…"
+                : engagement.completedByMe
+                  ? "Marked as actually tried"
+                  : "Mark as actually tried"}
             </Text>
           </Pressable>
 
-          {/* ── Social rationale ── */}
-          {tripDetail.socialRationale?.items.length ? (
-            <View style={styles.card}>
-              <Text style={styles.cardSectionTitle}>Why people like this trip</Text>
-              <Text style={styles.cardSub}>
-                Real signals from travelers who reacted to this route.
+          {/* Feedback signals — shown after marking as tried */}
+          {engagement.completedByMe &&
+            tripDetail.feedback.availableSignals.length > 0 && (
+              <View style={styles.feedbackSection}>
+                <Text style={styles.feedbackTitle}>How did it go?</Text>
+                <View style={styles.feedbackChips}>
+                  {tripDetail.feedback.availableSignals.map((signal) => {
+                    const isOn = selectedFeedbackSignals.includes(signal.key);
+                    return (
+                      <Pressable
+                        key={signal.key}
+                        style={[
+                          styles.feedbackChip,
+                          isOn && styles.feedbackChipOn,
+                        ]}
+                        onPress={() => handleToggleFeedbackSignal(signal.key)}
+                      >
+                        <Text
+                          style={[
+                            styles.feedbackChipText,
+                            isOn && styles.feedbackChipTextOn,
+                          ]}
+                        >
+                          {signal.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <View style={styles.feedbackActions}>
+                  <Pressable
+                    style={styles.feedbackClearBtn}
+                    onPress={handleClearFeedbackSelection}
+                    disabled={isFeedbackPending}
+                  >
+                    <Text style={styles.feedbackClearText}>Clear</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[
+                      styles.feedbackSaveBtn,
+                      (isFeedbackPending || !hasFeedbackChanges) &&
+                        styles.dimmed,
+                    ]}
+                    onPress={() => void handleSaveFeedback()}
+                    disabled={isFeedbackPending || !hasFeedbackChanges}
+                  >
+                    <Text style={styles.feedbackSaveText}>
+                      {isFeedbackPending ? "Saving…" : "Save feedback"}
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+            )}
+
+          {/* 8. Remix */}
+          <Pressable
+            style={[styles.remixBtn, isRemixPending && styles.dimmed]}
+            onPress={() => void handleRemixTrip()}
+            disabled={isRemixPending}
+          >
+            <Ionicons name="copy-outline" size={18} color="#FFFFFF" />
+            <Text style={styles.remixBtnText}>
+              {isRemixPending ? "Creating draft…" : "Remix this trip"}
+            </Text>
+          </Pressable>
+        </View>
+
+        {/* 9. Trip stop map — full-width, no horizontal padding */}
+        <View style={styles.mapSection}>
+          <TripStopsMap stops={tripDetail.stops} />
+        </View>
+
+        {/* ── Content block 2 ─────────────────────────────────────────────── */}
+        <View style={styles.content}>
+          {/* 10. Timeline */}
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionEyebrow}>ITINERARY</Text>
+            <Text style={styles.sectionTitle}>Trip stops</Text>
+          </View>
+
+          {sortedStops.length > 0 ? (
+            <View>
+              {sortedStops.map((stop, index) => (
+                <NewTimelineItem
+                  key={stop.id}
+                  stop={stop}
+                  isLast={index === sortedStops.length - 1}
+                />
+              ))}
+            </View>
+          ) : (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyStateText}>
+                No stops available for this trip yet.
               </Text>
-              <View style={styles.rationaleList}>
+            </View>
+          )}
+
+          {/* 11. Why people like this trip */}
+          {tripDetail.socialRationale?.items.length ? (
+            <>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>
+                  Why people like this trip
+                </Text>
+              </View>
+              <View style={styles.card}>
                 {tripDetail.socialRationale.items.map((item) => (
                   <View key={item.key} style={styles.rationaleRow}>
                     <View style={styles.rationaleIcon}>
-                      <Ionicons name="sparkles-outline" size={14} color="#006A69" />
+                      <Ionicons
+                        name="sparkles-outline"
+                        size={14}
+                        color="#006A69"
+                      />
                     </View>
-                    <View style={styles.rationaleText}>
+                    <View style={styles.rationaleBody}>
                       <Text style={styles.rationaleTitle}>{item.title}</Text>
-                      <Text style={styles.rationaleEvidence}>{item.evidence}</Text>
+                      <Text style={styles.rationaleEvidence}>
+                        {item.evidence}
+                      </Text>
                     </View>
                   </View>
                 ))}
               </View>
-            </View>
+            </>
           ) : null}
 
-          {/* ── Tried it ── */}
-          <View style={[styles.card, styles.cardAmber]}>
-            <View style={styles.completionRow}>
-              <View style={styles.completionIcon}>
-                <Ionicons
-                  name={
-                    engagement.completedByMe
-                      ? 'checkmark-done'
-                      : 'footsteps-outline'
-                  }
-                  size={18}
-                  color="#92400E"
-                />
+          {/* 12. Why this route works */}
+          {tripDetail.optimization.routeExplanation ? (
+            <>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Why this route works</Text>
               </View>
-              <View style={styles.completionText}>
-                <Text style={styles.completionTitle}>Actually Tried This Route?</Text>
-                <Text style={styles.completionBody}>
-                  Mark this when you have genuinely tried it in real life.
+              <View style={styles.card}>
+                <Text style={styles.routeText}>
+                  {tripDetail.optimization.routeExplanation}
                 </Text>
               </View>
-            </View>
-
-            <View style={styles.completionStats}>
-              <Text style={styles.completionCount}>{engagement.completionCount}</Text>
-              <Text style={styles.completionCountLabel}>
-                {engagement.completionCount === 1
-                  ? 'person marked it tried'
-                  : 'people marked it tried'}
-              </Text>
-            </View>
-
-            <Text style={styles.completionState}>
-              {engagement.completedByMe
-                ? 'You have marked this trip as tried.'
-                : 'You have not marked this trip as tried yet.'}
-            </Text>
-
-            <Pressable
-              style={[styles.amberButton, isCompletePending && styles.disabledOp]}
-              onPress={() => void handleToggleCompletion()}
-              disabled={isCompletePending}
-            >
-              <Text style={styles.amberButtonText}>
-                {isCompletePending
-                  ? engagement.completedByMe
-                    ? 'Updating…'
-                    : 'Marking…'
-                  : engagement.completedByMe
-                    ? 'Unmark Tried'
-                    : 'Mark as Tried'}
-              </Text>
-            </Pressable>
-          </View>
-
-          {/* ── Feedback ── */}
-          {engagement.completedByMe ? (
-            <View style={styles.card}>
-              <Text style={styles.cardSectionTitle}>How did it go?</Text>
-              <Text style={styles.cardSub}>
-                Pick signals that match your real-world experience.
-              </Text>
-
-              <View style={styles.feedbackChips}>
-                {tripDetail.feedback.availableSignals.map((signal) => {
-                  const isSelected = selectedFeedbackSignals.includes(signal.key);
-                  return (
-                    <Pressable
-                      key={signal.key}
-                      onPress={() => handleToggleFeedbackSignal(signal.key)}
-                      style={[
-                        styles.feedbackChip,
-                        isSelected && styles.feedbackChipSelected,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.feedbackChipText,
-                          isSelected && styles.feedbackChipTextSelected,
-                        ]}
-                      >
-                        {signal.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-
-              <Text style={styles.feedbackHint}>
-                Leave unchecked if no signals apply.
-              </Text>
-
-              <View style={styles.feedbackActions}>
-                <Pressable
-                  style={[
-                    styles.secondaryButton,
-                    styles.feedbackClearBtn,
-                    isFeedbackPending && styles.disabledOp,
-                  ]}
-                  onPress={handleClearFeedbackSelection}
-                  disabled={isFeedbackPending}
-                >
-                  <Text style={styles.secondaryButtonText}>Clear</Text>
-                </Pressable>
-                <Pressable
-                  style={[
-                    styles.primaryButton,
-                    styles.feedbackSaveBtn,
-                    (isFeedbackPending || !hasFeedbackChanges) && styles.disabledOp,
-                  ]}
-                  onPress={() => void handleSaveFeedback()}
-                  disabled={isFeedbackPending || !hasFeedbackChanges}
-                >
-                  <Text style={styles.primaryButtonText}>
-                    {isFeedbackPending ? 'Saving…' : 'Save Feedback'}
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
+            </>
           ) : null}
-
-          {/* ── Route explanation ── */}
-          {tripDetail.optimization.routeExplanation ? (
-            <View style={styles.card}>
-              <View style={styles.cardTitleRow}>
-                <Ionicons name="sparkles-outline" size={14} color="#0B3B4A" />
-                <Text style={styles.cardSectionTitle}>Why this route works</Text>
-              </View>
-              <Text style={styles.cardBodyText}>
-                {tripDetail.optimization.routeExplanation}
-              </Text>
-            </View>
-          ) : null}
-
-          {/* ── Map ── */}
-          <TripStopsMap stops={tripDetail.stops} />
-
-          {/* ── Itinerary section ── */}
-          <View style={styles.sectionRow}>
-            <Text style={styles.sectionEyebrow}>ITINERARY</Text>
-            <Text style={styles.sectionTitle}>Ordered Stops</Text>
-            <Text style={styles.sectionSub}>Follow this route in order</Text>
-          </View>
-
-          {sortedStops.length > 0 ? (
-            sortedStops.map((stop) => (
-              <TimelineItem
-                key={stop.id}
-                time={stop.arrivalTime}
-                title={getTripStopLabel(stop)}
-                subtitle={`${stop.poi.category} • ${stop.poi.district ?? 'district N/A'} • ${stop.estimatedCostTl} TL`}
-                icon="location"
-                imageUrl={stop.poi.imageUrl}
-              />
-            ))
-          ) : (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyText}>
-                No persisted stops available for this public trip yet.
-              </Text>
-            </View>
-          )}
-
-          {/* ── Discussion section ── */}
-          <View style={styles.sectionRow}>
-            <Text style={styles.sectionEyebrow}>DISCUSSION</Text>
-            <Text style={styles.sectionTitle}>Comments</Text>
-            <Text style={styles.sectionSub}>Discussion on this public trip</Text>
-          </View>
-
-          {/* Comment composer */}
-          <View style={styles.card}>
-            <Text style={styles.commentComposerLabel}>Add a comment</Text>
-            <TextInput
-              style={styles.commentInput}
-              placeholder="What stands out about this route?"
-              placeholderTextColor={theme.colors.textSecondary}
-              value={commentInput}
-              onChangeText={setCommentInput}
-              multiline
-              textAlignVertical="top"
-            />
-            <Pressable
-              style={[styles.postButton, isCommentPending && styles.disabledOp]}
-              onPress={() => void handleCreateComment()}
-              disabled={isCommentPending}
-            >
-              <Text style={styles.primaryButtonText}>
-                {isCommentPending ? 'Posting…' : 'Post Comment'}
-              </Text>
-            </Pressable>
-          </View>
-
-          {/* Comment list */}
-          {comments.length > 0 ? (
-            <View style={styles.commentsList}>
-              {comments.map((comment) => (
-                <View key={comment.id} style={styles.commentCard}>
-                  <View style={styles.commentHeader}>
-                    <Text style={styles.commentAuthor}>
-                      {formatCreatorName(comment.author.displayName)}
-                    </Text>
-                    <Text style={styles.commentDate}>
-                      {formatCommentTimestamp(comment.createdAt)}
-                    </Text>
-                  </View>
-                  <Text style={styles.commentBody}>{comment.body}</Text>
-                </View>
-              ))}
-            </View>
-          ) : (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyTitle}>No comments yet</Text>
-              <Text style={styles.emptyText}>
-                Be the first to react to this public trip.
-              </Text>
-            </View>
-          )}
-
-          {/* ── Back to Explore ── */}
-          <Pressable
-            style={styles.secondaryButton}
-            onPress={() => router.replace('/(tabs)/explore')}
-          >
-            <Text style={styles.secondaryButtonText}>Back to Explore</Text>
-          </Pressable>
         </View>
       </ScrollView>
+
+      {/* Comments modal */}
+      <CommentsModal
+        visible={commentsModalOpen}
+        onClose={() => setCommentsModalOpen(false)}
+        comments={comments}
+        commentCount={engagement.commentCount}
+        tripId={tripIdStr}
+        token={token}
+        onCommentCreated={(newComments, newEngagement) => {
+          setComments(newComments);
+          setEngagement(newEngagement);
+        }}
+      />
     </SafeAreaView>
   );
 }
 
-// ── Styles ─────────────────────────────────────────────────────────────────────
+// ── Styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: '#F7FAFC',
+    backgroundColor: theme.colors.background,
   },
-
-  // Scroll
   scrollContent: {
     paddingBottom: 48,
   },
 
-  // Content area (everything below hero gets horizontal padding)
-  contentArea: {
-    paddingHorizontal: 16,
+  // Edit Trip strip — owner only
+  editBtnWrapper: {
+    paddingHorizontal: 20,
     paddingTop: 16,
+    paddingBottom: 4,
+  },
+  editBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: theme.colors.primary,
+    borderRadius: 16,
+    height: 50,
+  },
+  editBtnText: {
+    fontFamily: font.bold,
+    fontSize: 15,
+    color: "#FFFFFF",
+    letterSpacing: 0.1,
+  },
+
+  // Content sections (horizontal padding + gap between children)
+  content: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
     gap: 14,
   },
 
-  // States
+  // Map section — padded strip
+  mapSection: {
+    marginTop: 24,
+    marginBottom: 4,
+    marginHorizontal: 16,
+  },
+
+  // Loading / error states
   centerState: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: 40,
-    gap: 10,
+    gap: 12,
   },
   stateTitle: {
+    fontFamily: font.bold,
     fontSize: 18,
-    fontWeight: '700',
-    color: '#111C2C',
-    textAlign: 'center',
+    color: theme.colors.primaryDark,
+    textAlign: "center",
   },
   stateText: {
+    fontFamily: font.regular,
     fontSize: 14,
     lineHeight: 21,
     color: theme.colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: 4,
+    textAlign: "center",
   },
 
-  // Error banner
+  // Action error banner
   errorBanner: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    alignItems: "flex-start",
     gap: 8,
-    backgroundColor: '#FFF7ED',
+    backgroundColor: "#FFF7ED",
     borderRadius: 12,
     padding: 12,
   },
   errorBannerText: {
     flex: 1,
+    fontFamily: font.regular,
     fontSize: 13,
     lineHeight: 19,
-    color: '#9A3412',
+    color: "#9A3412",
   },
 
-  // Creator card
-  creatorCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 16,
-    gap: 10,
-    shadowColor: '#0B3B4A',
-    shadowOpacity: 0.07,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 3,
-  },
-  creatorEyebrow: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#64748B',
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-  },
-  creatorDivider: {
-    height: 1,
-    backgroundColor: '#DFF7F6',
-    marginTop: -4,
-  },
-  creatorCardRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  creatorAvatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#ECFEFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  creatorInfo: {
-    flex: 1,
-    gap: 3,
-  },
-  creatorName: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#111C2C',
-  },
-  creatorMeta: {
-    fontSize: 13,
-    color: '#64748B',
-  },
-
-  // Follow pill
-  followPill: {
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    borderRadius: 999,
-    borderWidth: 1.5,
-    borderColor: '#0EA5A4',
-    backgroundColor: 'transparent',
-  },
-  followPillActive: {
-    backgroundColor: '#F8FAFC',
-    borderColor: '#CBD5E1',
-  },
-  followPillText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#0EA5A4',
-  },
-  followPillTextActive: {
-    color: '#64748B',
-  },
-
-  // Engagement pills
-  engagementBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#E8ECF0',
-    overflow: 'hidden',
-  },
-  engagementPill: {
-    flex: 1,
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    gap: 4,
-  },
-  engagementSep: {
-    width: 1,
-    height: 32,
-    backgroundColor: '#E8ECF0',
-  },
-  engagementCount: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#64748B',
-  },
-  engagementCountLiked: {
-    color: '#EF4444',
-  },
-  engagementCountSaved: {
-    color: '#006A69',
-  },
-
-  // Stats grid
-  statsGrid: {
-    flexDirection: 'row',
+  // Metrics grid
+  metricsGrid: {
+    flexDirection: "row",
     gap: 8,
   },
-  statGridCell: {
+  metricCell: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#E8ECF0',
+    borderColor: "#E8ECF0",
     paddingVertical: 14,
-    paddingHorizontal: 8,
-    alignItems: 'center',
+    paddingHorizontal: 4,
+    alignItems: "center",
     gap: 6,
   },
-  statIconCircle: {
+  metricIconCircle: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#DFF7F6',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#DFF7F6",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  statGridValue: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#111C2C',
-    textAlign: 'center',
+  metricValue: {
+    fontFamily: font.bold,
+    fontSize: 13,
+    color: theme.colors.primaryDark,
+    textAlign: "center",
   },
-  statGridLabel: {
+  metricLabel: {
+    fontFamily: font.medium,
     fontSize: 10,
-    fontWeight: '600',
-    color: '#64748B',
-    textAlign: 'center',
+    color: theme.colors.textSecondary,
+    textAlign: "center",
   },
 
-  // Remix CTA button
-  remixButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    backgroundColor: '#006A69',
+  // Social bar
+  socialBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#E8ECF0",
+    overflow: "hidden",
+  },
+  socialItem: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 13,
+    gap: 4,
+  },
+  socialSep: {
+    width: 1,
+    height: 32,
+    backgroundColor: "#E8ECF0",
+  },
+  socialCount: {
+    fontFamily: font.bold,
+    fontSize: 12,
+    color: theme.colors.textSecondary,
+  },
+  socialCountLiked: { color: "#EF4444" },
+  socialCountSaved: { color: "#006A69" },
+
+  // Mark as tried
+  triedBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: theme.colors.primary,
     borderRadius: 16,
     height: 52,
   },
-  remixButtonText: {
+  triedBtnDone: {
+    backgroundColor: "#10B981",
+  },
+  triedBtnText: {
+    fontFamily: font.bold,
     fontSize: 15,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: 0.2,
+    color: "#FFFFFF",
+    letterSpacing: 0.1,
+  },
+
+  // Feedback section
+  feedbackSection: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#E8ECF0",
+    padding: 16,
+    gap: 12,
+  },
+  feedbackTitle: {
+    fontFamily: font.bold,
+    fontSize: 14,
+    color: theme.colors.primaryDark,
+  },
+  feedbackChips: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  feedbackChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#E8ECF0",
+    backgroundColor: "#F8FAFC",
+  },
+  feedbackChipOn: {
+    borderColor: theme.colors.primary,
+    backgroundColor: "#DFF7F6",
+  },
+  feedbackChipText: {
+    fontFamily: font.semiBold,
+    fontSize: 13,
+    color: theme.colors.textSecondary,
+  },
+  feedbackChipTextOn: { color: "#006A69" },
+  feedbackActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: -4,
+  },
+  feedbackClearBtn: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: "#F1F5F9",
+  },
+  feedbackClearText: {
+    fontFamily: font.semiBold,
+    fontSize: 13,
+    color: theme.colors.textSecondary,
+  },
+  feedbackSaveBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: "#006A69",
+    alignItems: "center",
+  },
+  feedbackSaveText: {
+    fontFamily: font.bold,
+    fontSize: 13,
+    color: "#FFFFFF",
+  },
+
+  // Recent comments card
+  commentsSection: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#E8ECF0",
+    padding: 16,
+    gap: 12,
+  },
+  commentsSectionTitle: {
+    fontFamily: font.bold,
+    fontSize: 15,
+    color: theme.colors.primaryDark,
+    letterSpacing: -0.1,
+  },
+  commentRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+  },
+  commentAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: theme.colors.primaryDark,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  commentAvatarText: {
+    fontFamily: font.bold,
+    fontSize: 11,
+    color: "#FFFFFF",
+  },
+  commentCard: {
+    flex: 1,
+    backgroundColor: "#F1F5F9",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 2,
+  },
+  commentAuthor: {
+    fontFamily: font.semiBold,
+    fontSize: 13,
+    color: theme.colors.primaryDark,
+  },
+  commentBody: {
+    fontFamily: font.regular,
+    fontSize: 13,
+    lineHeight: 19,
+    color: theme.colors.textSecondary,
+  },
+  viewAllBtn: {
+    alignItems: "center",
+    paddingTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "#E8ECF0",
+  },
+  viewAllBtnText: {
+    fontFamily: font.semiBold,
+    fontSize: 13,
+    color: theme.colors.primary,
+    textAlign: "center",
+  },
+
+  // Remix button
+  remixBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: theme.colors.primary,
+    borderRadius: 16,
+    height: 52,
+  },
+  remixBtnText: {
+    fontFamily: font.semiBold,
+    fontSize: 15,
+    color: "#FFFFFF",
+    letterSpacing: 0.1,
+  },
+
+  // Section headers
+  sectionHeader: {
+    gap: 2,
+    marginTop: 4,
+  },
+  sectionEyebrow: {
+    fontFamily: font.bold,
+    fontSize: 10,
+    color: theme.colors.primary,
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+    marginBottom: 2,
+  },
+  sectionTitle: {
+    fontFamily: font.bold,
+    fontSize: 17,
+    lineHeight: 24,
+    color: theme.colors.primaryDark,
+    letterSpacing: -0.2,
   },
 
   // Generic card
   card: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#E8ECF0',
+    borderColor: "#E8ECF0",
     padding: 16,
     gap: 12,
   },
-  cardAmber: {
-    backgroundColor: '#FFF8EB',
-    borderColor: '#F2D39A',
-  },
-  cardTeal: {
-    backgroundColor: '#F4FBFB',
-    borderColor: '#BFEAE9',
-  },
-  cardSectionTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#111C2C',
-    letterSpacing: -0.2,
-  },
-  cardSub: {
-    fontSize: 13,
-    lineHeight: 19,
-    color: theme.colors.textSecondary,
-    marginTop: -4,
-  },
-  cardTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  cardBodyText: {
-    fontSize: 14,
-    lineHeight: 21,
-    color: theme.colors.textSecondary,
-  },
 
-  // Rationale
-  rationaleList: {
-    gap: 12,
-  },
+  // Social rationale
   rationaleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    alignItems: "flex-start",
     gap: 10,
   },
   rationaleIcon: {
     width: 30,
     height: 30,
     borderRadius: 15,
-    backgroundColor: '#DFF7F6',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#DFF7F6",
+    alignItems: "center",
+    justifyContent: "center",
     flexShrink: 0,
     marginTop: 1,
   },
-  rationaleText: { flex: 1 },
+  rationaleBody: { flex: 1, gap: 2 },
   rationaleTitle: {
+    fontFamily: font.bold,
     fontSize: 13,
-    fontWeight: '700',
-    color: '#111C2C',
-    marginBottom: 2,
+    color: theme.colors.primaryDark,
   },
   rationaleEvidence: {
+    fontFamily: font.regular,
     fontSize: 13,
     lineHeight: 19,
     color: theme.colors.textSecondary,
   },
 
-  // Completion
-  completionRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
-  completionIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: '#FEF1D8',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  completionText: { flex: 1 },
-  completionTitle: {
+  // Route explanation
+  routeText: {
+    fontFamily: font.regular,
     fontSize: 14,
-    fontWeight: '800',
-    color: '#111C2C',
-    marginBottom: 3,
-  },
-  completionBody: {
-    fontSize: 13,
-    lineHeight: 19,
-    color: '#92400E',
-  },
-  completionStats: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 8,
-  },
-  completionCount: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#92400E',
-  },
-  completionCountLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#92400E',
-  },
-  completionState: {
-    fontSize: 13,
-    color: '#7C5A20',
-    lineHeight: 19,
-  },
-  amberButton: {
-    backgroundColor: '#92400E',
-    borderRadius: 12,
-    paddingVertical: 13,
-    alignItems: 'center',
-  },
-  amberButtonText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-
-  // Feedback
-  feedbackChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  feedbackChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#E8ECF0',
-    backgroundColor: '#F8FAFC',
-  },
-  feedbackChipSelected: {
-    borderColor: theme.colors.primary,
-    backgroundColor: '#DFF7F6',
-  },
-  feedbackChipText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#64748B',
-  },
-  feedbackChipTextSelected: {
-    color: '#006A69',
-    fontWeight: '700',
-  },
-  feedbackHint: {
-    fontSize: 12,
-    lineHeight: 18,
-    color: theme.colors.textSecondary,
-    marginTop: -4,
-  },
-  feedbackActions: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  feedbackClearBtn: {
-    paddingHorizontal: 20,
-    flex: 0,
-  },
-  feedbackSaveBtn: {
-    flex: 1,
-  },
-
-  // Section headings
-  sectionRow: {
-    gap: 2,
-    marginTop: 4,
-  },
-  sectionEyebrow: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#0EA5A4',
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-    marginBottom: 2,
-  },
-  sectionTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#111C2C',
-    letterSpacing: -0.2,
-  },
-  sectionSub: {
-    fontSize: 13,
+    lineHeight: 22,
     color: theme.colors.textSecondary,
   },
 
-  // Comments
-  commentsList: {
-    gap: 10,
-  },
-  commentCard: {
-    backgroundColor: '#F8FAFC',
+  // Empty state
+  emptyState: {
+    backgroundColor: "#FFFFFF",
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#E8ECF0',
-    padding: 14,
-    gap: 8,
-  },
-  commentHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: 8,
-  },
-  commentAuthor: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#111C2C',
-  },
-  commentDate: {
-    fontSize: 12,
-    color: theme.colors.textSecondary,
-  },
-  commentBody: {
-    fontSize: 14,
-    lineHeight: 21,
-    color: '#64748B',
-  },
-  commentComposerLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#111C2C',
-  },
-  commentInput: {
-    minHeight: 96,
-    borderWidth: 1,
-    borderColor: '#E8ECF0',
-    borderRadius: 12,
-    backgroundColor: '#F8FAFC',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 14,
-    color: '#111C2C',
-  },
-  postButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#006A69',
-    borderRadius: 12,
-    paddingVertical: 13,
-    width: '100%',
-  },
-
-  // Empty
-  emptyCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#E8ECF0',
+    borderColor: "#E8ECF0",
     padding: 20,
-    gap: 6,
-    alignItems: 'center',
+    alignItems: "center",
   },
-  emptyTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#111C2C',
-  },
-  emptyText: {
+  emptyStateText: {
+    fontFamily: font.regular,
     fontSize: 13,
     lineHeight: 19,
     color: theme.colors.textSecondary,
-    textAlign: 'center',
+    textAlign: "center",
   },
 
-  // Buttons
-  primaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+  // Shared buttons
+  primaryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     gap: 8,
-    backgroundColor: '#006A69',
+    backgroundColor: theme.colors.primary,
     borderRadius: 12,
     paddingVertical: 13,
+    paddingHorizontal: 24,
   },
-  primaryButtonText: {
+  primaryBtnText: {
+    fontFamily: font.bold,
     fontSize: 14,
-    fontWeight: '700',
-    color: '#FFFFFF',
+    color: "#FFFFFF",
   },
-  secondaryButton: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    paddingVertical: 13,
-    borderWidth: 1,
-    borderColor: '#E8ECF0',
-  },
-  secondaryButtonText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#0B3B4A',
-  },
-  disabledOp: {
-    opacity: 0.55,
-  },
+  dimmed: { opacity: 0.55 },
 });

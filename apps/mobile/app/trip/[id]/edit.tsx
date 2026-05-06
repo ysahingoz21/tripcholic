@@ -1,14 +1,17 @@
 import { theme } from '@/constants/theme';
+import { font } from '@/constants/typography';
 import { useAuth } from '@/context/AuthContext';
 import {
   getTrip,
   optimizeTrip,
-  type TripVisibility,
   updateTrip,
   type TripDetailResponse,
+  type TripVisibility,
   type UpdateTripPayload,
 } from '@/services/trips';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -17,22 +20,21 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import Artwork from '@/components/ui/Artwork';
 import {
-  buildTripDetailParams,
   buildTripReturnTarget,
   getTripRouteSource,
 } from '@/utils/tripNavigation';
 
-const H_PAD = 20;
+// ── Constants ─────────────────────────────────────────────────────────────────
 
-const interestOptions = [
+const INTEREST_OPTIONS = [
   'Culture',
   'Food',
   'Museums',
@@ -43,46 +45,56 @@ const interestOptions = [
   'Nightlife',
 ] as const;
 
-const weatherOptions = ['clear', 'cloudy', 'rainy'] as const;
-const visibilityOptions: {
-  value: TripVisibility;
-  label: string;
-  description: string;
-}[] = [
-  { value: 'DRAFT', label: 'Draft', description: 'Still being prepared.' },
-  { value: 'PRIVATE', label: 'Private', description: 'Visible only to you.' },
+const BUDGET_OPTIONS = [
   {
-    value: 'PUBLIC',
-    label: 'Public',
-    description: 'Eligible for future explore surfaces.',
+    key: 'low' as const,
+    label: 'Budget',
+    sub: '~₺2,000',
+    icon: 'wallet-outline' as const,
+    desc: 'Street food, free sights, affordable cafés',
+    value: 2000,
+  },
+  {
+    key: 'medium' as const,
+    label: 'Moderate',
+    sub: '~₺6,000',
+    icon: 'card-outline' as const,
+    desc: 'Mix of paid attractions and mid-range dining',
+    value: 6000,
+  },
+  {
+    key: 'high' as const,
+    label: 'Premium',
+    sub: '~₺20,000',
+    icon: 'diamond-outline' as const,
+    desc: 'Fine dining, private tours, rooftop venues',
+    value: 20000,
   },
 ] as const;
 
-type NormalizedTripEditState = {
-  title: string;
-  description: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-  categories: string[];
-  budgetTl: number | null;
-  maxWalkingDistanceKm: number | null;
-  maxStops: number | null;
-  weather: string;
-  visibility: TripVisibility;
-};
+type BudgetKey = 'low' | 'medium' | 'high' | '';
+
+// Map existing numeric budgetTl → a BudgetKey
+function budgetTlToBudgetKey(tl: number | null): BudgetKey {
+  if (tl === null) return '';
+  if (tl <= 3000) return 'low';
+  if (tl <= 10000) return 'medium';
+  return 'high';
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatDateForApi(value: Date) {
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, '0');
-  const day = String(value.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  const y = value.getFullYear();
+  const m = String(value.getMonth() + 1).padStart(2, '0');
+  const d = String(value.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 function formatTimeForApi(value: Date) {
-  const hours = String(value.getHours()).padStart(2, '0');
-  const minutes = String(value.getMinutes()).padStart(2, '0');
-  return `${hours}:${minutes}`;
+  const h = String(value.getHours()).padStart(2, '0');
+  const min = String(value.getMinutes()).padStart(2, '0');
+  return `${h}:${min}`;
 }
 
 function toDateValue(date: string) {
@@ -100,44 +112,81 @@ function normalizeCategories(values: string[]) {
   return [...new Set(values.map((item) => item.toLowerCase().trim()).filter(Boolean))].sort();
 }
 
-function parseOptionalNumber(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  const parsed = Number(trimmed);
-  return Number.isNaN(parsed) ? Number.NaN : parsed;
+// ── PageHeader ────────────────────────────────────────────────────────────────
+
+function PageHeader({ onBack }: { onBack: () => void }) {
+  const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+
+  const initials = user?.displayName
+    ? user.displayName
+        .split(' ')
+        .map((w) => w[0] ?? '')
+        .join('')
+        .slice(0, 2)
+        .toUpperCase()
+    : (user?.email?.[0]?.toUpperCase() ?? 'T');
+
+  return (
+    <View style={[hdrStyles.header, { paddingTop: insets.top }]}>
+      <View style={hdrStyles.inner}>
+        <View style={hdrStyles.side}>
+          <Pressable
+            style={({ pressed }) => [hdrStyles.iconBtn, pressed && { opacity: 0.7 }]}
+            onPress={onBack}
+            hitSlop={8}
+          >
+            <Ionicons name="arrow-back" size={22} color={theme.colors.primaryDark} />
+          </Pressable>
+        </View>
+        <Text style={hdrStyles.wordmark} numberOfLines={1}>
+          TRIPCHOLIC
+        </Text>
+        <View style={[hdrStyles.side, hdrStyles.sideRight]}>
+          <View style={hdrStyles.avatar}>
+            <Text style={hdrStyles.avatarText}>{initials}</Text>
+          </View>
+        </View>
+      </View>
+    </View>
+  );
 }
 
-function getNormalizedTripEditState(params: {
-  title: string;
-  description: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-  categories: string[];
-  budgetTl: string;
-  maxWalkingDistanceKm: string;
-  maxStops: string;
-  weather: string;
-  visibility: TripVisibility;
-}): NormalizedTripEditState {
-  return {
-    title: params.title.trim(),
-    description: params.description.trim(),
-    date: params.date.trim(),
-    startTime: params.startTime.trim(),
-    endTime: params.endTime.trim(),
-    categories: normalizeCategories(params.categories),
-    budgetTl: parseOptionalNumber(params.budgetTl),
-    maxWalkingDistanceKm: parseOptionalNumber(params.maxWalkingDistanceKm),
-    maxStops: parseOptionalNumber(params.maxStops),
-    weather: params.weather.trim(),
-    visibility: params.visibility,
-  };
-}
+const hdrStyles = StyleSheet.create({
+  header: {
+    backgroundColor: theme.colors.surface,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.colors.border,
+  },
+  inner: {
+    height: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+  },
+  side: { width: 44, alignItems: 'flex-start', justifyContent: 'center' },
+  sideRight: { alignItems: 'flex-end' },
+  iconBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  wordmark: {
+    flex: 1,
+    textAlign: 'center',
+    fontFamily: font.bold,
+    fontSize: 15,
+    letterSpacing: 3,
+    color: theme.colors.primaryDark,
+  },
+  avatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: theme.colors.primaryDark,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: { fontFamily: font.bold, fontSize: 13, lineHeight: 15, color: '#FFFFFF' },
+});
 
-function areStringArraysEqual(left: string[], right: string[]) {
-  return left.length === right.length && left.every((value, index) => value === right[index]);
-}
+// ── Screen ────────────────────────────────────────────────────────────────────
 
 export default function EditTripScreen() {
   const router = useRouter();
@@ -148,44 +197,46 @@ export default function EditTripScreen() {
     returnTripId?: string;
   }>();
   const { token, isLoading: isAuthLoading } = useAuth();
+
   const [tripDetail, setTripDetail] = useState<TripDetailResponse | null>(null);
-  const [originalValues, setOriginalValues] = useState<NormalizedTripEditState | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Form state
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [date, setDate] = useState('');
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [categories, setCategories] = useState<string[]>([]);
-  const [budgetTl, setBudgetTl] = useState('');
-  const [maxWalkingDistanceKm, setMaxWalkingDistanceKm] = useState('');
-  const [maxStops, setMaxStops] = useState('');
+  const [budgetKey, setBudgetKey] = useState<BudgetKey>('');
+  const [isPublic, setIsPublic] = useState(false);
+  // Keep weather + maxWalkingDistanceKm + maxStops in state to preserve on save
   const [weather, setWeather] = useState('');
-  const [visibility, setVisibility] = useState<TripVisibility>('DRAFT');
+  const [maxWalkingDistanceKm, setMaxWalkingDistanceKm] = useState<number | null>(null);
+  const [maxStops, setMaxStops] = useState<number | null>(null);
 
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showStartTimePicker, setShowStartTimePicker] = useState(false);
   const [showEndTimePicker, setShowEndTimePicker] = useState(false);
 
-  useEffect(() => {
-    async function loadTripDetail() {
-      if (isAuthLoading) return;
+  const tripReturnTarget = buildTripReturnTarget({ source, returnTripId });
+  const routeSource = getTripRouteSource(source);
 
+  useEffect(() => {
+    async function load() {
+      if (isAuthLoading) return;
       if (!token) {
-        setError('Authentication required. Please sign in again.');
+        setError('Authentication required.');
         setIsLoading(false);
         return;
       }
-
       if (!id || typeof id !== 'string') {
         setError('Missing trip id.');
         setIsLoading(false);
         return;
       }
-
       try {
         setIsLoading(true);
         setError(null);
@@ -196,265 +247,110 @@ export default function EditTripScreen() {
         setDate(data.trip.date.slice(0, 10));
         setStartTime(data.trip.timeStart ?? '');
         setEndTime(data.trip.timeEnd ?? '');
-        setCategories(data.trip.categories.map((item) => item.toLowerCase()));
-        setBudgetTl(data.trip.budgetTl !== null ? String(Math.round(data.trip.budgetTl)) : '');
-        setMaxWalkingDistanceKm(
-          data.trip.walkingToleranceKm !== null ? String(data.trip.walkingToleranceKm) : ''
-        );
-        setMaxStops(data.trip.maxPois !== null ? String(data.trip.maxPois) : '');
+        setCategories(data.trip.categories.map((c) => c.toLowerCase()));
+        setBudgetKey(budgetTlToBudgetKey(data.trip.budgetTl));
+        setIsPublic(data.trip.visibility === 'PUBLIC');
         setWeather(data.trip.weather ?? '');
-        setVisibility(data.trip.visibility);
-        setOriginalValues(
-          getNormalizedTripEditState({
-            title: data.trip.title,
-            description: data.trip.description ?? '',
-            date: data.trip.date.slice(0, 10),
-            startTime: data.trip.timeStart ?? '',
-            endTime: data.trip.timeEnd ?? '',
-            categories: data.trip.categories,
-            budgetTl:
-              data.trip.budgetTl !== null ? String(Math.round(data.trip.budgetTl)) : '',
-            maxWalkingDistanceKm:
-              data.trip.walkingToleranceKm !== null ? String(data.trip.walkingToleranceKm) : '',
-            maxStops: data.trip.maxPois !== null ? String(data.trip.maxPois) : '',
-            weather: data.trip.weather ?? '',
-            visibility: data.trip.visibility,
-          })
-        );
-      } catch (loadError) {
-        setError(
-          loadError instanceof Error ? loadError.message : 'Unable to load trip detail.'
-        );
+        setMaxWalkingDistanceKm(data.trip.walkingToleranceKm);
+        setMaxStops(data.trip.maxPois);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Unable to load trip.');
       } finally {
         setIsLoading(false);
       }
     }
-
-    void loadTripDetail();
+    void load();
   }, [token, id, isAuthLoading]);
 
   const toggleCategory = (interest: string) => {
     const normalized = interest.toLowerCase();
-    setCategories((previous) =>
-      previous.includes(normalized)
-        ? previous.filter((item) => item !== normalized)
-        : [...previous, normalized]
+    setCategories((prev) =>
+      prev.includes(normalized) ? prev.filter((c) => c !== normalized) : [...prev, normalized],
     );
   };
 
-  const normalizedCurrentValues = useMemo(
-    () =>
-      getNormalizedTripEditState({
-        title,
-        description,
-        date,
-        startTime,
-        endTime,
-        categories,
-        budgetTl,
-        maxWalkingDistanceKm,
-        maxStops,
-        weather,
-        visibility,
-      }),
-    [
-      title,
-      description,
-      date,
-      startTime,
-      endTime,
-      categories,
-      budgetTl,
-      maxWalkingDistanceKm,
-      maxStops,
-      weather,
-      visibility,
-    ]
-  );
+  // Determine if optimization-affecting fields changed (compared to loaded data)
+  const hasOptimizationChanges = useMemo(() => {
+    if (!tripDetail) return false;
+    const orig = tripDetail.trip;
+    const newCats = normalizeCategories(categories);
+    const origCats = normalizeCategories(orig.categories);
+    const selectedBudget = BUDGET_OPTIONS.find((b) => b.key === budgetKey)?.value ?? null;
+    return (
+      date !== orig.date.slice(0, 10) ||
+      startTime !== (orig.timeStart ?? '') ||
+      endTime !== (orig.timeEnd ?? '') ||
+      JSON.stringify(newCats) !== JSON.stringify(origCats) ||
+      selectedBudget !== orig.budgetTl
+    );
+  }, [tripDetail, date, startTime, endTime, categories, budgetKey]);
 
-  const changedFields = useMemo(() => {
-    if (!originalValues) {
-      return {
-        title: false,
-        description: false,
-        date: false,
-        startTime: false,
-        endTime: false,
-        categories: false,
-        budgetTl: false,
-        maxWalkingDistanceKm: false,
-        maxStops: false,
-        weather: false,
-        visibility: false,
-      };
-    }
+  const primaryActionLabel = hasOptimizationChanges ? 'Save & Re-optimize' : 'Save Changes';
 
-    return {
-      title: originalValues.title !== normalizedCurrentValues.title,
-      description: originalValues.description !== normalizedCurrentValues.description,
-      date: originalValues.date !== normalizedCurrentValues.date,
-      startTime: originalValues.startTime !== normalizedCurrentValues.startTime,
-      endTime: originalValues.endTime !== normalizedCurrentValues.endTime,
-      categories: !areStringArraysEqual(
-        originalValues.categories,
-        normalizedCurrentValues.categories
-      ),
-      budgetTl: originalValues.budgetTl !== normalizedCurrentValues.budgetTl,
-      maxWalkingDistanceKm:
-        originalValues.maxWalkingDistanceKm !== normalizedCurrentValues.maxWalkingDistanceKm,
-      maxStops: originalValues.maxStops !== normalizedCurrentValues.maxStops,
-      weather: originalValues.weather !== normalizedCurrentValues.weather,
-      visibility: originalValues.visibility !== normalizedCurrentValues.visibility,
-    };
-  }, [originalValues, normalizedCurrentValues]);
-
-  const changeState = useMemo(() => {
-    const hasMetadataChanges =
-      changedFields.title || changedFields.description || changedFields.visibility;
-    const hasOptimizationChanges =
-      changedFields.date ||
-      changedFields.startTime ||
-      changedFields.endTime ||
-      changedFields.categories ||
-      changedFields.budgetTl ||
-      changedFields.maxWalkingDistanceKm ||
-      changedFields.maxStops ||
-      changedFields.weather;
-
-    return {
-      hasChanges: hasMetadataChanges || hasOptimizationChanges,
-      hasMetadataChanges,
-      hasOptimizationChanges,
-    };
-  }, [changedFields]);
-
-  const primaryActionLabel = changeState.hasOptimizationChanges
-    ? 'Save & Re-optimize'
-    : 'Save Changes';
-  const tripReturnTarget = buildTripReturnTarget({ source, returnTripId });
-  const routeSource = getTripRouteSource(source);
+  const handleCancel = () => {
+    const tripId = tripDetail?.trip.id ?? (typeof id === 'string' ? id : '');
+    router.replace(`/public-trip/${tripId}` as any);
+  };
 
   const handleSave = async () => {
     if (!token || !id || typeof id !== 'string') {
       Alert.alert('Unable to save', 'Authentication or trip context is missing.');
       return;
     }
-
-    if (!changeState.hasChanges) return;
-
     if (!title.trim()) {
       Alert.alert('Missing title', 'Please enter a trip title.');
       return;
     }
-
-    if (
-      normalizedCurrentValues.budgetTl !== null &&
-      Number.isNaN(normalizedCurrentValues.budgetTl)
-    ) {
-      Alert.alert(
-        'Invalid numeric input',
-        'Budget, walking distance, and max stops must be valid numbers.'
-      );
-      return;
-    }
-
-    if (
-      normalizedCurrentValues.maxWalkingDistanceKm !== null &&
-      Number.isNaN(normalizedCurrentValues.maxWalkingDistanceKm)
-    ) {
-      Alert.alert(
-        'Invalid numeric input',
-        'Budget, walking distance, and max stops must be valid numbers.'
-      );
-      return;
-    }
-
-    if (
-      normalizedCurrentValues.maxStops !== null &&
-      Number.isNaN(normalizedCurrentValues.maxStops)
-    ) {
-      Alert.alert(
-        'Invalid numeric input',
-        'Budget, walking distance, and max stops must be valid numbers.'
-      );
-      return;
-    }
-
-    if (
-      !normalizedCurrentValues.date ||
-      !/^\d{4}-\d{2}-\d{2}$/.test(normalizedCurrentValues.date)
-    ) {
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       Alert.alert('Invalid date', 'Please provide a valid trip date.');
       return;
     }
 
+    const resolvedVisibility: TripVisibility = isPublic ? 'PUBLIC' : 'PRIVATE';
+    const resolvedBudget = BUDGET_OPTIONS.find((b) => b.key === budgetKey)?.value ?? undefined;
+
     const payload: UpdateTripPayload = {
-      title: normalizedCurrentValues.title,
-      description: normalizedCurrentValues.description || undefined,
-      date: normalizedCurrentValues.date,
-      startTime: normalizedCurrentValues.startTime || undefined,
-      endTime: normalizedCurrentValues.endTime || undefined,
-      categories: normalizedCurrentValues.categories,
-      budgetTl: normalizedCurrentValues.budgetTl ?? undefined,
-      maxWalkingDistanceKm: normalizedCurrentValues.maxWalkingDistanceKm ?? undefined,
-      maxStops: normalizedCurrentValues.maxStops ?? undefined,
-      weather: normalizedCurrentValues.weather || undefined,
-      visibility: normalizedCurrentValues.visibility,
+      title: title.trim(),
+      description: description.trim() || undefined,
+      date,
+      startTime: startTime || undefined,
+      endTime: endTime || undefined,
+      categories: normalizeCategories(categories),
+      budgetTl: resolvedBudget,
+      maxWalkingDistanceKm: maxWalkingDistanceKm ?? undefined,
+      maxStops: maxStops ?? undefined,
+      weather: weather || undefined,
+      visibility: resolvedVisibility,
     };
 
     try {
       setIsSaving(true);
       setError(null);
       await updateTrip(token, id, payload);
-
-      if (changeState.hasOptimizationChanges) {
+      if (hasOptimizationChanges) {
         await optimizeTrip(token, id);
         router.replace({ pathname: '/results', params: { tripId: id } });
         return;
       }
-
-      router.replace(
-        buildTripDetailParams(id, {
-          ...(routeSource ? { source: routeSource } : {}),
-          ...(returnTripId ? { returnTripId } : {}),
-        })
-      );
-    } catch (saveError) {
-      const message =
-        saveError instanceof Error
-          ? saveError.message
-          : 'Unable to update and optimize trip.';
-      setError(message);
-      Alert.alert('Unable to save and re-optimize', message);
+      router.replace(`/public-trip/${id}` as any);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unable to save trip.';
+      setError(msg);
+      Alert.alert('Unable to save', msg);
     } finally {
       setIsSaving(false);
     }
-  };
-
-  const handleCancel = () => {
-    router.replace(
-      buildTripDetailParams(tripDetail?.trip.id ?? id ?? '', {
-        ...(routeSource ? { source: routeSource } : {}),
-        ...(returnTripId ? { returnTripId } : {}),
-      })
-    );
   };
 
   // ── Loading state ──────────────────────────────────────────────────────────
 
   if (isLoading || isAuthLoading) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-        <View style={styles.navBar}>
-          <Pressable style={styles.backButton} onPress={() => router.back()}>
-            <Ionicons name="arrow-back" size={20} color="#0B3B4A" />
-          </Pressable>
-          <Text style={styles.navTitle}>Edit Trip</Text>
-          <View style={styles.navSpacer} />
-        </View>
+      <SafeAreaView style={styles.safe} edges={['left', 'right', 'bottom']}>
+        <PageHeader onBack={() => router.back()} />
         <View style={styles.centerState}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
-          <Text style={styles.stateText}>Loading trip editor…</Text>
+          <Text style={styles.stateText}>Loading editor…</Text>
         </View>
       </SafeAreaView>
     );
@@ -462,124 +358,108 @@ export default function EditTripScreen() {
 
   if (error && !tripDetail) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-        <View style={styles.navBar}>
-          <Pressable style={styles.backButton} onPress={() => router.back()}>
-            <Ionicons name="arrow-back" size={20} color="#0B3B4A" />
-          </Pressable>
-          <Text style={styles.navTitle}>Edit Trip</Text>
-          <View style={styles.navSpacer} />
-        </View>
+      <SafeAreaView style={styles.safe} edges={['left', 'right', 'bottom']}>
+        <PageHeader onBack={() => router.back()} />
         <View style={styles.centerState}>
           <Ionicons name="alert-circle-outline" size={44} color={theme.colors.textSecondary} />
-          <Text style={styles.stateTitle}>Trip editor unavailable</Text>
+          <Text style={styles.stateTitle}>Editor unavailable</Text>
           <Text style={styles.stateText}>{error}</Text>
-          <Pressable style={styles.primaryButton} onPress={handleCancel}>
-            <Text style={styles.primaryButtonText}>Back to Trip</Text>
+          <Pressable style={styles.primaryBtn} onPress={handleCancel}>
+            <Text style={styles.primaryBtnText}>Back to Trip</Text>
           </Pressable>
         </View>
       </SafeAreaView>
     );
   }
 
-  const subtitle = changeState.hasOptimizationChanges
-    ? `Update preferences for ${tripDetail?.trip.title ?? 'this trip'}, then re-run optimization.`
-    : `Update trip details for ${tripDetail?.trip.title ?? 'this trip'}.`;
+  const coverImageUrl = tripDetail?.preview.imageUrl?.trim() || null;
 
   // ── Main render ────────────────────────────────────────────────────────────
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-      {/* ── Nav bar ── */}
-      <View style={styles.navBar}>
-        <Pressable style={styles.backButton} onPress={handleCancel}>
-          <Ionicons name="arrow-back" size={20} color="#0B3B4A" />
-        </Pressable>
-        <Text style={styles.navTitle}>Edit Trip</Text>
-        <View style={styles.navSpacer} />
-      </View>
+    <SafeAreaView style={styles.safe} edges={['left', 'right', 'bottom']}>
+      <PageHeader onBack={handleCancel} />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
       >
-        {/* ── Header ── */}
-        <View style={styles.pageHeader}>
-          <Text style={styles.eyebrow}>EDIT TRIP</Text>
-          <Text style={styles.pageTitle}>
-            {tripDetail?.trip.title ?? 'Edit Trip'}
-          </Text>
-          <Text style={styles.pageSub}>{subtitle}</Text>
-        </View>
-
-        {/* ── Remix notice ── */}
+        {/* Remix notice */}
         {remix === '1' ? (
           <View style={styles.remixNotice}>
-            <Ionicons name="copy-outline" size={15} color="#0B3B4A" />
+            <Ionicons name="copy-outline" size={15} color={theme.colors.primaryDark} />
             <Text style={styles.remixNoticeText}>
-              This is your own draft copy. Changes here only affect your remixed trip.
+              This is your own draft copy. Changes only affect your remixed trip.
             </Text>
           </View>
         ) : null}
 
-        {/* ── Form card ── */}
-        <View style={styles.formCard}>
-          {/* Title */}
-          <Text style={styles.label}>Title *</Text>
+        {/* ── Cover image ────────────────────────────────────────────────── */}
+        <View style={styles.coverContainer}>
+          {coverImageUrl ? (
+            <Image
+              source={{ uri: coverImageUrl }}
+              style={styles.coverImage}
+              contentFit="cover"
+              transition={200}
+            />
+          ) : (
+            <View style={styles.coverImage}>
+              <Artwork
+                kind="trip"
+                variant="cover"
+                label={tripDetail?.trip.title ?? 'Trip'}
+              />
+            </View>
+          )}
+          {/* Change Cover overlay — placeholder, non-functional */}
+          <View style={styles.changeCoverCenter}>
+            <View style={styles.changeCoverOverlay}>
+              <Ionicons name="image-outline" size={16} color={theme.colors.primaryDark} />
+              <Text style={styles.changeCoverText}>Change Cover</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* ── Trip Details section ────────────────────────────────────────── */}
+        <View style={styles.section}>
+          <Text style={styles.sectionEyebrow}>EDIT TRIP</Text>
+          <Text style={styles.sectionTitle}>Trip Details</Text>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.fieldLabel}>Trip Title *</Text>
           <TextInput
             value={title}
             onChangeText={setTitle}
-            placeholder="Trip title"
+            placeholder="Enter trip title"
             placeholderTextColor="#94A3B8"
             style={styles.input}
           />
 
-          {/* Description */}
-          <Text style={styles.label}>Description</Text>
+          <View style={styles.fieldSep} />
+
+          <Text style={styles.fieldLabel}>Description</Text>
           <TextInput
             value={description}
             onChangeText={setDescription}
-            placeholder="Trip description"
+            placeholder="Describe this trip…"
             placeholderTextColor="#94A3B8"
             multiline
             textAlignVertical="top"
             style={styles.textArea}
           />
+        </View>
 
-          {/* Visibility */}
-          <Text style={styles.label}>Visibility</Text>
-          <View style={styles.optionRow}>
-            {visibilityOptions.map((item) => {
-              const isSelected = visibility === item.value;
-              return (
-                <TouchableOpacity
-                  key={item.value}
-                  onPress={() => setVisibility(item.value)}
-                  style={[styles.optionChip, isSelected && styles.optionChipSelected]}
-                >
-                  <Text
-                    style={[
-                      styles.optionChipText,
-                      isSelected && styles.optionChipTextSelected,
-                    ]}
-                  >
-                    {item.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-          <Text style={styles.helperText}>
-            {visibilityOptions.find((item) => item.value === visibility)?.description}
-          </Text>
-
-          {/* Date */}
-          <Text style={styles.label}>Date *</Text>
-          <TouchableOpacity style={styles.input} onPress={() => setShowDatePicker(true)}>
-            <Text style={{ color: date ? theme.colors.text : '#94A3B8', fontSize: 15 }}>
+        {/* Date + Time */}
+        <View style={styles.card}>
+          <Text style={styles.fieldLabel}>Date *</Text>
+          <Pressable style={styles.input} onPress={() => setShowDatePicker(true)}>
+            <Text style={{ fontFamily: font.regular, fontSize: 15, color: date ? theme.colors.text : '#94A3B8' }}>
               {date || 'Select date'}
             </Text>
-          </TouchableOpacity>
+          </Pressable>
           {showDatePicker ? (
             <DateTimePicker
               value={date ? toDateValue(date) : new Date()}
@@ -592,35 +472,33 @@ export default function EditTripScreen() {
             />
           ) : null}
 
-          {/* Time window */}
-          <Text style={styles.label}>Available Time</Text>
+          <View style={styles.fieldSep} />
+
+          <Text style={styles.fieldLabel}>Available Time</Text>
           <View style={styles.timeRow}>
-            <TouchableOpacity
+            <Pressable
               style={[styles.input, styles.timeInput]}
               onPress={() => setShowStartTimePicker(true)}
             >
-              <Text style={{ color: startTime ? theme.colors.text : '#94A3B8', fontSize: 15 }}>
+              <Text style={{ fontFamily: font.regular, fontSize: 15, color: startTime ? theme.colors.text : '#94A3B8' }}>
                 {startTime || 'Start time'}
               </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
+            </Pressable>
+            <Pressable
               style={[styles.input, styles.timeInput]}
               onPress={() => setShowEndTimePicker(true)}
             >
-              <Text style={{ color: endTime ? theme.colors.text : '#94A3B8', fontSize: 15 }}>
+              <Text style={{ fontFamily: font.regular, fontSize: 15, color: endTime ? theme.colors.text : '#94A3B8' }}>
                 {endTime || 'End time'}
               </Text>
-            </TouchableOpacity>
+            </Pressable>
           </View>
           {showStartTimePicker ? (
             <DateTimePicker
               value={toTimeValue(startTime || null, '10:00')}
               mode="time"
               display="default"
-              onChange={(_, selectedTime) => {
-                setShowStartTimePicker(false);
-                if (selectedTime) setStartTime(formatTimeForApi(selectedTime));
-              }}
+              onChange={(_, t) => { setShowStartTimePicker(false); if (t) setStartTime(formatTimeForApi(t)); }}
             />
           ) : null}
           {showEndTimePicker ? (
@@ -628,132 +506,136 @@ export default function EditTripScreen() {
               value={toTimeValue(endTime || null, '18:00')}
               mode="time"
               display="default"
-              onChange={(_, selectedTime) => {
-                setShowEndTimePicker(false);
-                if (selectedTime) setEndTime(formatTimeForApi(selectedTime));
-              }}
+              onChange={(_, t) => { setShowEndTimePicker(false); if (t) setEndTime(formatTimeForApi(t)); }}
             />
           ) : null}
-
-          {/* Interests */}
-          <Text style={styles.label}>Interests</Text>
-          <View style={styles.chipContainer}>
-            {interestOptions.map((interest) => {
-              const isSelected = categories.includes(interest.toLowerCase());
-              return (
-                <Pressable
-                  key={interest}
-                  onPress={() => toggleCategory(interest)}
-                  style={[styles.interestChip, isSelected && styles.interestChipSelected]}
-                >
-                  <Text
-                    style={[
-                      styles.interestChipText,
-                      isSelected && styles.interestChipTextSelected,
-                    ]}
-                  >
-                    {interest}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          {/* Budget */}
-          <Text style={styles.label}>Budget (TL)</Text>
-          <TextInput
-            value={budgetTl}
-            onChangeText={setBudgetTl}
-            placeholder="e.g. 3000"
-            placeholderTextColor="#94A3B8"
-            style={styles.input}
-            keyboardType="numeric"
-          />
-
-          {/* Walking distance */}
-          <Text style={styles.label}>Max Walking Distance (km)</Text>
-          <TextInput
-            value={maxWalkingDistanceKm}
-            onChangeText={setMaxWalkingDistanceKm}
-            placeholder="e.g. 3.5"
-            placeholderTextColor="#94A3B8"
-            style={styles.input}
-            keyboardType="numeric"
-          />
-
-          {/* Max stops */}
-          <Text style={styles.label}>Max Stops</Text>
-          <TextInput
-            value={maxStops}
-            onChangeText={setMaxStops}
-            placeholder="e.g. 6"
-            placeholderTextColor="#94A3B8"
-            style={styles.input}
-            keyboardType="numeric"
-          />
-
-          {/* Weather */}
-          <Text style={styles.label}>Weather</Text>
-          <View style={styles.optionRow}>
-            {weatherOptions.map((item) => {
-              const isSelected = weather === item;
-              return (
-                <TouchableOpacity
-                  key={item}
-                  onPress={() => setWeather(isSelected ? '' : item)}
-                  style={[styles.optionChip, isSelected && styles.optionChipSelected]}
-                >
-                  <Text
-                    style={[
-                      styles.optionChipText,
-                      isSelected && styles.optionChipTextSelected,
-                    ]}
-                  >
-                    {item}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          {/* Inline error */}
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
         </View>
 
-        {/* ── CTA group ── */}
+        {/* ── Visibility ──────────────────────────────────────────────────── */}
+        <View style={styles.visibilityCard}>
+          <View style={styles.visibilityLeft}>
+            <Text style={styles.visibilityLabel}>Public Visibility</Text>
+            <Text style={styles.visibilityHint}>Allow others to see and remix your trip</Text>
+          </View>
+          <Switch
+            value={isPublic}
+            onValueChange={setIsPublic}
+            trackColor={{ false: '#CBD5E1', true: theme.colors.primary }}
+            thumbColor="#FFFFFF"
+          />
+        </View>
+
+        {/* ── Interests ───────────────────────────────────────────────────── */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Interests</Text>
+          <Text style={styles.sectionSub}>Select the types of places you enjoy</Text>
+        </View>
+
+        <View style={styles.chipGrid}>
+          {INTEREST_OPTIONS.map((interest) => {
+            const isSelected = categories.includes(interest.toLowerCase());
+            return (
+              <Pressable
+                key={interest}
+                onPress={() => toggleCategory(interest)}
+                style={[styles.interestChip, isSelected && styles.interestChipSelected]}
+              >
+                <Text
+                  style={[
+                    styles.interestChipText,
+                    isSelected && styles.interestChipTextSelected,
+                  ]}
+                >
+                  {interest}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {/* ── Budget ──────────────────────────────────────────────────────── */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Budget</Text>
+          <Text style={styles.sectionSub}>Set your spending comfort level</Text>
+        </View>
+
+        <View style={styles.budgetList}>
+          {BUDGET_OPTIONS.map(({ key, label, sub, icon, desc }) => {
+            const isSelected = budgetKey === key;
+            return (
+              <Pressable
+                key={key}
+                style={({ pressed }) => [
+                  styles.budgetCard,
+                  isSelected && styles.budgetCardSelected,
+                  pressed && styles.budgetCardPressed,
+                ]}
+                onPress={() => setBudgetKey(isSelected ? '' : key)}
+              >
+                <View style={[styles.budgetIconCircle, isSelected && styles.budgetIconCircleSelected]}>
+                  <Ionicons
+                    name={icon}
+                    size={20}
+                    color={isSelected ? '#FFFFFF' : theme.colors.primaryDark}
+                  />
+                </View>
+                <View style={styles.budgetCardBody}>
+                  <Text style={[styles.budgetCardLabel, isSelected && styles.budgetCardLabelSelected]}>
+                    {label}
+                  </Text>
+                  <Text style={styles.budgetCardSub}>{sub}</Text>
+                  <Text style={styles.budgetCardDesc}>{desc}</Text>
+                </View>
+                <View style={styles.budgetCardCheckSlot}>
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={22}
+                    color="#006A69"
+                    style={[styles.budgetCardCheck, !isSelected && styles.budgetCardCheckHidden]}
+                  />
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {/* Inline error */}
+        {error ? (
+          <View style={styles.errorRow}>
+            <Ionicons name="alert-circle-outline" size={14} color="#9A3412" />
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        ) : null}
+
+        {/* ── Bottom actions ───────────────────────────────────────────────── */}
         <View style={styles.ctaGroup}>
           <Pressable
-            style={[
-              styles.primaryButton,
-              (!changeState.hasChanges || isSaving) && styles.primaryButtonDisabled,
-            ]}
+            style={[styles.saveBtn, isSaving && styles.btnDimmed]}
             onPress={() => void handleSave()}
-            disabled={isSaving || !changeState.hasChanges}
+            disabled={isSaving}
           >
-            <Text style={styles.primaryButtonText}>
-              {isSaving
-                ? changeState.hasOptimizationChanges
-                  ? 'Saving & Re-optimizing…'
-                  : 'Saving Changes…'
-                : primaryActionLabel}
-            </Text>
             {!isSaving && (
               <Ionicons
-                name={changeState.hasOptimizationChanges ? 'flash-outline' : 'checkmark'}
-                size={16}
+                name={hasOptimizationChanges ? 'flash-outline' : 'checkmark'}
+                size={17}
                 color="#FFFFFF"
               />
             )}
+            <Text style={styles.saveBtnText}>
+              {isSaving
+                ? hasOptimizationChanges
+                  ? 'Saving & Re-optimizing…'
+                  : 'Saving…'
+                : primaryActionLabel}
+            </Text>
           </Pressable>
 
           <Pressable
-            style={[styles.secondaryButton, isSaving && styles.secondaryButtonDisabled]}
+            style={[styles.cancelBtn, isSaving && styles.btnDimmed]}
             onPress={handleCancel}
             disabled={isSaving}
           >
-            <Text style={styles.secondaryButtonText}>
-              {tripReturnTarget.label === 'Back to Results' ? 'Back to Trip' : 'Cancel'}
-            </Text>
+            <Text style={styles.cancelBtnText}>Cancel</Text>
           </Pressable>
         </View>
       </ScrollView>
@@ -764,9 +646,13 @@ export default function EditTripScreen() {
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: theme.colors.background,
+  safe: { flex: 1, backgroundColor: theme.colors.background },
+
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 48,
+    gap: 16,
   },
 
   // States
@@ -774,79 +660,20 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
     paddingHorizontal: 40,
+    gap: 12,
   },
   stateTitle: {
+    fontFamily: font.bold,
     fontSize: 18,
-    fontWeight: '700',
-    color: '#111C2C',
+    color: theme.colors.primaryDark,
     textAlign: 'center',
   },
   stateText: {
+    fontFamily: font.regular,
     fontSize: 14,
     color: theme.colors.textSecondary,
     textAlign: 'center',
-  },
-
-  // Nav bar
-  navBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: H_PAD,
-    paddingTop: 12,
-    paddingBottom: 8,
-    gap: 12,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#F1F5F9',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  navTitle: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#111C2C',
-    textAlign: 'center',
-  },
-  navSpacer: {
-    width: 40,
-  },
-
-  // Scroll
-  scrollContent: {
-    paddingHorizontal: H_PAD,
-    paddingBottom: 48,
-    gap: 16,
-  },
-
-  // Page header
-  pageHeader: {
-    gap: 3,
-  },
-  eyebrow: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1.8,
-    color: theme.colors.primary,
-    marginBottom: 2,
-  },
-  pageTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#111C2C',
-    letterSpacing: -0.4,
-    lineHeight: 30,
-  },
-  pageSub: {
-    fontSize: 13,
-    lineHeight: 19,
-    color: theme.colors.textSecondary,
   },
 
   // Remix notice
@@ -863,35 +690,93 @@ const styles = StyleSheet.create({
   },
   remixNoticeText: {
     flex: 1,
+    fontFamily: font.semiBold,
     fontSize: 13,
     lineHeight: 19,
-    color: '#0B3B4A',
-    fontWeight: '600',
+    color: theme.colors.primaryDark,
   },
 
-  // Form card
-  formCard: {
+  // Cover image
+  coverContainer: {
+    height: 400,
+    borderRadius: 20,
+    overflow: 'hidden',
+    backgroundColor: '#DFF7F6',
+    position: 'relative',
+  },
+  coverImage: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  changeCoverCenter: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  changeCoverOverlay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.88)',
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  changeCoverText: {
+    fontFamily: font.semiBold,
+    fontSize: 13,
+    color: theme.colors.primaryDark,
+  },
+
+  // Section headers
+  section: { gap: 2 },
+  sectionEyebrow: {
+    fontFamily: font.bold,
+    fontSize: 10,
+    color: theme.colors.primary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  sectionTitle: {
+    fontFamily: font.bold,
+    fontSize: 17,
+    lineHeight: 24,
+    color: theme.colors.primaryDark,
+    letterSpacing: -0.2,
+  },
+  sectionSub: {
+    fontFamily: font.regular,
+    fontSize: 13,
+    color: theme.colors.textSecondary,
+    marginTop: 2,
+  },
+
+  // Card (wraps related fields)
+  card: {
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
     borderWidth: 1,
     borderColor: '#E8ECF0',
-    padding: 18,
+    padding: 16,
     gap: 0,
   },
-  label: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#475569',
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-    marginBottom: 8,
-    marginTop: 16,
-  },
-  helperText: {
+  fieldLabel: {
+    fontFamily: font.bold,
     fontSize: 12,
-    lineHeight: 18,
     color: theme.colors.textSecondary,
+    letterSpacing: 0.1,
+    marginBottom: 8,
     marginTop: 4,
+  },
+  fieldSep: {
+    height: 1,
+    backgroundColor: '#F1F5F9',
+    marginVertical: 12,
+    marginHorizontal: -16,
   },
   input: {
     backgroundColor: '#F8FAFC',
@@ -900,65 +785,59 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 14,
+    fontFamily: font.regular,
     fontSize: 15,
     color: theme.colors.text,
   },
   textArea: {
-    minHeight: 100,
+    minHeight: 96,
     backgroundColor: '#F8FAFC',
     borderWidth: 1,
     borderColor: '#E8ECF0',
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 14,
+    fontFamily: font.regular,
     fontSize: 15,
     color: theme.colors.text,
   },
-  timeRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  timeInput: {
-    flex: 1,
-  },
+  timeRow: { flexDirection: 'row', gap: 10 },
+  timeInput: { flex: 1 },
 
-  // Option chips (visibility, weather)
-  optionRow: {
+  // Visibility toggle card
+  visibilityCard: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  optionChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 999,
-    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: '#E8ECF0',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    gap: 12,
   },
-  optionChipSelected: {
-    backgroundColor: '#006A69',
-    borderColor: '#006A69',
+  visibilityLeft: { flex: 1, gap: 3 },
+  visibilityLabel: {
+    fontFamily: font.bold,
+    fontSize: 14,
+    color: theme.colors.primaryDark,
   },
-  optionChipText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#475569',
-  },
-  optionChipTextSelected: {
-    color: '#FFFFFF',
-    fontWeight: '700',
+  visibilityHint: {
+    fontFamily: font.regular,
+    fontSize: 12,
+    lineHeight: 17,
+    color: theme.colors.textSecondary,
   },
 
   // Interest chips
-  chipContainer: {
+  chipGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
   },
   interestChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 9,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     borderRadius: 999,
     backgroundColor: '#F1F5F9',
     borderWidth: 1,
@@ -969,59 +848,127 @@ const styles = StyleSheet.create({
     borderColor: '#006A69',
   },
   interestChipText: {
+    fontFamily: font.semiBold,
     fontSize: 13,
-    fontWeight: '500',
-    color: '#64748B',
+    color: theme.colors.textSecondary,
   },
   interestChipTextSelected: {
-    fontWeight: '700',
+    fontFamily: font.bold,
     color: '#006A69',
   },
 
-  // Error
+  // Budget cards
+  budgetList: { gap: 10 },
+  budgetCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E8ECF0',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  budgetCardSelected: {
+    borderColor: theme.colors.primary,
+    backgroundColor: '#F0FEFE',
+  },
+  budgetCardPressed: { opacity: 0.82 },
+  budgetIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  budgetIconCircleSelected: {
+    backgroundColor: theme.colors.primary,
+  },
+  budgetCardBody: { flex: 1, gap: 2 },
+  budgetCardLabel: {
+    fontFamily: font.bold,
+    fontSize: 14,
+    color: theme.colors.primaryDark,
+  },
+  budgetCardLabelSelected: { color: '#006A69' },
+  budgetCardSub: {
+    fontFamily: font.semiBold,
+    fontSize: 12,
+    color: theme.colors.primary,
+  },
+  budgetCardDesc: {
+    fontFamily: font.regular,
+    fontSize: 12,
+    lineHeight: 17,
+    color: theme.colors.textSecondary,
+  },
+  budgetCardCheckSlot: { width: 24, alignItems: 'center' },
+  budgetCardCheck: {},
+  budgetCardCheckHidden: { opacity: 0 },
+
+  // Error row
+  errorRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: '#FFF7ED',
+    borderRadius: 12,
+    padding: 12,
+  },
   errorText: {
-    color: '#DC2626',
+    flex: 1,
+    fontFamily: font.regular,
     fontSize: 13,
     lineHeight: 19,
-    marginTop: 12,
+    color: '#9A3412',
   },
 
   // CTAs
-  ctaGroup: {
-    gap: 10,
-  },
-  primaryButton: {
+  ctaGroup: { gap: 10, marginTop: 4 },
+  saveBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#006A69',
-    borderRadius: 14,
-    paddingVertical: 15,
+    backgroundColor: theme.colors.primary,
+    borderRadius: 16,
+    height: 54,
   },
-  primaryButtonDisabled: {
-    opacity: 0.45,
-  },
-  primaryButtonText: {
+  saveBtnText: {
+    fontFamily: font.bold,
     fontSize: 15,
-    fontWeight: '700',
     color: '#FFFFFF',
+    letterSpacing: 0.1,
   },
-  secondaryButton: {
+  cancelBtn: {
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    paddingVertical: 15,
+    borderRadius: 16,
+    height: 50,
     borderWidth: 1,
     borderColor: '#E8ECF0',
   },
-  secondaryButtonDisabled: {
-    opacity: 0.45,
-  },
-  secondaryButtonText: {
+  cancelBtnText: {
+    fontFamily: font.bold,
     fontSize: 15,
-    fontWeight: '700',
-    color: '#0B3B4A',
+    color: theme.colors.primaryDark,
   },
+  btnDimmed: { opacity: 0.5 },
+
+  // Primary button (error screen)
+  primaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: theme.colors.primary,
+    borderRadius: 12,
+    paddingVertical: 13,
+    paddingHorizontal: 24,
+  },
+  primaryBtnText: { fontFamily: font.bold, fontSize: 14, color: '#FFFFFF' },
 });
