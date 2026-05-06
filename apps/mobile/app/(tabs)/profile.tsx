@@ -11,14 +11,25 @@ import {
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Image } from 'expo-image';
+import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Artwork from '@/components/ui/Artwork';
 import { theme } from '@/constants/theme';
+import { font, type } from '@/constants/typography';
 import { useAuth } from '@/context/AuthContext';
-import { getTrips, type TripListItem } from '@/services/trips';
-import { buildTripDetailParams } from '@/utils/tripNavigation';
+import { getTrips, type TripListItem, type TripVisibility } from '@/services/trips';
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const COVER_HEIGHT = 180;
+const AVATAR_SIZE = 80;
+const AVATAR_RING = 4;
+const H_PAD = 20;
+const CARD_GAP = 12;
+
+const COVER_IMAGE = require('@/assets/images/profile/profile-cover.png');
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function getDisplayName(displayName: string | null | undefined, email: string) {
   const trimmedDisplayName = displayName?.trim();
@@ -33,19 +44,8 @@ function getAvatarLabel(displayName: string | null | undefined, email: string) {
     .split(/[\s._-]+/)
     .map((part) => part.trim())
     .filter(Boolean);
-  if (parts.length >= 2) {
-    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-  }
+  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
   return source.slice(0, 2).toUpperCase();
-}
-
-function formatJoinedDate(date: string | undefined) {
-  if (!date) return 'Joined recently';
-  return `Joined ${new Date(date).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  })}`;
 }
 
 function formatShortDate(date: string) {
@@ -56,76 +56,166 @@ function formatShortDate(date: string) {
   });
 }
 
-function formatCategoryLabel(category: string) {
-  return category.charAt(0).toUpperCase() + category.slice(1);
+function cap(s: string) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-
-
-// Derives a short "Istanbul Enthusiast • Digital Nomad"-style tagline
 function buildTagline(trips: TripListItem[]): string {
   if (trips.length === 0) return 'Tripcholic Traveler';
-
-  const categoryCounts = new Map<string, number>();
+  const counts = new Map<string, number>();
   for (const trip of trips) {
-    for (const category of trip.categories) {
-      const normalized = category.trim().toLowerCase();
-      if (!normalized) continue;
-      categoryCounts.set(normalized, (categoryCounts.get(normalized) ?? 0) + 1);
+    for (const cat of trip.categories) {
+      const n = cat.trim().toLowerCase();
+      if (n) counts.set(n, (counts.get(n) ?? 0) + 1);
     }
   }
-
-  const top = [...categoryCounts.entries()]
+  const top = [...counts.entries()]
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .slice(0, 2)
-    .map(([cat]) => `${formatCategoryLabel(cat)} Enthusiast`);
-
-  if (top.length === 0) return 'Tripcholic Traveler';
-  return top.join(' • ');
+    .map(([cat]) => `${cap(cat)} Enthusiast`);
+  return top.length ? top.join(' • ') : 'Tripcholic Traveler';
 }
 
-// ── Grid card (public routes 2-column grid) ───────────────────────────────
+// ── Visibility badge ──────────────────────────────────────────────────────────
 
-function GridTripCard({
+const VIS_CONFIG: Record<TripVisibility, { icon: string; label: string; color: string }> = {
+  PUBLIC: { icon: 'globe-outline', label: 'Public', color: theme.colors.primary },
+  PRIVATE: { icon: 'lock-closed-outline', label: 'Private', color: theme.colors.textSecondary },
+  DRAFT: { icon: 'create-outline', label: 'Draft', color: '#F59E0B' },
+};
+
+function VisibilityBadge({ visibility }: { visibility: TripVisibility }) {
+  const cfg = VIS_CONFIG[visibility];
+  return (
+    <View style={badgeStyles.pill}>
+      <Ionicons name={cfg.icon as any} size={10} color={cfg.color} />
+      <Text style={[badgeStyles.label, { color: cfg.color }]}>{cfg.label}</Text>
+    </View>
+  );
+}
+
+const badgeStyles = StyleSheet.create({
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderRadius: 9999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  label: {
+    fontFamily: font.bold,
+    fontSize: 10,
+    letterSpacing: 0.3,
+  },
+});
+
+// ── Journey card ──────────────────────────────────────────────────────────────
+
+function JourneyCard({
   trip,
-  size,
+  cardWidth,
+  showVisibility,
   onPress,
 }: {
   trip: TripListItem;
-  size: number;
+  cardWidth: number;
+  showVisibility: boolean;
   onPress: () => void;
 }) {
   const imageUrl = trip.preview?.imageUrl?.trim() || null;
+  const imageHeight = Math.round(cardWidth * 1.3);
 
   return (
     <Pressable
-      style={[styles.gridCard, { width: size, height: size }]}
+      style={({ pressed }) => [cardStyles.card, { width: cardWidth }, pressed && { opacity: 0.93 }]}
       onPress={onPress}
     >
-      {imageUrl ? (
-        <Image
-          source={{ uri: imageUrl }}
-          style={StyleSheet.absoluteFill}
-          contentFit="cover"
-          transition={150}
-        />
-      ) : (
-        <View style={StyleSheet.absoluteFill}>
-          <Artwork kind="trip" variant="cover" label={trip.title} />
+      <View style={[cardStyles.imageWrap, { height: imageHeight }]}>
+        <Artwork imageUrl={imageUrl} kind="trip" variant="cover" />
+        {showVisibility && (
+          <View style={cardStyles.badgeWrap}>
+            <VisibilityBadge visibility={trip.visibility} />
+          </View>
+        )}
+      </View>
+      <View style={cardStyles.content}>
+        <Text style={cardStyles.title} numberOfLines={2}>{trip.title}</Text>
+        <Text style={cardStyles.date}>{formatShortDate(trip.date)}</Text>
+        {/* Engagement row — display-only; counts placeholder until API exposes them */}
+        <View style={cardStyles.metricsRow}>
+          <View style={cardStyles.metricItem}>
+            <Ionicons name="heart-outline" size={11} color={theme.colors.textSecondary} />
+            <Text style={cardStyles.metricText}>0</Text>
+          </View>
+          <View style={cardStyles.metricItem}>
+            <Ionicons name="chatbubble-outline" size={11} color={theme.colors.textSecondary} />
+            <Text style={cardStyles.metricText}>0</Text>
+          </View>
+          <View style={cardStyles.metricItem}>
+            <Ionicons name="bookmark-outline" size={11} color={theme.colors.textSecondary} />
+            <Text style={cardStyles.metricText}>0</Text>
+          </View>
         </View>
-      )}
-      {/* Scrim overlay */}
-      <View style={styles.gridCardScrim} />
-      {/* Text overlay */}
-      <View style={styles.gridCardTextWrap}>
-        <Text style={styles.gridCardTitle} numberOfLines={2}>
-          {trip.title}
-        </Text>
-        <Text style={styles.gridCardDate}>{formatShortDate(trip.date)}</Text>
       </View>
     </Pressable>
   );
 }
+
+const cardStyles = StyleSheet.create({
+  card: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    shadowColor: theme.colors.primaryDark,
+    shadowOpacity: 0.07,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  imageWrap: {
+    width: '100%',
+    position: 'relative',
+  },
+  badgeWrap: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+  },
+  content: {
+    padding: 10,
+    gap: 3,
+  },
+  title: {
+    fontFamily: font.bold,
+    fontSize: 13,
+    lineHeight: 18,
+    color: theme.colors.primaryDark,
+  },
+  date: {
+    fontFamily: font.regular,
+    fontSize: 11,
+    color: theme.colors.textSecondary,
+  },
+  metricsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 3,
+  },
+  metricItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  metricText: {
+    fontFamily: font.medium,
+    fontSize: 11,
+    color: theme.colors.textSecondary,
+  },
+});
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
@@ -140,34 +230,25 @@ export default function ProfileScreen() {
 
   const loadTrips = useCallback(async () => {
     if (isAuthLoading) return;
-
     if (!token) {
       setTrips([]);
       setTripsError('Authentication required. Please sign in again.');
       setIsTripsLoading(false);
       return;
     }
-
     try {
       setIsTripsLoading(true);
       setTripsError(null);
-      const data = await getTrips(token);
-      setTrips(data);
+      setTrips(await getTrips(token));
     } catch (error) {
       setTrips([]);
-      setTripsError(
-        error instanceof Error ? error.message : 'Unable to load your trips.'
-      );
+      setTripsError(error instanceof Error ? error.message : 'Unable to load your trips.');
     } finally {
       setIsTripsLoading(false);
     }
   }, [token, isAuthLoading]);
 
-  useFocusEffect(
-    useCallback(() => {
-      void loadTrips();
-    }, [loadTrips])
-  );
+  useFocusEffect(useCallback(() => { void loadTrips(); }, [loadTrips]));
 
   const handleLogout = async () => {
     if (isSigningOut) return;
@@ -185,36 +266,37 @@ export default function ProfileScreen() {
   const avatarLabel = getAvatarLabel(user?.displayName, email);
   const tagline = buildTagline(trips);
 
+  // Social stats — followers/following are placeholders until social graph API is available
   const stats = useMemo(() => ({
-    totalTrips: trips.length,
-    optimizedTrips: trips.filter((t) => t.status === 'OPTIMIZED').length,
-    publicTrips: trips.filter((t) => t.visibility === 'PUBLIC').length,
-    draftTrips: trips.filter((t) => t.visibility === 'DRAFT').length,
-    privateTrips: trips.filter((t) => t.visibility === 'PRIVATE').length,
+    trips: trips.length,
+    followers: 0,
+    following: 0,
   }), [trips]);
 
-  const publicReadyTrips = useMemo(
-    () => trips.filter((t) => t.visibility === 'PUBLIC').slice(0, 6),
+  const journeyTrips = useMemo(
+    () => trips.filter((t) => t.visibility === 'PUBLIC'),
     [trips]
   );
 
-  // Grid: 2 columns, gap 2px, full bleed
-  const GRID_GAP = 2;
-  const gridCellSize = Math.floor((screenWidth - GRID_GAP) / 2);
+  const cardWidth = Math.floor((screenWidth - H_PAD * 2 - CARD_GAP) / 2);
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.safe} edges={['left', 'right']}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* ── Cover band (teal-to-dark-navy gradient simulation) ── */}
-        <View style={styles.coverBand}>
-          {/* Top teal half */}
-          <View style={styles.coverTop} />
-          {/* Bottom dark-navy half */}
-          <View style={styles.coverBottom} />
-          {/* Avatar — floats at the bottom edge of the band */}
+        {/* ── Cover image — flush below AppHeader ── */}
+        <View style={styles.coverWrap}>
+          <Image
+            source={COVER_IMAGE}
+            style={styles.coverImage}
+            contentFit="cover"
+          />
+        </View>
+
+        {/* ── Avatar — overlaps lower edge of cover ── */}
+        <View style={styles.avatarAnchor}>
           <View style={styles.avatarRing}>
             <View style={styles.avatar}>
               <Text style={styles.avatarText}>{avatarLabel}</Text>
@@ -222,28 +304,23 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* ── Identity section ── */}
+        {/* ── Identity ── */}
         <View style={styles.identitySection}>
-          <Text style={styles.name} numberOfLines={1}>
-            {profileName}
-          </Text>
+          <Text style={styles.name} numberOfLines={1}>{profileName}</Text>
           {!isAuthLoading && (
-            <Text style={styles.tagline} numberOfLines={1}>
-              {tagline}
-            </Text>
+            <Text style={styles.tagline} numberOfLines={2}>{tagline}</Text>
           )}
-          <Text style={styles.joinedText}>
-            {formatJoinedDate(user?.createdAt)}
-          </Text>
         </View>
 
         {/* ── Social stats row ── */}
         <View style={styles.statsRow}>
-          {[
-            { label: 'TRIPS', value: stats.totalTrips },
-            { label: 'PUBLIC', value: stats.publicTrips },
-            { label: 'OPTIMIZED', value: stats.optimizedTrips },
-          ].map(({ label, value }, index) => (
+          {(
+            [
+              { label: 'Trips', value: stats.trips },
+              { label: 'Followers', value: stats.followers },
+              { label: 'Following', value: stats.following },
+            ] as const
+          ).map(({ label, value }, index) => (
             <View key={label} style={styles.statCell}>
               {index > 0 && <View style={styles.statDivider} />}
               <View style={styles.statCellInner}>
@@ -254,94 +331,104 @@ export default function ProfileScreen() {
           ))}
         </View>
 
-        {/* ── CTA buttons ── */}
-        <View style={styles.ctaRow}>
+        {/* ── Action buttons (own-profile mode) ──
+            When other-user profile is supported, swap to Follow + Message. */}
+        <View style={styles.actionRow}>
           <Pressable
-            style={styles.ctaButton}
-            onPress={() => router.push('/(tabs)/trips')}
-          >
-            <Text style={styles.ctaButtonText}>My Trips</Text>
-          </Pressable>
-          <Pressable
-            style={styles.ctaButton}
+            style={({ pressed }) => [styles.btnPrimary, pressed && { opacity: 0.88 }]}
             onPress={() => router.push('/saved-trips' as any)}
           >
-            <Text style={styles.ctaButtonText}>Saved Trips</Text>
+            <Ionicons name="bookmark" size={15} color="#FFFFFF" />
+            <Text style={styles.btnPrimaryText}>Saved Trips</Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [styles.btnSecondary, pressed && { opacity: 0.88 }]}
+            onPress={() => {}}
+          >
+            <Ionicons name="create-outline" size={15} color={theme.colors.textSecondary} />
+            <Text style={styles.btnSecondaryText}>Edit Profile</Text>
           </Pressable>
         </View>
 
-        {/* ── Public Routes section ── */}
+        {/* ── Journeys section header ── */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Public Routes</Text>
-          <Text style={styles.sectionSub}>Shared with the community</Text>
+          <Text style={styles.sectionTitle}>Journeys</Text>
+          {/* Grid-view toggle — non-functional placeholder */}
+          <Pressable hitSlop={8}>
+            <Ionicons name="grid-outline" size={20} color={theme.colors.textSecondary} />
+          </Pressable>
         </View>
 
+        {/* ── Journey grid ── */}
         {isTripsLoading ? (
           <View style={styles.stateCenter}>
             <ActivityIndicator size="small" color={theme.colors.primary} />
-            <Text style={styles.stateCenterText}>Loading trips…</Text>
+            <Text style={styles.stateText}>Loading journeys…</Text>
           </View>
         ) : tripsError ? (
           <View style={styles.stateCenter}>
-            <Text style={styles.stateCenterText}>{tripsError}</Text>
-            <Pressable
-              style={styles.retryButton}
-              onPress={() => void loadTrips()}
-            >
-              <Text style={styles.retryButtonText}>Retry</Text>
+            <View style={styles.stateIconWrap}>
+              <Ionicons name="alert-circle-outline" size={28} color={theme.colors.primary} />
+            </View>
+            <Text style={styles.stateTitle}>Couldn't load trips</Text>
+            <Text style={styles.stateText}>{tripsError}</Text>
+            <Pressable style={styles.actionBtn} onPress={() => void loadTrips()}>
+              <Text style={styles.actionBtnText}>Try again</Text>
             </Pressable>
           </View>
-        ) : publicReadyTrips.length > 0 ? (
+        ) : journeyTrips.length > 0 ? (
           <View style={styles.grid}>
-            {publicReadyTrips.map((trip) => (
-              <GridTripCard
+            {journeyTrips.map((trip) => (
+              <JourneyCard
                 key={trip.id}
                 trip={trip}
-                size={gridCellSize}
+                cardWidth={cardWidth}
+                showVisibility
                 onPress={() =>
-                  router.push(
-                    buildTripDetailParams(trip.id, { source: 'profile' })
-                  )
+                  router.push(`/public-trip/${trip.id}` as any)
                 }
               />
             ))}
           </View>
         ) : (
-          <View style={styles.stateCenter}>
-            <Text style={styles.stateCenterText}>
-              No public routes yet. Set a trip to Public to see it here.
+          <View style={styles.emptyState}>
+            <View style={styles.stateIconWrap}>
+              <Ionicons name="map-outline" size={28} color={theme.colors.primary} />
+            </View>
+            <Text style={styles.stateTitle}>No public journeys yet</Text>
+            <Text style={styles.stateText}>
+              Set a trip to Public from My Trips to share it here.
             </Text>
+            <Pressable
+              style={styles.actionBtn}
+              onPress={() => router.push('/(tabs)/trips')}
+            >
+              <Text style={styles.actionBtnText}>Go to My Trips</Text>
+            </Pressable>
           </View>
         )}
 
         {/* ── Sign out ── */}
-        <Pressable
-          style={styles.signOutLink}
-          onPress={() => void handleLogout()}
-          disabled={isSigningOut}
-        >
-          <Text style={[styles.signOutText, isSigningOut && styles.signOutDisabled]}>
-            {isSigningOut ? 'Signing out…' : 'Sign out'}
-          </Text>
-        </Pressable>
+        <View style={styles.signOutWrap}>
+          <Pressable
+            style={({ pressed }) => [styles.signOutBtn, pressed && { opacity: 0.7 }]}
+            onPress={() => void handleLogout()}
+            disabled={isSigningOut}
+          >
+            <Ionicons name="log-out-outline" size={16} color={theme.colors.textSecondary} />
+            <Text style={[styles.signOutText, isSigningOut && { opacity: 0.45 }]}>
+              {isSigningOut ? 'Signing out…' : 'Sign out'}
+            </Text>
+          </Pressable>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-// ── Styles ─────────────────────────────────────────────────────────────────
+// ── Styles ────────────────────────────────────────────────────────────────────
 
-const COVER_HEIGHT = 140;
-const AVATAR_SIZE = 88;
-const AVATAR_OVERFLOW = AVATAR_SIZE / 2; // how far avatar hangs below band
-const H_PAD = 24;
-
-// Gradient simulation: teal (#006A69) on top blending toward dark navy (#0B1929)
-// We use a two-tone approach: teal occupies ~60% of the band height,
-// and a transitional dark strip at the bottom creates the gradient feel.
-const TEAL = '#006A69';
-const NAVY = '#0B1929';
-const MID = '#004E5A'; // midpoint for a smoother visual transition
+const AVATAR_TOTAL = AVATAR_SIZE + AVATAR_RING * 2;
 
 const styles = StyleSheet.create({
   safe: {
@@ -352,39 +439,25 @@ const styles = StyleSheet.create({
     paddingBottom: 48,
   },
 
-  // ── Cover band ──────────────────────────────────────────────────────────
-  coverBand: {
-    height: COVER_HEIGHT + AVATAR_OVERFLOW, // extra height for avatar overflow
-    position: 'relative',
-    overflow: 'visible',
+  // ── Cover ────────────────────────────────────────────────────────────────
+  coverWrap: {
+    height: COVER_HEIGHT,
+    backgroundColor: theme.colors.primaryDark,
   },
-  coverTop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: COVER_HEIGHT * 0.55,
-    backgroundColor: TEAL,
+  coverImage: {
+    width: '100%',
+    height: COVER_HEIGHT,
   },
-  coverBottom: {
-    position: 'absolute',
-    top: COVER_HEIGHT * 0.55,
-    left: 0,
-    right: 0,
-    height: COVER_HEIGHT * 0.45,
-    backgroundColor: NAVY,
-    // Soft midpoint strip at the seam via a border trick
-    borderTopWidth: COVER_HEIGHT * 0.18,
-    borderTopColor: MID,
+
+  // ── Avatar ───────────────────────────────────────────────────────────────
+  avatarAnchor: {
+    alignItems: 'center',
+    marginTop: -(AVATAR_TOTAL / 2),
   },
-  // White ring around avatar to float it out of the band
   avatarRing: {
-    position: 'absolute',
-    bottom: 0,
-    alignSelf: 'center',
-    width: AVATAR_SIZE + 6,
-    height: AVATAR_SIZE + 6,
-    borderRadius: (AVATAR_SIZE + 6) / 2,
+    width: AVATAR_TOTAL,
+    height: AVATAR_TOTAL,
+    borderRadius: AVATAR_TOTAL / 2,
     backgroundColor: theme.colors.background,
     alignItems: 'center',
     justifyContent: 'center',
@@ -393,53 +466,47 @@ const styles = StyleSheet.create({
     width: AVATAR_SIZE,
     height: AVATAR_SIZE,
     borderRadius: AVATAR_SIZE / 2,
-    backgroundColor: '#006A69',
+    backgroundColor: theme.colors.primaryDark,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarText: {
+    fontFamily: font.bold,
+    fontSize: 26,
     color: '#FFFFFF',
-    fontSize: 28,
-    fontWeight: '800',
     letterSpacing: 0.5,
   },
 
-  // ── Identity section ────────────────────────────────────────────────────
+  // ── Identity ─────────────────────────────────────────────────────────────
   identitySection: {
     alignItems: 'center',
     paddingHorizontal: H_PAD,
-    paddingTop: 14,
-    paddingBottom: 24,
+    paddingTop: 12,
+    paddingBottom: 20,
     gap: 5,
   },
   name: {
+    fontFamily: font.bold,
     fontSize: 22,
-    fontWeight: '800',
-    color: '#111C2C',
+    lineHeight: 28,
     letterSpacing: -0.3,
+    color: theme.colors.primaryDark,
     textAlign: 'center',
   },
   tagline: {
-    fontSize: 14,
-    fontWeight: '400',
+    ...type.bodySm,
     color: theme.colors.textSecondary,
     textAlign: 'center',
-    lineHeight: 20,
-  },
-  joinedText: {
-    fontSize: 12,
-    color: theme.colors.textSecondary,
-    marginTop: 2,
   },
 
-  // ── Stats row ───────────────────────────────────────────────────────────
+  // ── Stats row ────────────────────────────────────────────────────────────
   statsRow: {
     flexDirection: 'row',
     marginHorizontal: H_PAD,
     marginBottom: 20,
     borderTopWidth: 1,
     borderBottomWidth: 1,
-    borderColor: '#E8ECF0',
+    borderColor: theme.colors.border,
     paddingVertical: 16,
   },
   statCell: {
@@ -449,7 +516,7 @@ const styles = StyleSheet.create({
   },
   statDivider: {
     width: 1,
-    backgroundColor: '#E8ECF0',
+    backgroundColor: theme.colors.border,
     marginVertical: 4,
   },
   statCellInner: {
@@ -458,135 +525,152 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   statValue: {
-    fontSize: 30,
-    fontWeight: '800',
-    color: '#111C2C',
+    fontFamily: font.bold,
+    fontSize: 28,
+    lineHeight: 32,
     letterSpacing: -0.5,
-    lineHeight: 34,
+    color: theme.colors.primaryDark,
   },
   statLabel: {
+    fontFamily: font.medium,
     fontSize: 11,
-    fontWeight: '700',
     color: theme.colors.textSecondary,
-    letterSpacing: 0.8,
+    letterSpacing: 0.2,
   },
 
-  // ── CTA row ─────────────────────────────────────────────────────────────
-  ctaRow: {
+  // ── Action buttons ────────────────────────────────────────────────────────
+  actionRow: {
     flexDirection: 'row',
     marginHorizontal: H_PAD,
     gap: 12,
     marginBottom: 28,
   },
-  ctaButton: {
+  btnPrimary: {
     flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#006A69',
+    gap: 7,
+    backgroundColor: theme.colors.primary,
     borderRadius: 14,
     paddingVertical: 14,
   },
-  ctaButtonText: {
+  btnPrimaryText: {
+    fontFamily: font.semiBold,
     fontSize: 14,
-    fontWeight: '700',
     color: '#FFFFFF',
-    letterSpacing: 0.1,
   },
-
-  // ── Section header ──────────────────────────────────────────────────────
-  sectionHeader: {
-    paddingHorizontal: H_PAD,
-    marginBottom: 14,
-    gap: 3,
+  btnSecondary: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 14,
+    paddingVertical: 14,
   },
-  sectionTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#111C2C',
-    letterSpacing: -0.2,
-  },
-  sectionSub: {
-    fontSize: 13,
+  btnSecondaryText: {
+    fontFamily: font.semiBold,
+    fontSize: 14,
     color: theme.colors.textSecondary,
   },
 
-  // ── Trip grid ───────────────────────────────────────────────────────────
+  // ── Section header ────────────────────────────────────────────────────────
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: H_PAD,
+    marginBottom: 14,
+  },
+  sectionTitle: {
+    fontFamily: font.bold,
+    fontSize: 17,
+    lineHeight: 22,
+    letterSpacing: -0.2,
+    color: theme.colors.primaryDark,
+  },
+
+  // ── Journey grid ──────────────────────────────────────────────────────────
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 2,
+    paddingHorizontal: H_PAD,
+    gap: CARD_GAP,
     marginBottom: 8,
   },
-  gridCard: {
-    backgroundColor: '#DFF7F6',
-    overflow: 'hidden',
-  },
-  gridCardScrim: {
-    ...StyleSheet.absoluteFillObject,
-    // Bottom-to-top dark scrim for text legibility
-    backgroundColor: 'transparent',
-    // We use a nested View for the gradient scrim effect
-  },
-  gridCardTextWrap: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    gap: 2,
-  },
-  gridCardTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    lineHeight: 16,
-  },
-  gridCardDate: {
-    fontSize: 10,
-    fontWeight: '500',
-    color: 'rgba(255,255,255,0.75)',
-  },
 
-  // ── State: loading / error / empty ─────────────────────────────────────
+  // ── States: loading / error / empty ──────────────────────────────────────
   stateCenter: {
     alignItems: 'center',
-    paddingVertical: 32,
+    paddingVertical: 36,
     paddingHorizontal: H_PAD,
     gap: 10,
   },
-  stateCenterText: {
-    fontSize: 14,
-    lineHeight: 20,
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 36,
+    paddingHorizontal: 24,
+    gap: 10,
+    marginHorizontal: H_PAD,
+    backgroundColor: theme.colors.surface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    marginBottom: 8,
+  },
+  stateIconWrap: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#DFF7F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  stateTitle: {
+    fontFamily: font.bold,
+    fontSize: 16,
+    color: theme.colors.primaryDark,
+    textAlign: 'center',
+  },
+  stateText: {
+    ...type.bodySm,
     color: theme.colors.textSecondary,
     textAlign: 'center',
   },
-  retryButton: {
-    backgroundColor: '#006A69',
+  actionBtn: {
+    backgroundColor: theme.colors.primary,
     paddingHorizontal: 20,
-    paddingVertical: 9,
-    borderRadius: 10,
+    paddingVertical: 11,
+    borderRadius: 12,
+    marginTop: 2,
   },
-  retryButtonText: {
-    fontSize: 13,
-    fontWeight: '700',
+  actionBtnText: {
+    fontFamily: font.semiBold,
+    fontSize: 14,
     color: '#FFFFFF',
   },
 
-  // ── Sign out ────────────────────────────────────────────────────────────
-  signOutLink: {
-    alignSelf: 'center',
+  // ── Sign out ──────────────────────────────────────────────────────────────
+  signOutWrap: {
+    alignItems: 'center',
+    marginTop: 24,
+  },
+  signOutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: 12,
+    paddingHorizontal: 20,
     paddingVertical: 10,
-    paddingHorizontal: 16,
-    marginTop: 20,
   },
   signOutText: {
+    fontFamily: font.medium,
     fontSize: 13,
-    color: '#64748B',
-    fontWeight: '500',
-  },
-  signOutDisabled: {
-    opacity: 0.45,
+    color: theme.colors.textSecondary,
   },
 });

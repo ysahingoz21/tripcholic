@@ -16,7 +16,6 @@ import { theme } from '@/constants/theme';
 import { type, font } from '@/constants/typography';
 import { useAuth } from '@/context/AuthContext';
 import { getTrips, type TripListItem } from '@/services/trips';
-import { buildTripDetailParams } from '@/utils/tripNavigation';
 
 const H_PAD = 20;
 
@@ -144,7 +143,9 @@ export default function HomeScreen() {
                   trip={trip}
                   onPress={() =>
                     router.push(
-                      buildTripDetailParams(trip.id, { source: 'my-trips' })
+                      trip.visibility === 'PUBLIC'
+                        ? (`/public-trip/${trip.id}` as any)
+                        : (`/trip/${trip.id}` as any)
                     )
                   }
                 />

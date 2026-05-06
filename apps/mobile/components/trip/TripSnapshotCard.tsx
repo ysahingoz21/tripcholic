@@ -1,8 +1,21 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import Artwork from '@/components/ui/Artwork';
 import { theme } from '@/constants/theme';
 import { font } from '@/constants/typography';
-import { type TripListItem } from '@/services/trips';
+import { type TripListItem, type TripVisibility } from '@/services/trips';
+
+function getVisibilityConfig(v: TripVisibility) {
+  switch (v) {
+    case 'PUBLIC':
+      return { label: 'Public', icon: 'earth-outline' as const };
+    case 'PRIVATE':
+      return { label: 'Private', icon: 'lock-closed-outline' as const };
+    case 'DRAFT':
+    default:
+      return { label: 'Draft', icon: 'create-outline' as const };
+  }
+}
 
 function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString('en-US', {
@@ -18,6 +31,7 @@ type Props = {
 
 export default function TripSnapshotCard({ trip, onPress }: Props) {
   const stopCount = trip._count?.stops ?? 0;
+  const vis = getVisibilityConfig(trip.visibility);
 
   return (
     <Pressable
@@ -32,6 +46,10 @@ export default function TripSnapshotCard({ trip, onPress }: Props) {
           variant="cover"
           label={trip.title}
         />
+        <View style={styles.visBadge}>
+          <Ionicons name={vis.icon} size={11} color={theme.colors.primaryDark} />
+          <Text style={styles.visText}>{vis.label}</Text>
+        </View>
       </View>
 
       {/* Caption below image — light, no box */}
@@ -68,6 +86,24 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: 'hidden',
     backgroundColor: '#DFF7F6',
+  },
+  visBadge: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderRadius: 9999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  visText: {
+    fontFamily: font.medium,
+    fontSize: 11,
+    color: theme.colors.primaryDark,
+    letterSpacing: 0.1,
   },
 
   info: {
