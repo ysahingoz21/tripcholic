@@ -210,14 +210,18 @@ export class OptimizerService {
   }
 
   private rethrowOptimizerError(error: AxiosError): never {
-    if (error.response) {
+        if (error.response) {
+      console.error(
+        'OPTIMIZER ERROR DATA:',
+        JSON.stringify(error.response.data, null, 2),
+      );
+
       throw new BadGatewayException({
         message: 'Optimizer service returned an error',
         optimizerStatus: error.response.status,
         optimizerData: error.response.data,
       });
     }
-
     throw new ServiceUnavailableException('Optimizer service is unavailable');
   }
 }

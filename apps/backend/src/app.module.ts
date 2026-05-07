@@ -9,6 +9,7 @@ import { PrismaModule } from './modules/prisma/prisma.module';
 import { PublicTripsModule } from './modules/public-trips/public-trips.module';
 import { TripsModule } from './modules/trips/trips.module';
 import { UsersModule } from './modules/users/users.module';
+import { WeatherModule } from './modules/weather/weather.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { UsersModule } from './modules/users/users.module';
     PublicTripsModule,
     PoisModule,
     OptimizerModule,
+    WeatherModule,
   ],
 })
 export class AppModule {}

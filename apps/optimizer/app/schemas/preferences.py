@@ -54,9 +54,9 @@ class UserPreferences(BaseModel):
         le=20,
         description="Maximum number of stops in the itinerary. Defaults to 6.",
     )
-    weather: Literal["clear", "cloudy", "rainy"] | None = Field(
+    weather: str | None = Field(
         default=None,
-        description="Current weather context. 'rainy' excludes outdoor-only POIs.",
+        description="Current weather context. Can be used to adjust route recommendations.",
     )
 
     @field_validator("time_start", "time_end", mode="before")
