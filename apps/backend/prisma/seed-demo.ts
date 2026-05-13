@@ -167,7 +167,7 @@ async function main() {
     timeEnd: string;
     categories: string[];
     budgetTl: number;
-    visibility: 'PUBLIC' | 'PRIVATE' | 'DRAFT';
+    visibility: 'PUBLIC' | 'PRIVATE';
     weather: string;
     walkingToleranceKm: number;
     maxPois: number;

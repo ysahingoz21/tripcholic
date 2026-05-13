@@ -79,17 +79,16 @@ function buildTagline(trips: TripListItem[]): string {
 // ── Visibility badge ──────────────────────────────────────────────────────────
 
 const VIS_CONFIG: Record<TripVisibility, { icon: string; label: string; color: string }> = {
-  PUBLIC: { icon: 'globe-outline', label: 'Public', color: theme.colors.primary },
+  PUBLIC: { icon: 'earth-outline', label: 'Public', color: theme.colors.primary },
   PRIVATE: { icon: 'lock-closed-outline', label: 'Private', color: theme.colors.textSecondary },
-  DRAFT: { icon: 'create-outline', label: 'Draft', color: '#F59E0B' },
 };
 
 function VisibilityBadge({ visibility }: { visibility: TripVisibility }) {
   const cfg = VIS_CONFIG[visibility];
   return (
     <View style={badgeStyles.pill}>
-      <Ionicons name={cfg.icon as any} size={10} color={cfg.color} />
-      <Text style={[badgeStyles.label, { color: cfg.color }]}>{cfg.label}</Text>
+      <Ionicons name={cfg.icon as any} size={11} color={theme.colors.primaryDark} />
+      <Text style={badgeStyles.label}>{cfg.label}</Text>
     </View>
   );
 }
@@ -99,15 +98,16 @@ const badgeStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: 'rgba(255,255,255,0.92)',
+    backgroundColor: 'rgba(255,255,255,0.95)',
     borderRadius: 9999,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
   },
   label: {
-    fontFamily: font.bold,
-    fontSize: 10,
-    letterSpacing: 0.3,
+    fontFamily: font.medium,
+    fontSize: 11,
+    color: theme.colors.primaryDark,
+    letterSpacing: 0.1,
   },
 });
 
@@ -146,15 +146,15 @@ function JourneyCard({
         {/* Engagement row — display-only; counts placeholder until API exposes them */}
         <View style={cardStyles.metricsRow}>
           <View style={cardStyles.metricItem}>
-            <Ionicons name="heart-outline" size={11} color={theme.colors.textSecondary} />
+            <Ionicons name="heart-outline" size={14} color={theme.colors.textSecondary} />
             <Text style={cardStyles.metricText}>0</Text>
           </View>
           <View style={cardStyles.metricItem}>
-            <Ionicons name="chatbubble-outline" size={11} color={theme.colors.textSecondary} />
+            <Ionicons name="chatbubble-outline" size={14} color={theme.colors.textSecondary} />
             <Text style={cardStyles.metricText}>0</Text>
           </View>
           <View style={cardStyles.metricItem}>
-            <Ionicons name="bookmark-outline" size={11} color={theme.colors.textSecondary} />
+            <Ionicons name="bookmark-outline" size={14} color={theme.colors.textSecondary} />
             <Text style={cardStyles.metricText}>0</Text>
           </View>
         </View>
@@ -212,7 +212,7 @@ const cardStyles = StyleSheet.create({
   },
   metricText: {
     fontFamily: font.medium,
-    fontSize: 11,
+    fontSize: 13,
     color: theme.colors.textSecondary,
   },
 });
@@ -273,10 +273,9 @@ export default function ProfileScreen() {
     following: 0,
   }), [trips]);
 
-  const journeyTrips = useMemo(
-    () => trips.filter((t) => t.visibility === 'PUBLIC'),
-    [trips]
-  );
+  // Own profile: show all trips (public + private).
+  // When other-user profile is added, pass an `isOwn` flag and filter to PUBLIC only for other users.
+  const journeyTrips = useMemo(() => trips, [trips]);
 
   const cardWidth = Math.floor((screenWidth - H_PAD * 2 - CARD_GAP) / 2);
 
@@ -384,9 +383,7 @@ export default function ProfileScreen() {
                 trip={trip}
                 cardWidth={cardWidth}
                 showVisibility
-                onPress={() =>
-                  router.push(`/public-trip/${trip.id}` as any)
-                }
+                onPress={() => router.push(`/trip/${trip.id}` as any)}
               />
             ))}
           </View>
@@ -395,15 +392,15 @@ export default function ProfileScreen() {
             <View style={styles.stateIconWrap}>
               <Ionicons name="map-outline" size={28} color={theme.colors.primary} />
             </View>
-            <Text style={styles.stateTitle}>No public journeys yet</Text>
+            <Text style={styles.stateTitle}>No journeys yet</Text>
             <Text style={styles.stateText}>
-              Set a trip to Public from My Trips to share it here.
+              Trips you create will appear here. Plan your first one!
             </Text>
             <Pressable
               style={styles.actionBtn}
-              onPress={() => router.push('/(tabs)/trips')}
+              onPress={() => router.push('/(tabs)/planner')}
             >
-              <Text style={styles.actionBtnText}>Go to My Trips</Text>
+              <Text style={styles.actionBtnText}>Plan a trip</Text>
             </Pressable>
           </View>
         )}

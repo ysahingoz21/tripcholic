@@ -1,5 +1,6 @@
-import { ReactNode } from 'react';
+import { ReactNode } from "react";
 import {
+  Image,
   ImageBackground,
   KeyboardAvoidingView,
   Platform,
@@ -7,9 +8,10 @@ import {
   StyleSheet,
   Text,
   View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { font } from "@/constants/typography";
+import { theme } from "@/constants/theme";
 
 type Props = {
   tagline: string;
@@ -19,18 +21,20 @@ type Props = {
 export default function AuthScreenLayout({ tagline, children }: Props) {
   return (
     <ImageBackground
-      source={require('../../assets/images/login-bg.jpg')}
+      source={require("../../assets/images/login-bg.jpg")}
       style={styles.background}
       resizeMode="cover"
     >
-      {/* Dark overlay */}
       <View style={styles.overlay} />
 
-      <SafeAreaView style={styles.safe} edges={['top', 'bottom', 'left', 'right']}>
+      <SafeAreaView
+        style={styles.safe}
+        edges={["top", "bottom", "left", "right"]}
+      >
         <KeyboardAvoidingView
           style={styles.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
         >
           <ScrollView
             contentContainerStyle={styles.scroll}
@@ -39,9 +43,11 @@ export default function AuthScreenLayout({ tagline, children }: Props) {
           >
             {/* Brand header */}
             <View style={styles.brand}>
-              <View style={styles.logoMark}>
-                <Ionicons name="compass-outline" size={22} color="#0EA5A4" />
-              </View>
+              <Image
+                source={require("../../assets/images/logos/logo-without-text.png")}
+                style={styles.logo}
+                resizeMode="contain"
+              />
               <Text style={styles.wordmark}>Tripcholic</Text>
               <Text style={styles.tagline}>{tagline}</Text>
             </View>
@@ -61,7 +67,7 @@ const styles = StyleSheet.create({
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 36, 48, 0.62)',
+    backgroundColor: "rgba(0, 36, 48, 0.5)",
   },
   safe: {
     flex: 1,
@@ -71,46 +77,41 @@ const styles = StyleSheet.create({
   },
   scroll: {
     flexGrow: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
     paddingHorizontal: 24,
     paddingTop: 24,
     paddingBottom: 32,
   },
   brand: {
-    alignItems: 'center',
-    marginBottom: 28,
-  },
-  logoMark: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.22)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
     marginBottom: 12,
   },
+  logo: {
+    width: 108,
+    height: 108,
+    marginBottom: 0,
+  },
   wordmark: {
+    fontFamily: font.bold,
     fontSize: 34,
-    fontWeight: '800',
-    color: '#FFFFFF',
+    lineHeight: 40,
     letterSpacing: -0.5,
+    color: "#FFFFFF",
     marginBottom: 8,
   },
   tagline: {
+    fontFamily: font.regular,
     fontSize: 13,
-    fontWeight: '400',
-    color: 'rgba(255,255,255,0.72)',
-    textAlign: 'center',
     lineHeight: 19,
+    color: "rgba(255,255,255,0.72)",
+    textAlign: "center",
     paddingHorizontal: 20,
   },
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.xl,
     padding: 24,
-    shadowColor: '#0B3B4A',
+    shadowColor: theme.colors.primaryDark,
     shadowOpacity: 0.18,
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 8 },

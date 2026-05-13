@@ -6,15 +6,8 @@ import { font } from '@/constants/typography';
 import { type TripListItem, type TripVisibility } from '@/services/trips';
 
 function getVisibilityConfig(v: TripVisibility) {
-  switch (v) {
-    case 'PUBLIC':
-      return { label: 'Public', icon: 'earth-outline' as const };
-    case 'PRIVATE':
-      return { label: 'Private', icon: 'lock-closed-outline' as const };
-    case 'DRAFT':
-    default:
-      return { label: 'Draft', icon: 'create-outline' as const };
-  }
+  if (v === 'PUBLIC') return { label: 'Public', icon: 'earth-outline' as const };
+  return { label: 'Private', icon: 'lock-closed-outline' as const };
 }
 
 function formatDate(dateStr: string) {

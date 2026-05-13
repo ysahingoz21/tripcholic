@@ -1,366 +1,130 @@
+import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
+import { Image } from 'expo-image';
+import { useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
-import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
-import CollectionManagerModal from '@/components/saved/CollectionManagerModal';
-import Artwork from '@/components/ui/Artwork';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { DEFAULT_COLLECTION_COVER } from '@/components/saved/collectionCovers';
+import SavedTripPostCard from '@/components/saved/SavedTripPostCard';
 import { theme } from '@/constants/theme';
+import { font, type } from '@/constants/typography';
 import { useAuth } from '@/context/AuthContext';
 import {
-  createSavedTripCollection,
-  deleteSavedTripCollection,
   getSavedPublicTrips,
-  updateSavedTripCollections,
-  type SavedPublicTripItem,
   type SavedPublicTripsResponse,
+  type SavedTripCollectionSummary,
 } from '@/services/publicTrips';
 
-type SavedTripsFilter = 'all' | 'ungrouped' | `collection:${string}`;
-
 const H_PAD = 20;
+const CARD_GAP = 12;
 
-function formatCreatorName(displayName: string | null) {
-  return displayName?.trim() || 'Tripcholic traveler';
-}
+// ── Strip card sizes ──────────────────────────────────────────────────────────
 
-function formatSavedDate(value: string) {
-  return new Date(value).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-}
+const STRIP_W = 158;
+const STRIP_IMG_H = 96;
+const STRIP_INFO_H = 50;
+const STRIP_H = STRIP_IMG_H + STRIP_INFO_H;
 
-function buildMetaLine(item: SavedPublicTripItem) {
-  const durationLabel =
-    item.optimization.routeTotalDurationMin !== null
-      ? `${item.optimization.routeTotalDurationMin} min`
-      : 'duration N/A';
-  const costLabel =
-    item.optimization.routeTotalCostTl !== null
-      ? `${item.optimization.routeTotalCostTl} TL`
-      : 'cost N/A';
+// ── CollectionStripCard ───────────────────────────────────────────────────────
 
-  return `${durationLabel} • ${costLabel}`;
-}
-
-function getFilterQueryValue(filter: SavedTripsFilter) {
-  if (filter === 'all') return undefined;
-  if (filter === 'ungrouped') return 'ungrouped';
-  return filter.replace('collection:', '');
-}
-
-function getCollectionFilterValue(collectionId: string) {
-  return `collection:${collectionId}` as const;
-}
-
-function buildCollectionSummaryText(
-  collectionCount: number,
-  totalSavedCount: number,
-  ungroupedCount: number
-) {
-  return `${collectionCount} collection${collectionCount === 1 ? '' : 's'} · ${totalSavedCount} saved · ${ungroupedCount} ungrouped`;
-}
-
-function buildFilterDescription(
-  activeFilter: SavedTripsFilter,
-  data: SavedPublicTripsResponse | null
-) {
-  if (!data) return 'Choose a grouping lens for the public trips you saved from Explore.';
-  if (activeFilter === 'all') return 'All saved public trips, including grouped and ungrouped items.';
-  if (activeFilter === 'ungrouped') return 'Saved public trips not assigned to any collection yet.';
-  return data.filter.selectedCollection
-    ? `${data.filter.selectedCollection.name} collection`
-    : 'Saved public trip collection';
-}
-
-// ── SavedTripCard ─────────────────────────────────────────────────────────────
-
-function SavedTripCard({
-  item,
+function CollectionStripCard({
+  collection,
   onPress,
-  onManageCollections,
 }: {
-  item: SavedPublicTripItem;
+  collection: SavedTripCollectionSummary;
   onPress: () => void;
-  onManageCollections: () => void;
 }) {
-  const imageUrl = item.preview.imageUrls?.[0] ?? null;
-  const category = item.preview.primaryCategory ?? null;
-
   return (
-    <View style={cardStyles.wrap}>
-      {/* ── Thumbnail ── */}
-      <Pressable onPress={onPress} style={cardStyles.imageWrap}>
-        {imageUrl ? (
-          <Image source={{ uri: imageUrl }} style={StyleSheet.absoluteFill} contentFit="cover" />
-        ) : (
-          <Artwork />
-        )}
-        <View style={cardStyles.scrim} />
-
-        {/* top row: category chip + saved badge */}
-        <View style={cardStyles.topRow}>
-          {category ? (
-            <View style={cardStyles.categoryChip}>
-              <Text style={cardStyles.categoryChipText}>
-                {category.charAt(0).toUpperCase() + category.slice(1)}
-              </Text>
-            </View>
-          ) : null}
-          <View style={cardStyles.savedBadge}>
-            <Ionicons name="bookmark" size={11} color="#006A69" />
-            <Text style={cardStyles.savedBadgeText}>Saved</Text>
-          </View>
-        </View>
-
-        {/* bottom: title */}
-        <View style={cardStyles.bottomContent}>
-          <Text style={cardStyles.tripTitle} numberOfLines={2}>
-            {item.trip.title}
-          </Text>
-          <Text style={cardStyles.tripDate}>
-            {new Date(item.trip.date).toLocaleDateString(undefined, {
-              weekday: 'short',
-              month: 'short',
-              day: 'numeric',
-            })}
-          </Text>
-        </View>
-      </Pressable>
-
-      {/* ── Meta strip ── */}
-      <View style={cardStyles.metaStrip}>
-        <View style={cardStyles.creatorRow}>
-          <Ionicons name="person-outline" size={13} color={theme.colors.textSecondary} />
-          <Text style={cardStyles.creatorText} numberOfLines={1}>
-            {formatCreatorName(item.creator.displayName)}
-          </Text>
-        </View>
-        <View style={cardStyles.metaPills}>
-          <View style={cardStyles.metaPill}>
-            <Ionicons name="time-outline" size={12} color={theme.colors.textSecondary} />
-            <Text style={cardStyles.metaPillText}>
-              {item.optimization.routeTotalDurationMin !== null
-                ? `${item.optimization.routeTotalDurationMin} min`
-                : 'N/A'}
-            </Text>
-          </View>
-          <View style={cardStyles.metaPill}>
-            <Ionicons name="cash-outline" size={12} color={theme.colors.textSecondary} />
-            <Text style={cardStyles.metaPillText}>
-              {item.optimization.routeTotalCostTl !== null
-                ? `${item.optimization.routeTotalCostTl} TL`
-                : 'N/A'}
-            </Text>
-          </View>
-          <Text style={cardStyles.savedAtText}>Saved {formatSavedDate(item.savedAt)}</Text>
-        </View>
+    <Pressable
+      style={({ pressed }) => [stripStyles.card, pressed && { opacity: 0.85 }]}
+      onPress={onPress}
+    >
+      <Image source={DEFAULT_COLLECTION_COVER} style={stripStyles.cardImage} contentFit="cover" />
+      <View style={stripStyles.cardInfo}>
+        <Text style={stripStyles.cardName} numberOfLines={1}>
+          {collection.name}
+        </Text>
+        <Text style={stripStyles.cardCount}>
+          {collection.savedTripCount === 0
+            ? 'Empty'
+            : `${collection.savedTripCount} ${collection.savedTripCount === 1 ? 'trip' : 'trips'}`}
+        </Text>
       </View>
-
-      {/* ── Collections row ── */}
-      <View style={cardStyles.collectionsWrap}>
-        <View style={cardStyles.collectionsHeaderRow}>
-          <Text style={cardStyles.collectionsLabel}>Collections</Text>
-          <Pressable onPress={onManageCollections} hitSlop={8}>
-            <Text style={cardStyles.manageText}>Manage</Text>
-          </Pressable>
-        </View>
-        <View style={cardStyles.badgesRow}>
-          {item.collections.length > 0 ? (
-            item.collections.map((col) => (
-              <View key={col.id} style={cardStyles.memberBadge}>
-                <Text style={cardStyles.memberBadgeText}>{col.name}</Text>
-              </View>
-            ))
-          ) : (
-            <View style={cardStyles.ungroupedBadge}>
-              <Text style={cardStyles.ungroupedBadgeText}>Ungrouped</Text>
-            </View>
-          )}
-        </View>
-      </View>
-    </View>
+    </Pressable>
   );
 }
 
-const cardStyles = StyleSheet.create({
-  wrap: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#E8ECF0',
+function NewCollectionStripCard({ onPress }: { onPress: () => void }) {
+  return (
+    <Pressable
+      style={({ pressed }) => [stripStyles.newCard, pressed && { opacity: 0.8 }]}
+      onPress={onPress}
+    >
+      <Ionicons name="add-circle-outline" size={30} color={theme.colors.primary} />
+      <Text style={stripStyles.newLabel}>{'New\nCollection'}</Text>
+    </Pressable>
+  );
+}
+
+const stripStyles = StyleSheet.create({
+  card: {
+    width: STRIP_W,
+    borderRadius: theme.radius.lg,
+    backgroundColor: theme.colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.colors.border,
     overflow: 'hidden',
-    marginBottom: 16,
   },
-  imageWrap: {
-    height: 160,
-    backgroundColor: '#E2E8F0',
+  cardImage: {
+    width: STRIP_W,
+    height: STRIP_IMG_H,
   },
-  scrim: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(11,36,48,0.52)',
-  },
-  topRow: {
-    position: 'absolute',
-    top: 12,
-    left: 12,
-    right: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  categoryChip: {
-    backgroundColor: 'rgba(255,255,255,0.22)',
-    borderRadius: 999,
+  cardInfo: {
+    height: STRIP_INFO_H,
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingTop: 8,
+    paddingBottom: 10,
+    justifyContent: 'center',
+  },
+  cardName: {
+    fontFamily: font.semiBold,
+    fontSize: 13,
+    lineHeight: 16,
+    color: theme.colors.primaryDark,
+  },
+  cardCount: {
+    fontFamily: font.regular,
+    fontSize: 12,
+    lineHeight: 15,
+    color: theme.colors.textSecondary,
+    marginTop: 2,
+  },
+  newCard: {
+    width: STRIP_W,
+    height: STRIP_H,
+    borderRadius: theme.radius.lg,
+    backgroundColor: theme.colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
-  },
-  categoryChipText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: 0.2,
-  },
-  savedBadge: {
-    flexDirection: 'row',
+    borderColor: theme.colors.primary,
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#DFF7F6',
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    marginLeft: 'auto',
-  },
-  savedBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#006A69',
-  },
-  bottomContent: {
-    position: 'absolute',
-    bottom: 12,
-    left: 12,
-    right: 12,
-  },
-  tripTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: -0.2,
-    lineHeight: 22,
-  },
-  tripDate: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.72)',
-    marginTop: 3,
-    fontWeight: '500',
-  },
-  metaStrip: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    gap: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-  },
-  creatorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  creatorText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#111C2C',
-    flex: 1,
-  },
-  metaPills: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  metaPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-  },
-  metaPillText: {
-    fontSize: 12,
-    color: theme.colors.textSecondary,
-    fontWeight: '500',
-  },
-  savedAtText: {
-    fontSize: 12,
-    color: theme.colors.textSecondary,
-    marginLeft: 'auto',
-  },
-  collectionsWrap: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  collectionsHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  collectionsLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#475569',
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  manageText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#006A69',
-  },
-  badgesRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    justifyContent: 'center',
     gap: 6,
   },
-  memberBadge: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#006A69',
-    backgroundColor: '#DFF7F6',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  memberBadgeText: {
+  newLabel: {
+    fontFamily: font.semiBold,
     fontSize: 12,
-    fontWeight: '700',
-    color: '#006A69',
-  },
-  ungroupedBadge: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    backgroundColor: '#F8FAFC',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  ungroupedBadgeText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#64748B',
+    lineHeight: 17,
+    color: theme.colors.primary,
+    textAlign: 'center',
   },
 });
 
@@ -368,586 +132,357 @@ const cardStyles = StyleSheet.create({
 
 export default function SavedTripsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
   const { token, isLoading: isAuthLoading } = useAuth();
-  const [savedTripsData, setSavedTripsData] = useState<SavedPublicTripsResponse | null>(null);
-  const [activeFilter, setActiveFilter] = useState<SavedTripsFilter>('all');
+
+  const cardWidth = Math.floor((screenWidth - H_PAD * 2 - CARD_GAP) / 2);
+
+  const [data, setData] = useState<SavedPublicTripsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [newCollectionName, setNewCollectionName] = useState('');
-  const [createCollectionError, setCreateCollectionError] = useState<string | null>(null);
-  const [isCreatingCollection, setIsCreatingCollection] = useState(false);
-  const [isDeletingCollection, setIsDeletingCollection] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<SavedPublicTripItem | null>(null);
-  const [modalError, setModalError] = useState<string | null>(null);
-  const [isUpdatingCollections, setIsUpdatingCollections] = useState(false);
-  const [isCreatingCollectionFromModal, setIsCreatingCollectionFromModal] = useState(false);
 
-  const loadSavedTrips = useCallback(
-    async (filterOverride?: SavedTripsFilter) => {
-      if (isAuthLoading) return;
-
-      if (!token) {
-        setSavedTripsData(null);
-        setError('Authentication required. Please sign in again.');
-        setIsLoading(false);
-        return;
-      }
-
-      const nextFilter = filterOverride ?? activeFilter;
-
-      try {
-        setIsLoading(true);
-        setError(null);
-        const data = await getSavedPublicTrips(token, getFilterQueryValue(nextFilter));
-        setSavedTripsData(data);
-      } catch (loadError) {
-        setSavedTripsData(null);
-        setError(
-          loadError instanceof Error ? loadError.message : 'Unable to load saved public trips.'
-        );
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [activeFilter, isAuthLoading, token]
-  );
-
-  useFocusEffect(
-    useCallback(() => {
-      void loadSavedTrips();
-    }, [loadSavedTrips])
-  );
-
-  const items = savedTripsData?.items ?? [];
-  const collections = savedTripsData?.collections ?? [];
-  const filterMeta = savedTripsData?.filter ?? null;
-  const activeCollectionId =
-    activeFilter.startsWith('collection:') ? activeFilter.replace('collection:', '') : null;
-  const activeCollection = activeCollectionId
-    ? collections.find((c) => c.id === activeCollectionId) ?? null
-    : null;
-
-  const collectionSummaryLine = useMemo(() => {
-    if (!filterMeta) {
-      return 'Saved Trips stays separate from My Trips and focuses only on public Explore posts.';
-    }
-    return buildCollectionSummaryText(
-      collections.length,
-      filterMeta.totalSavedCount,
-      filterMeta.ungroupedCount
-    );
-  }, [collections.length, filterMeta]);
-
-  const handleFilterPress = async (filter: SavedTripsFilter) => {
-    setActiveFilter(filter);
-    await loadSavedTrips(filter);
-  };
-
-  const handleCreateCollection = async (name: string) => {
-    const trimmedName = name.trim();
-    if (!trimmedName) throw new Error('Collection name cannot be empty.');
-    if (!token) throw new Error('Authentication required. Please sign in again.');
-    const response = await createSavedTripCollection(token, trimmedName);
-    return response.collection;
-  };
-
-  const handleTopLevelCreateCollection = async () => {
-    const trimmedName = newCollectionName.trim();
-    if (!trimmedName) {
-      setCreateCollectionError('Collection name cannot be empty.');
-      return;
-    }
+  const loadData = useCallback(async () => {
+    if (isAuthLoading) return;
     if (!token) {
-      setCreateCollectionError('Authentication required. Please sign in again.');
+      setData(null);
+      setError('Authentication required. Please sign in.');
+      setIsLoading(false);
       return;
     }
     try {
-      setIsCreatingCollection(true);
-      setCreateCollectionError(null);
-      const createdCollection = await handleCreateCollection(trimmedName);
-      setNewCollectionName('');
-      const nextFilter = getCollectionFilterValue(createdCollection.id);
-      setActiveFilter(nextFilter);
-      await loadSavedTrips(nextFilter);
-    } catch (creationError) {
-      setCreateCollectionError(
-        creationError instanceof Error ? creationError.message : 'Unable to create collection.'
-      );
+      setIsLoading(true);
+      setError(null);
+      const result = await getSavedPublicTrips(token);
+      setData(result);
+    } catch (e) {
+      setData(null);
+      setError(e instanceof Error ? e.message : 'Unable to load saved trips.');
     } finally {
-      setIsCreatingCollection(false);
+      setIsLoading(false);
     }
-  };
+  }, [isAuthLoading, token]);
 
-  const handleDeleteCollection = () => {
-    if (!activeCollection || !token || isDeletingCollection) return;
+  useFocusEffect(useCallback(() => { void loadData(); }, [loadData]));
 
-    Alert.alert(
-      'Delete Collection',
-      `Delete ${activeCollection.name}? Trips will stay saved and move out of this collection.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            void (async () => {
-              try {
-                setIsDeletingCollection(true);
-                await deleteSavedTripCollection(token, activeCollection.id);
-                setActiveFilter('all');
-                await loadSavedTrips('all');
-              } catch (deleteError) {
-                setError(
-                  deleteError instanceof Error
-                    ? deleteError.message
-                    : 'Unable to delete collection.'
-                );
-              } finally {
-                setIsDeletingCollection(false);
-              }
-            })();
-          },
+  // ── Derived ──────────────────────────────────────────────────────────────────
+
+  const collections = data?.collections ?? [];
+  const totalSaved = data?.filter.totalSavedCount ?? 0;
+
+  const items = useMemo(() => {
+    return (data?.items ?? []).slice().sort(
+      (a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime()
+    );
+  }, [data?.items]);
+
+  const rows = useMemo(() => {
+    const result: typeof items[] = [];
+    for (let i = 0; i < items.length; i += 2) {
+      result.push(items.slice(i, i + 2));
+    }
+    return result;
+  }, [items]);
+
+  // Optimistic removal when a trip is unsaved from this page
+  const handleUnsave = (savedTripId: string) => {
+    setData((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        items: prev.items.filter((item) => item.savedTripId !== savedTripId),
+        filter: {
+          ...prev.filter,
+          totalSavedCount: Math.max(0, prev.filter.totalSavedCount - 1),
         },
-      ]
-    );
+      };
+    });
   };
 
-  const handleOpenManageCollections = (item: SavedPublicTripItem) => {
-    setModalError(null);
-    setSelectedItem(item);
-  };
+  // ── Header ─────────────────────────────────────────────────────────────────
 
-  const handleSaveMemberships = async (savedTripId: string, collectionIds: string[]) => {
-    if (!token) {
-      setModalError('Authentication required. Please sign in again.');
-      return;
-    }
-    try {
-      setIsUpdatingCollections(true);
-      setModalError(null);
-      await updateSavedTripCollections(token, savedTripId, collectionIds);
-      await loadSavedTrips();
-      setSelectedItem(null);
-    } catch (updateError) {
-      setModalError(
-        updateError instanceof Error
-          ? updateError.message
-          : 'Unable to update trip collections.'
-      );
-    } finally {
-      setIsUpdatingCollections(false);
-    }
-  };
+  const headerNode = (
+    <View style={[styles.pageHeader, { paddingTop: insets.top }]}>
+      <View style={styles.pageHeaderInner}>
+        <View style={styles.hdrSide}>
+          <Pressable
+            style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.7 }]}
+            onPress={() => router.back()}
+            hitSlop={8}
+          >
+            <Ionicons name="arrow-back" size={22} color={theme.colors.primaryDark} />
+          </Pressable>
+        </View>
+        <Text style={styles.pageTitle}>Saved Trips</Text>
+        <View style={[styles.hdrSide, styles.hdrSideRight]} />
+      </View>
+    </View>
+  );
 
-  const handleCreateCollectionFromModal = async (name: string) => {
-    try {
-      setIsCreatingCollectionFromModal(true);
-      const collection = await handleCreateCollection(name);
-      await loadSavedTrips();
-      return collection;
-    } finally {
-      setIsCreatingCollectionFromModal(false);
-    }
-  };
-
-  const closeModal = () => {
-    if (isUpdatingCollections) return;
-    setSelectedItem(null);
-    setModalError(null);
-  };
-
-  // ── Loading state ──────────────────────────────────────────────────────────
+  // ── Loading ───────────────────────────────────────────────────────────────
 
   if (isLoading || isAuthLoading) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-        <View style={styles.header}>
-          <View style={styles.headerText}>
-            <Text style={styles.eyebrow}>SAVED TRIPS</Text>
-            <Text style={styles.title}>Saved Trips</Text>
-          </View>
-        </View>
+      <View style={styles.root}>
+        {headerNode}
         <View style={styles.centerState}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
-          <Text style={styles.stateText}>Loading your saved trips…</Text>
+          <Text style={styles.stateText}>Loading saved trips…</Text>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
-  // ── Main render ────────────────────────────────────────────────────────────
+  // ── Main render ───────────────────────────────────────────────────────────
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-      {/* ── Header ── */}
-      <View style={styles.header}>
-        <View style={styles.headerText}>
-          <Text style={styles.eyebrow}>SAVED TRIPS</Text>
-          <Text style={styles.title}>Saved Trips</Text>
-          <Text style={styles.headerSub}>{collectionSummaryLine}</Text>
-        </View>
-      </View>
+    <View style={styles.root}>
+      {headerNode}
 
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* ── Filter chips ── */}
-        <View style={styles.filtersCard}>
-          <View style={styles.filtersHeaderRow}>
-            <Text style={styles.filtersCardTitle}>Collections</Text>
-            {activeCollection ? (
-              <Pressable onPress={handleDeleteCollection} hitSlop={8} disabled={isDeletingCollection}>
-                <Text style={styles.deleteText}>
-                  {isDeletingCollection ? 'Deleting…' : 'Delete'}
-                </Text>
-              </Pressable>
-            ) : null}
-          </View>
+        {/* Summary */}
+        <Text style={styles.summaryText}>
+          {collections.length}{' '}
+          {collections.length === 1 ? 'collection' : 'collections'} · {totalSaved} saved
+        </Text>
 
+        {/* Collections strip */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Collections</Text>
+            {collections.length > 0 && (
+              <Pressable onPress={() => router.push('/all-collections' as any)} hitSlop={8}>
+                <Text style={styles.seeAll}>See all</Text>
+              </Pressable>
+            )}
+          </View>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.chipScroll}
+            contentContainerStyle={styles.stripContent}
           >
-            {(['all', 'ungrouped'] as const).map((f) => (
-              <Pressable
-                key={f}
-                style={[styles.filterChip, activeFilter === f && styles.filterChipActive]}
-                onPress={() => void handleFilterPress(f)}
-              >
-                <Text
-                  style={[
-                    styles.filterChipText,
-                    activeFilter === f && styles.filterChipTextActive,
-                  ]}
-                >
-                  {f === 'all' ? 'All' : 'Ungrouped'}
-                </Text>
-              </Pressable>
+            {collections.map((col) => (
+              <CollectionStripCard
+                key={col.id}
+                collection={col}
+                onPress={() => router.push(`/saved-collection/${col.id}` as any)}
+              />
             ))}
-            {collections.map((col) => {
-              const filterVal = getCollectionFilterValue(col.id);
-              const isActive = activeFilter === filterVal;
-              return (
-                <Pressable
-                  key={col.id}
-                  style={[styles.filterChip, isActive && styles.filterChipActive]}
-                  onPress={() => void handleFilterPress(filterVal)}
-                >
-                  <Text
-                    style={[styles.filterChipText, isActive && styles.filterChipTextActive]}
-                  >
-                    {col.name}
-                  </Text>
-                </Pressable>
-              );
-            })}
+            <NewCollectionStripCard onPress={() => router.push('/create-collection' as any)} />
           </ScrollView>
-
-          <Text style={styles.filterDesc}>
-            {buildFilterDescription(activeFilter, savedTripsData)}
-          </Text>
         </View>
 
-        {/* ── Create Collection card ── */}
-        <View style={styles.createCard}>
-          <View style={styles.createCardHeader}>
-            <Ionicons name="add-circle-outline" size={18} color="#006A69" />
-            <Text style={styles.createCardTitle}>New Collection</Text>
+        {/* My Saved Trips heading */}
+        {items.length > 0 && (
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>My Saved Trips</Text>
           </View>
-          <Text style={styles.createCardDesc}>
-            Group saved public trips into buckets. A trip can belong to multiple collections.
-          </Text>
-          <TextInput
-            style={styles.input}
-            placeholder="e.g. Weekend ideas"
-            placeholderTextColor={theme.colors.textSecondary}
-            value={newCollectionName}
-            onChangeText={setNewCollectionName}
-            editable={!isCreatingCollection}
-            returnKeyType="done"
-            onSubmitEditing={() => void handleTopLevelCreateCollection()}
-          />
-          {createCollectionError ? (
-            <Text style={styles.inlineError}>{createCollectionError}</Text>
-          ) : null}
-          <Pressable
-            style={[styles.createButton, isCreatingCollection && styles.createButtonDisabled]}
-            onPress={() => void handleTopLevelCreateCollection()}
-            disabled={isCreatingCollection}
-          >
-            <Text style={styles.createButtonText}>
-              {isCreatingCollection ? 'Creating…' : 'Create Collection'}
-            </Text>
-          </Pressable>
-        </View>
+        )}
 
-        {/* ── Trip list / error / empty ── */}
+        {/* Trip grid */}
         {error ? (
-          <View style={styles.emptyCard}>
-            <Ionicons name="alert-circle-outline" size={36} color={theme.colors.textSecondary} />
-            <Text style={styles.emptyTitle}>Saved trips unavailable</Text>
-            <Text style={styles.emptyText}>{error}</Text>
-            <Pressable style={styles.primaryButton} onPress={() => void loadSavedTrips()}>
-              <Text style={styles.primaryButtonText}>Try Again</Text>
+          <View style={styles.feedState}>
+            <View style={styles.stateIconWrap}>
+              <Ionicons name="alert-circle-outline" size={28} color={theme.colors.primary} />
+            </View>
+            <Text style={styles.feedStateTitle}>Could not load saved trips</Text>
+            <Text style={styles.feedStateBody}>{error}</Text>
+            <Pressable style={styles.feedStateButton} onPress={() => void loadData()}>
+              <Text style={styles.feedStateButtonText}>Try again</Text>
             </Pressable>
           </View>
         ) : items.length > 0 ? (
-          items.map((item) => (
-            <SavedTripCard
-              key={item.savedTripId}
-              item={item}
-              onPress={() => router.push(`/public-trip/${item.trip.id}` as any)}
-              onManageCollections={() => handleOpenManageCollections(item)}
-            />
-          ))
+          <View style={styles.grid}>
+            {rows.map((row, rowIdx) => (
+              <View key={rowIdx} style={[styles.row, { gap: CARD_GAP }]}>
+                {row.map((item) => (
+                  <SavedTripPostCard
+                    key={item.savedTripId}
+                    tripId={item.trip.id}
+                    title={item.trip.title}
+                    date={item.trip.date}
+                    imageUrl={item.preview.imageUrl ?? null}
+                    likeCount={item.engagement.likeCount}
+                    saveCount={item.engagement.saveCount}
+                    commentCount={item.engagement.commentCount}
+                    likedByMe={item.engagement.likedByMe}
+                    savedByMe={item.engagement.savedByMe}
+                    token={token}
+                    cardWidth={cardWidth}
+                    onPress={() => router.push(`/public-trip/${item.trip.id}` as any)}
+                    savedTripId={item.savedTripId}
+                    currentCollectionIds={item.collections.map((c) => c.id)}
+                    onUnsave={() => handleUnsave(item.savedTripId)}
+                  />
+                ))}
+                {row.length === 1 && <View style={{ width: cardWidth }} />}
+              </View>
+            ))}
+          </View>
         ) : (
-          <View style={styles.emptyCard}>
-            <Ionicons name="bookmark-outline" size={36} color={theme.colors.textSecondary} />
-            <Text style={styles.emptyTitle}>
-              {activeFilter === 'all'
-                ? 'No saved public trips yet'
-                : activeFilter === 'ungrouped'
-                ? 'No ungrouped saved trips'
-                : 'No trips in this collection'}
-            </Text>
-            <Text style={styles.emptyText}>
-              {activeFilter === 'all'
-                ? 'Save interesting routes from Explore to revisit them here later.'
-                : 'Adjust collection memberships or save more public trips from Explore.'}
+          <View style={styles.feedState}>
+            <View style={styles.stateIconWrap}>
+              <Ionicons name="bookmark-outline" size={28} color={theme.colors.primary} />
+            </View>
+            <Text style={styles.feedStateTitle}>No saved trips yet</Text>
+            <Text style={styles.feedStateBody}>
+              Save interesting routes from Explore to revisit them here.
             </Text>
             <Pressable
-              style={styles.primaryButton}
+              style={styles.feedStateButton}
               onPress={() => router.replace('/(tabs)/explore')}
             >
-              <Text style={styles.primaryButtonText}>Open Explore</Text>
+              <Text style={styles.feedStateButtonText}>Open Explore</Text>
             </Pressable>
           </View>
         )}
       </ScrollView>
-
-      <CollectionManagerModal
-        visible={selectedItem !== null}
-        item={selectedItem}
-        collections={collections}
-        isSaving={isUpdatingCollections}
-        isCreatingCollection={isCreatingCollectionFromModal}
-        error={modalError}
-        onClose={closeModal}
-        onSave={handleSaveMemberships}
-        onCreateCollection={handleCreateCollectionFromModal}
-      />
-    </SafeAreaView>
+    </View>
   );
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  safe: {
+  root: {
     flex: 1,
     backgroundColor: theme.colors.background,
   },
 
-  // States
+  pageHeader: {
+    backgroundColor: theme.colors.surface,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.colors.border,
+  },
+  pageHeaderInner: {
+    height: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+  },
+  hdrSide: {
+    width: 44,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
+  hdrSideRight: {
+    alignItems: 'flex-end',
+  },
+  iconBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pageTitle: {
+    flex: 1,
+    fontFamily: font.bold,
+    fontSize: 15,
+    letterSpacing: 0.5,
+    color: theme.colors.primaryDark,
+    textAlign: 'center',
+  },
+
   centerState: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
+    gap: 12,
     paddingHorizontal: 40,
   },
   stateText: {
+    fontFamily: font.regular,
     fontSize: 14,
     color: theme.colors.textSecondary,
     textAlign: 'center',
   },
 
-  // Header
-  header: {
-    paddingHorizontal: H_PAD,
-    paddingTop: 16,
-    paddingBottom: 14,
-  },
-  headerText: {
-    gap: 2,
-  },
-  eyebrow: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1.8,
-    color: theme.colors.primary,
-    marginBottom: 2,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#111C2C',
-    letterSpacing: -0.4,
-  },
-  headerSub: {
-    fontSize: 13,
-    color: theme.colors.textSecondary,
-    marginTop: 3,
-  },
-
-  // Scroll
   scrollContent: {
-    paddingHorizontal: H_PAD,
+    paddingTop: 16,
     paddingBottom: 48,
     gap: 14,
   },
 
-  // Filters card
-  filtersCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#E8ECF0',
-    padding: 16,
-    gap: 12,
+  summaryText: {
+    fontFamily: font.medium,
+    fontSize: 13,
+    color: theme.colors.textSecondary,
+    paddingHorizontal: H_PAD,
   },
-  filtersHeaderRow: {
+
+  section: {
+    gap: 10,
+  },
+  sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingHorizontal: H_PAD,
   },
-  filtersCardTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#111C2C',
+  sectionTitle: {
+    fontFamily: font.bold,
+    fontSize: 16,
+    color: theme.colors.primaryDark,
   },
-  deleteText: {
+  seeAll: {
+    fontFamily: font.semiBold,
     fontSize: 13,
-    fontWeight: '700',
-    color: '#B91C1C',
+    color: theme.colors.primary,
   },
-  chipScroll: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingRight: 4,
+  stripContent: {
+    paddingHorizontal: H_PAD,
+    gap: 10,
   },
-  filterChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E8ECF0',
+
+  feedState: {
+    alignItems: 'center',
+    paddingVertical: 52,
+    paddingHorizontal: 32,
+    gap: 10,
   },
-  filterChipActive: {
+  stateIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: '#DFF7F6',
-    borderColor: '#006A69',
-  },
-  filterChipText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#64748B',
-  },
-  filterChipTextActive: {
-    fontWeight: '700',
-    color: '#006A69',
-  },
-  filterDesc: {
-    fontSize: 13,
-    lineHeight: 19,
-    color: theme.colors.textSecondary,
-  },
-
-  // Create collection card
-  createCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#E8ECF0',
-    padding: 16,
-    gap: 10,
-  },
-  createCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  createCardTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#111C2C',
-  },
-  createCardDesc: {
-    fontSize: 13,
-    lineHeight: 19,
-    color: theme.colors.textSecondary,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#E8ECF0',
-    borderRadius: 12,
-    backgroundColor: '#F8FAFC',
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-    fontSize: 14,
-    color: '#111C2C',
-  },
-  inlineError: {
-    fontSize: 13,
-    color: '#991B1B',
-    marginTop: -4,
-  },
-  createButton: {
-    backgroundColor: '#006A69',
-    borderRadius: 12,
-    paddingVertical: 13,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 4,
   },
-  createButtonDisabled: {
-    opacity: 0.55,
-  },
-  createButtonText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-
-  // Empty / error
-  emptyCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#E8ECF0',
-    padding: 28,
-    alignItems: 'center',
-    gap: 10,
-  },
-  emptyTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#111C2C',
+  feedStateTitle: {
+    fontFamily: font.bold,
+    fontSize: 18,
+    color: theme.colors.primaryDark,
     textAlign: 'center',
   },
-  emptyText: {
-    fontSize: 14,
-    lineHeight: 21,
+  feedStateBody: {
+    ...type.bodySm,
     color: theme.colors.textSecondary,
     textAlign: 'center',
+    marginBottom: 4,
   },
-
-  // Buttons
-  primaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#006A69',
+  feedStateButton: {
+    backgroundColor: theme.colors.primary,
+    paddingHorizontal: 22,
+    paddingVertical: 13,
     borderRadius: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 28,
     marginTop: 4,
   },
-  primaryButtonText: {
-    fontSize: 14,
-    fontWeight: '700',
+  feedStateButtonText: {
+    fontFamily: font.semiBold,
+    fontSize: 15,
     color: '#FFFFFF',
+  },
+
+  grid: {
+    paddingHorizontal: H_PAD,
+    gap: CARD_GAP,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
   },
 });
