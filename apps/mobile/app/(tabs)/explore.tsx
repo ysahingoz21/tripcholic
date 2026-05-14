@@ -380,6 +380,7 @@ export default function ExploreScreen() {
               items={exploreItems}
               onRetry={() => void loadExploreTrips()}
               onTripPress={(id) => router.push(`/public-trip/${id}` as any)}
+              onSwitchToSwipe={() => setMode('swipe')}
               token={token}
               engagementMap={engagementMap}
             />
@@ -392,7 +393,6 @@ export default function ExploreScreen() {
               onRetry={() => void loadForYouTrips()}
               onTripPress={(id) => router.push(`/public-trip/${id}` as any)}
               onSwitchToExplore={() => setMode('explore')}
-              onSwitchToSwipe={() => setMode('swipe')}
               token={token}
               engagementMap={engagementMap}
             />
@@ -449,6 +449,7 @@ type ExploreContentProps = {
   items: ExploreTripItem[];
   onRetry: () => void;
   onTripPress: (id: string) => void;
+  onSwitchToSwipe: () => void;
   token: string | null;
   engagementMap: Map<string, PublicTripEngagement>;
 };
@@ -474,6 +475,7 @@ function ExploreContent({
   items,
   onRetry,
   onTripPress,
+  onSwitchToSwipe,
   token,
   engagementMap,
 }: ExploreContentProps) {
@@ -515,6 +517,24 @@ function ExploreContent({
 
   return (
     <>
+      {/* ── Swipe mode CTA ── */}
+      <Pressable style={styles.swipeCta} onPress={onSwitchToSwipe}>
+        <View style={styles.swipeCtaIcon}>
+          <Ionicons name="swap-horizontal" size={18} color={theme.colors.primary} />
+        </View>
+        <View style={styles.swipeCtaText}>
+          <Text style={styles.swipeCtaTitle}>Try Swipe mode</Text>
+          <Text style={styles.swipeCtaSubtitle}>
+            Move through picks faster — save or pass in one swipe.
+          </Text>
+        </View>
+        <Ionicons
+          name="arrow-forward"
+          size={15}
+          color={theme.colors.textSecondary}
+        />
+      </Pressable>
+
       {/* ── Search bar ── */}
       <View style={styles.searchRow}>
         <View style={styles.searchBar}>
@@ -762,7 +782,6 @@ type ForYouContentProps = {
   onRetry: () => void;
   onTripPress: (id: string) => void;
   onSwitchToExplore: () => void;
-  onSwitchToSwipe: () => void;
   token: string | null;
   engagementMap: Map<string, PublicTripEngagement>;
 };
@@ -775,7 +794,6 @@ function ForYouContent({
   onRetry,
   onTripPress,
   onSwitchToExplore,
-  onSwitchToSwipe,
   token,
   engagementMap,
 }: ForYouContentProps) {
@@ -793,24 +811,6 @@ function ForYouContent({
           </Text>
         </View>
       )}
-
-      {/* Swipe mode CTA */}
-      <Pressable style={styles.swipeCta} onPress={onSwitchToSwipe}>
-        <View style={styles.swipeCtaIcon}>
-          <Ionicons name="swap-horizontal" size={18} color={theme.colors.primary} />
-        </View>
-        <View style={styles.swipeCtaText}>
-          <Text style={styles.swipeCtaTitle}>Try Swipe mode</Text>
-          <Text style={styles.swipeCtaSubtitle}>
-            Move through picks faster — save or pass in one swipe.
-          </Text>
-        </View>
-        <Ionicons
-          name="arrow-forward"
-          size={15}
-          color={theme.colors.textSecondary}
-        />
-      </Pressable>
 
       {/* Results */}
       {isLoading ? (

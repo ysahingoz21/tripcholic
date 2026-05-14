@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -9,12 +16,12 @@ import {
   Text,
   View,
   useWindowDimensions,
-} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
-import Artwork from '@/components/ui/Artwork';
-import { theme } from '@/constants/theme';
-import { font } from '@/constants/typography';
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { Image } from "expo-image";
+import Artwork from "@/components/ui/Artwork";
+import { theme } from "@/constants/theme";
+import { font } from "@/constants/typography";
 import {
   getForYouPublicTrips,
   getPublicTrip,
@@ -22,30 +29,35 @@ import {
   type ForYouTripItem,
   type ForYouTripsResponse,
   type PublicTripDetailResponse,
-} from '@/services/publicTrips';
+} from "@/services/publicTrips";
 
 const INITIAL_FETCH_LIMIT = 20;
 const REFILL_THRESHOLD = 3;
-const HERO_HEIGHT = 460;
+const HERO_HEIGHT = 434;
+const EXPAND_CTA_HEIGHT = 52; // height of the "See stops" strip in collapsed mode
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function getInitials(name: string | null): string {
-  if (!name?.trim()) return 'T';
+  if (!name?.trim()) return "T";
   const parts = name.trim().split(/\s+/);
   if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
   return name[0].toUpperCase();
 }
 
 function formatCreator(name: string | null) {
-  return name?.trim() || 'Tripcholic traveler';
+  return name?.trim() || "Tripcholic traveler";
 }
 
 function formatDate(dateStr: string | null | undefined): string | null {
   if (!dateStr) return null;
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return null;
-  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  return d.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 function cap(s: string) {
@@ -55,12 +67,12 @@ function cap(s: string) {
 function getUniqueNewItems(
   nextItems: ForYouTripItem[],
   currentItems: ForYouTripItem[],
-  dismissedIds: string[]
+  dismissedIds: string[],
 ) {
   const existingIds = new Set(currentItems.map((i) => i.id));
   const dismissedSet = new Set(dismissedIds);
   return nextItems.filter(
-    (item) => !existingIds.has(item.id) && !dismissedSet.has(item.id)
+    (item) => !existingIds.has(item.id) && !dismissedSet.has(item.id),
   );
 }
 
@@ -88,9 +100,16 @@ export default function InlineSwipePanel({ token, isAuthLoading }: Props) {
   const [screenError, setScreenError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [hasReachedEnd, setHasReachedEnd] = useState(false);
+  // Lifted from SwipeCard so (a) the panel can render the collapse button above
+  // the action buttons, and (b) deckArea height can be keyed on expand state.
+  const [isExpanded, setIsExpanded] = useState(false);
+  // Hides the active card during the deck-transition window so neither the
+  // outgoing card nor an intermediate empty frame can flash at center.
+  // Controlled via React state (not a native Animated value) so the
+  // hide/show is committed synchronously with the view tree swap.
+  const [cardSuppressed, setCardSuppressed] = useState(false);
 
   const currentTrip = deckItems[0] ?? null;
-  const nextTrip = deckItems[1] ?? null;
 
   useEffect(() => {
     dismissedIdsRef.current = dismissedIds;
@@ -102,92 +121,148 @@ export default function InlineSwipePanel({ token, isAuthLoading }: Props) {
   }, [cardTranslate]);
 
   const loadDeck = useCallback(
-    async (mode: 'replace' | 'append' = 'replace') => {
+    async (mode: "replace" | "append" = "replace") => {
       if (isAuthLoading) return;
       if (!token) {
         setDeckItems([]);
-        setScreenError('Sign in to access personalized swipe discovery.');
+        setScreenError("Sign in to access personalized swipe discovery.");
         setIsLoading(false);
         setIsRefilling(false);
         setHasReachedEnd(true);
         return;
       }
       try {
-        if (mode === 'replace') setIsLoading(true);
+        if (mode === "replace") setIsLoading(true);
         else setIsRefilling(true);
         setScreenError(null);
         setActionError(null);
         const data = await getForYouPublicTrips(token, INITIAL_FETCH_LIMIT);
-        if (mode === 'replace') {
-          const freshItems = getUniqueNewItems(data.items, [], dismissedIdsRef.current);
+        if (mode === "replace") {
+          const freshItems = getUniqueNewItems(
+            data.items,
+            [],
+            dismissedIdsRef.current,
+          );
           setDeckItems(freshItems);
           setHasReachedEnd(freshItems.length === 0);
           resetCardPosition();
           return;
         }
         setDeckItems((current) => {
-          const filtered = getUniqueNewItems(data.items, current, dismissedIdsRef.current);
-          if (filtered.length === 0 && current.length === 0) { setHasReachedEnd(true); return current; }
-          if (filtered.length === 0) { setHasReachedEnd(current.length <= REFILL_THRESHOLD); return current; }
+          const filtered = getUniqueNewItems(
+            data.items,
+            current,
+            dismissedIdsRef.current,
+          );
+          if (filtered.length === 0 && current.length === 0) {
+            setHasReachedEnd(true);
+            return current;
+          }
+          if (filtered.length === 0) {
+            setHasReachedEnd(current.length <= REFILL_THRESHOLD);
+            return current;
+          }
           setHasReachedEnd(false);
           return [...current, ...filtered];
         });
       } catch (err) {
-        setScreenError(err instanceof Error ? err.message : 'Unable to load swipe discovery.');
-        if (mode === 'replace') setDeckItems([]);
+        setScreenError(
+          err instanceof Error
+            ? err.message
+            : "Unable to load swipe discovery.",
+        );
+        if (mode === "replace") setDeckItems([]);
       } finally {
         setIsLoading(false);
         setIsRefilling(false);
       }
     },
-    [isAuthLoading, resetCardPosition, token]
+    [isAuthLoading, resetCardPosition, token],
   );
 
-  useEffect(() => { void loadDeck('replace'); }, [loadDeck]);
+  useEffect(() => {
+    void loadDeck("replace");
+  }, [loadDeck]);
 
   useEffect(() => {
-    if (deckItems.length <= REFILL_THRESHOLD && !isLoading && !isRefilling && !hasReachedEnd) {
-      void loadDeck('append');
+    if (
+      deckItems.length <= REFILL_THRESHOLD &&
+      !isLoading &&
+      !isRefilling &&
+      !hasReachedEnd
+    ) {
+      void loadDeck("append");
     }
   }, [deckItems.length, hasReachedEnd, isLoading, isRefilling, loadDeck]);
 
+  // Reset card position and restore opacity whenever the top-of-deck card changes.
+  // useLayoutEffect fires before the screen paints, so the incoming card never
+  // appears at the outgoing card's off-screen transform position.
+  // Setting state here is intentional: React batches this with the layout phase
+  // so no intermediate frame is painted between the old and new state.
+  const currentTripId = currentTrip?.id ?? null;
+  useLayoutEffect(() => {
+    cardTranslate.setValue({ x: 0, y: 0 });
+    isAnimatingRef.current = false;
+    setCardSuppressed(false);
+    setIsExpanded(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTripId]);
+
   const dismissCurrentTrip = useCallback(
-    (tripId: string, action: 'pass' | 'save') => {
+    (tripId: string, action: "pass" | "save") => {
       setDismissedIds((current) => {
         const next = current.includes(tripId) ? current : [...current, tripId];
         dismissedIdsRef.current = next;
         return next;
       });
-      if (action === 'save') {
-        setSavedIds((current) => current.includes(tripId) ? current : [...current, tripId]);
+      if (action === "save") {
+        setSavedIds((current) =>
+          current.includes(tripId) ? current : [...current, tripId],
+        );
       }
       setDeckItems((current) => current.filter((t) => t.id !== tripId));
       setHasReachedEnd(false);
-      resetCardPosition();
+      // Position reset is handled by useLayoutEffect when currentTrip.id changes,
+      // preventing the dismissed card from briefly re-appearing at center.
     },
-    [resetCardPosition]
+    [],
   );
 
-  const commitPass = useCallback((tripId: string) => {
-    setActionError(null);
-    dismissCurrentTrip(tripId, 'pass');
-  }, [dismissCurrentTrip]);
-
-  const commitSave = useCallback(async (tripId: string) => {
-    if (!token) { setActionError('Authentication required.'); resetCardPosition(); return; }
-    try {
-      setIsSavePending(true);
+  const commitPass = useCallback(
+    (tripId: string) => {
       setActionError(null);
-      await savePublicTrip(tripId, token);
-      dismissCurrentTrip(tripId, 'save');
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Unable to save this trip.');
-      resetCardPosition();
-    } finally {
-      setIsSavePending(false);
-      isAnimatingRef.current = false;
-    }
-  }, [dismissCurrentTrip, resetCardPosition, token]);
+      dismissCurrentTrip(tripId, "pass");
+    },
+    [dismissCurrentTrip],
+  );
+
+  const commitSave = useCallback(
+    async (tripId: string) => {
+      if (!token) {
+        setActionError("Authentication required.");
+        setCardSuppressed(false);
+        resetCardPosition();
+        return;
+      }
+      try {
+        setIsSavePending(true);
+        setActionError(null);
+        await savePublicTrip(tripId, token);
+        dismissCurrentTrip(tripId, "save");
+      } catch (err) {
+        setActionError(
+          err instanceof Error ? err.message : "Unable to save this trip.",
+        );
+        setCardSuppressed(false);
+        resetCardPosition();
+      } finally {
+        setIsSavePending(false);
+        isAnimatingRef.current = false;
+      }
+    },
+    [dismissCurrentTrip, resetCardPosition, token],
+  );
 
   const handlePass = useCallback(() => {
     if (!currentTrip || isSavePending || isAnimatingRef.current) return;
@@ -200,20 +275,22 @@ export default function InlineSwipePanel({ token, isAuthLoading }: Props) {
   }, [commitSave, currentTrip, isSavePending]);
 
   const animateSwipeOut = useCallback(
-    (direction: 'left' | 'right', trip: ForYouTripItem) => {
+    (direction: "left" | "right", trip: ForYouTripItem) => {
       if (isAnimatingRef.current) return;
       isAnimatingRef.current = true;
-      const targetX = direction === 'right' ? width + 120 : -width - 120;
+      const targetX = direction === "right" ? width + 120 : -width - 120;
       Animated.timing(cardTranslate, {
         toValue: { x: targetX, y: 0 },
         duration: 180,
         useNativeDriver: true,
       }).start(() => {
-        if (direction === 'right') void commitSave(trip.id);
+        cardTranslate.stopAnimation();
+        setCardSuppressed(true);
+        if (direction === "right") void commitSave(trip.id);
         else commitPass(trip.id);
       });
     },
-    [cardTranslate, commitPass, commitSave, width]
+    [cardTranslate, commitPass, commitSave, width],
   );
 
   const handleReload = async () => {
@@ -223,7 +300,7 @@ export default function InlineSwipePanel({ token, isAuthLoading }: Props) {
     setHasReachedEnd(false);
     setScreenError(null);
     setActionError(null);
-    await loadDeck('replace');
+    await loadDeck("replace");
   };
 
   const panResponder = useMemo(
@@ -239,9 +316,18 @@ export default function InlineSwipePanel({ token, isAuthLoading }: Props) {
           cardTranslate.setValue({ x: g.dx, y: 0 });
         },
         onPanResponderRelease: (_, g) => {
-          if (!currentTrip) { resetCardPosition(); return; }
-          if (g.dx >= swipeThreshold) { animateSwipeOut('right', currentTrip); return; }
-          if (g.dx <= -swipeThreshold) { animateSwipeOut('left', currentTrip); return; }
+          if (!currentTrip) {
+            resetCardPosition();
+            return;
+          }
+          if (g.dx >= swipeThreshold) {
+            animateSwipeOut("right", currentTrip);
+            return;
+          }
+          if (g.dx <= -swipeThreshold) {
+            animateSwipeOut("left", currentTrip);
+            return;
+          }
           Animated.spring(cardTranslate, {
             toValue: { x: 0, y: 0 },
             useNativeDriver: true,
@@ -250,13 +336,20 @@ export default function InlineSwipePanel({ token, isAuthLoading }: Props) {
           }).start();
         },
       }),
-    [animateSwipeOut, cardTranslate, currentTrip, isSavePending, resetCardPosition, swipeThreshold]
+    [
+      animateSwipeOut,
+      cardTranslate,
+      currentTrip,
+      isSavePending,
+      resetCardPosition,
+      swipeThreshold,
+    ],
   );
 
   const rotate = cardTranslate.x.interpolate({
     inputRange: [-width, 0, width],
-    outputRange: ['-10deg', '0deg', '10deg'],
-    extrapolate: 'clamp',
+    outputRange: ["-10deg", "0deg", "10deg"],
+    extrapolate: "clamp",
   });
 
   const currentCardAnimStyle = {
@@ -280,13 +373,31 @@ export default function InlineSwipePanel({ token, isAuthLoading }: Props) {
     return (
       <View style={styles.centerState}>
         <View style={styles.stateIconWrap}>
-          <Ionicons name="alert-circle-outline" size={28} color={theme.colors.primary} />
+          <Ionicons
+            name="alert-circle-outline"
+            size={28}
+            color={theme.colors.primary}
+          />
         </View>
         <Text style={styles.stateTitle}>Swipe unavailable</Text>
         <Text style={styles.stateText}>{screenError}</Text>
-        <Pressable style={styles.stateButton} onPress={() => void handleReload()}>
+        <Pressable
+          style={styles.stateButton}
+          onPress={() => void handleReload()}
+        >
           <Text style={styles.stateButtonText}>Try again</Text>
         </Pressable>
+      </View>
+    );
+  }
+
+  // ── Refilling — don't flash the empty state while more cards are fetching ──
+
+  if (!currentTrip && isRefilling) {
+    return (
+      <View style={styles.centerState}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+        <Text style={styles.stateText}>Loading more trips…</Text>
       </View>
     );
   }
@@ -297,20 +408,28 @@ export default function InlineSwipePanel({ token, isAuthLoading }: Props) {
     return (
       <View style={styles.centerState}>
         <View style={styles.stateIconWrap}>
-          <Ionicons name="checkmark-circle-outline" size={28} color={theme.colors.primary} />
+          <Ionicons
+            name="checkmark-circle-outline"
+            size={28}
+            color={theme.colors.primary}
+          />
         </View>
         <Text style={styles.stateTitle}>All caught up</Text>
         <Text style={styles.stateText}>
           {hasReachedEnd
-            ? 'No new picks beyond what you already saved or passed this session.'
-            : 'No trips in the current deck right now.'}
+            ? "No new picks beyond what you already saved or passed this session."
+            : "No trips in the current deck right now."}
         </Text>
         {savedIds.length > 0 && (
           <Text style={styles.savedNote}>
-            {savedIds.length} trip{savedIds.length === 1 ? '' : 's'} saved this session.
+            {savedIds.length} trip{savedIds.length === 1 ? "" : "s"} saved this
+            session.
           </Text>
         )}
-        <Pressable style={styles.stateButton} onPress={() => void handleReload()}>
+        <Pressable
+          style={styles.stateButton}
+          onPress={() => void handleReload()}
+        >
           <Text style={styles.stateButtonText}>Reload deck</Text>
         </Pressable>
       </View>
@@ -318,6 +437,12 @@ export default function InlineSwipePanel({ token, isAuthLoading }: Props) {
   }
 
   // ── Active deck ────────────────────────────────────────────────────────────
+
+  // Collapsed: explicit height so the absolutely-positioned activeCard fills correctly.
+  // Expanded: flex:1 so the card stretches to fill available space.
+  const deckAreaStyle = isExpanded
+    ? styles.deckAreaExpanded
+    : [styles.deckAreaCollapsed, { height: HERO_HEIGHT + EXPAND_CTA_HEIGHT }];
 
   return (
     <View style={styles.deckContainer}>
@@ -329,21 +454,38 @@ export default function InlineSwipePanel({ token, isAuthLoading }: Props) {
       ) : null}
 
       {/* Card deck area */}
-      <View style={styles.deckArea}>
-        {/* Peek card — hero image of next trip */}
-        {nextTrip ? (
-          <View style={styles.peekCard} pointerEvents="none">
-            <PeekCard trip={nextTrip} />
-          </View>
-        ) : null}
-
-        {/* Active card — swipeable, scrollable */}
-        <Animated.View style={[styles.activeCard, currentCardAnimStyle]} {...panResponder.panHandlers}>
-          <SwipeCard trip={currentTrip} token={token} />
+      <View style={deckAreaStyle}>
+        {/* Active card — swipeable */}
+        <Animated.View
+          style={[
+            styles.activeCard,
+            currentCardAnimStyle,
+            cardSuppressed && styles.cardHidden,
+          ]}
+          {...panResponder.panHandlers}
+        >
+          <SwipeCard
+            key={currentTrip.id}
+            trip={currentTrip}
+            token={token}
+            isExpanded={isExpanded}
+            onExpand={() => setIsExpanded(true)}
+          />
         </Animated.View>
       </View>
 
-      {/* Action buttons — float above the card */}
+      {/* Collapse button — rendered at panel level above the action buttons
+          so it never gets covered by them (z-index doesn't cross stacking contexts) */}
+      {isExpanded && (
+        <Pressable
+          style={styles.collapseBtnPanel}
+          onPress={() => setIsExpanded(false)}
+        >
+          <Ionicons name="chevron-up" size={16} color="#FFFFFF" />
+        </Pressable>
+      )}
+
+      {/* Action buttons */}
       <View style={styles.actionsRow}>
         <Pressable
           style={[styles.actionBtn, styles.actionBtnPass]}
@@ -365,36 +507,22 @@ export default function InlineSwipePanel({ token, isAuthLoading }: Props) {
           )}
         </Pressable>
       </View>
-
-    </View>
-  );
-}
-
-// ── Peek card (hero image only, for depth effect) ──────────────────────────
-
-function PeekCard({ trip }: { trip: ForYouTripItem }) {
-  const imageUrl = trip.preview.imageUrl?.trim() || null;
-  return (
-    <View style={styles.peekCardInner}>
-      {imageUrl ? (
-        <Image
-          source={{ uri: imageUrl }}
-          style={StyleSheet.absoluteFill}
-          contentFit="cover"
-          transition={150}
-        />
-      ) : (
-        <Artwork kind="trip" variant="cover" label={trip.title} />
-      )}
     </View>
   );
 }
 
 // ── SwipeCard: scrollable trip preview ────────────────────────────────────
 
-type StopDetail = PublicTripDetailResponse['stops'][number];
+type StopDetail = PublicTripDetailResponse["stops"][number];
 
-function SwipeCard({ trip, token }: { trip: ForYouTripItem; token: string | null }) {
+type SwipeCardProps = {
+  trip: ForYouTripItem;
+  token: string | null;
+  isExpanded: boolean;
+  onExpand: () => void;
+};
+
+function SwipeCard({ trip, token, isExpanded, onExpand }: SwipeCardProps) {
   const imageUrl = trip.preview.imageUrl?.trim() || null;
 
   const [stops, setStops] = useState<StopDetail[]>([]);
@@ -416,27 +544,37 @@ function SwipeCard({ trip, token }: { trip: ForYouTripItem; token: string | null
         setSaveCount(detail.engagement.saveCount);
         setCommentCount(detail.engagement.commentCount);
       })
-      .catch(() => { /* keep defaults */ })
-      .finally(() => { if (mounted) setDetailLoading(false); });
-    return () => { mounted = false; };
+      .catch(() => {
+        /* keep defaults */
+      })
+      .finally(() => {
+        if (mounted) setDetailLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
   }, [trip.id, token]);
 
   const dateLabel = formatDate(trip.optimizedAt);
   const categoryLine = Array.from(
-    new Set([trip.preview.primaryCategory, ...trip.categories].filter(Boolean))
+    new Set([trip.preview.primaryCategory, ...trip.categories].filter(Boolean)),
   )
     .map((c) => cap(c!))
-    .join(', ');
+    .join(", ");
 
+  // ScrollView is always outer.children[0] so Image never remounts on expand/collapse.
+  // In collapsed mode scrollEnabled=false keeps the ScrollView as a neutral wrapper.
+  // In expanded mode scrollEnabled=true + flex:1 makes the whole card one scroll surface.
   return (
-    <View style={cardStyles.outer}>
+    <View style={[cardStyles.outer, isExpanded && { flex: 1 }]}>
       <ScrollView
-        style={cardStyles.scroll}
+        scrollEnabled={isExpanded}
+        style={isExpanded ? cardStyles.scroll : undefined}
         showsVerticalScrollIndicator={false}
-        bounces
+        bounces={isExpanded}
         scrollEventThrottle={16}
       >
-        {/* ── Hero image area ── */}
+        {/* Hero — always ScrollView.children[0], stable tree position */}
         <View style={cardStyles.heroArea}>
           {imageUrl ? (
             <Image
@@ -449,10 +587,8 @@ function SwipeCard({ trip, token }: { trip: ForYouTripItem; token: string | null
             <Artwork kind="trip" variant="cover" label={trip.title} />
           )}
 
-          {/* Unified scrim */}
           <View style={cardStyles.heroScrim} />
 
-          {/* Top row: creator block + menu */}
           <View style={cardStyles.heroTopRow}>
             <View style={cardStyles.creatorBlock}>
               <View style={cardStyles.creatorAvatar}>
@@ -465,19 +601,28 @@ function SwipeCard({ trip, token }: { trip: ForYouTripItem; token: string | null
               </Text>
             </View>
             <View style={cardStyles.menuButton}>
-              <Ionicons name="ellipsis-horizontal" size={16} color="rgba(255,255,255,0.9)" />
+              <Ionicons
+                name="ellipsis-horizontal"
+                size={16}
+                color="rgba(255,255,255,0.9)"
+              />
             </View>
           </View>
 
-          {/* Bottom overlay: title, date, categories, engagement */}
           <View style={cardStyles.heroBottom}>
-            <Text style={cardStyles.heroTitle} numberOfLines={2}>{trip.title}</Text>
+            <Text style={cardStyles.heroTitle} numberOfLines={2}>
+              {trip.title}
+            </Text>
 
-            {(dateLabel || trip.preview.stopCount > 0) ? (
+            {dateLabel || trip.preview.stopCount > 0 ? (
               <View style={cardStyles.heroMeta}>
                 {dateLabel && (
                   <>
-                    <Ionicons name="calendar-outline" size={12} color="rgba(255,255,255,0.75)" />
+                    <Ionicons
+                      name="calendar-outline"
+                      size={12}
+                      color="rgba(255,255,255,0.75)"
+                    />
                     <Text style={cardStyles.heroMetaText}>{dateLabel}</Text>
                   </>
                 )}
@@ -486,9 +631,14 @@ function SwipeCard({ trip, token }: { trip: ForYouTripItem; token: string | null
                 )}
                 {trip.preview.stopCount > 0 && (
                   <>
-                    <Ionicons name="location-outline" size={12} color="rgba(255,255,255,0.75)" />
+                    <Ionicons
+                      name="location-outline"
+                      size={12}
+                      color="rgba(255,255,255,0.75)"
+                    />
                     <Text style={cardStyles.heroMetaText}>
-                      {trip.preview.stopCount} {trip.preview.stopCount === 1 ? 'stop' : 'stops'}
+                      {trip.preview.stopCount}{" "}
+                      {trip.preview.stopCount === 1 ? "stop" : "stops"}
                     </Text>
                   </>
                 )}
@@ -496,54 +646,90 @@ function SwipeCard({ trip, token }: { trip: ForYouTripItem; token: string | null
             ) : null}
 
             {categoryLine ? (
-              <Text style={cardStyles.heroCategoryLine} numberOfLines={1}>{categoryLine}</Text>
+              <Text style={cardStyles.heroCategoryLine} numberOfLines={1}>
+                {categoryLine}
+              </Text>
             ) : null}
 
-            {/* Engagement row — display-only metrics */}
             <View style={cardStyles.engagementRow}>
               <View style={cardStyles.engagementItem}>
-                <Ionicons name="heart-outline" size={14} color="rgba(255,255,255,0.55)" />
+                <Ionicons
+                  name="heart-outline"
+                  size={14}
+                  color="rgba(255,255,255,0.55)"
+                />
                 <Text style={cardStyles.engagementCount}>{likeCount}</Text>
               </View>
               <View style={cardStyles.engagementItem}>
-                <Ionicons name="chatbubble-outline" size={14} color="rgba(255,255,255,0.55)" />
+                <Ionicons
+                  name="chatbubble-outline"
+                  size={14}
+                  color="rgba(255,255,255,0.55)"
+                />
                 <Text style={cardStyles.engagementCount}>{commentCount}</Text>
               </View>
               <View style={cardStyles.engagementItem}>
-                <Ionicons name="bookmark-outline" size={14} color="rgba(255,255,255,0.55)" />
+                <Ionicons
+                  name="bookmark-outline"
+                  size={14}
+                  color="rgba(255,255,255,0.55)"
+                />
                 <Text style={cardStyles.engagementCount}>{saveCount}</Text>
               </View>
             </View>
           </View>
         </View>
 
-        {/* ── Stop timeline ── */}
-        <View style={cardStyles.timeline}>
-          <Text style={cardStyles.timelineHeading}>Stops on this trip</Text>
-          {detailLoading ? (
-            <View style={cardStyles.timelineLoader}>
-              <ActivityIndicator size="small" color={theme.colors.primary} />
-              <Text style={cardStyles.timelineLoaderText}>Loading stops…</Text>
+        {/* Timeline — only rendered in expanded mode, scrolls with the hero */}
+        {isExpanded && (
+          <>
+            <View style={cardStyles.timeline}>
+              <Text style={cardStyles.timelineHeading}>Stops on this trip</Text>
+              {detailLoading ? (
+                <View style={cardStyles.timelineLoader}>
+                  <ActivityIndicator
+                    size="small"
+                    color={theme.colors.primary}
+                  />
+                  <Text style={cardStyles.timelineLoaderText}>
+                    Loading stops…
+                  </Text>
+                </View>
+              ) : stops.length > 0 ? (
+                stops.map((stop, idx) => (
+                  <StopItem
+                    key={stop.id}
+                    stop={stop}
+                    index={idx}
+                    isLast={idx === stops.length - 1}
+                  />
+                ))
+              ) : (
+                <Text style={cardStyles.timelineEmpty}>
+                  {token
+                    ? "No stop details available."
+                    : "Sign in to see stop details."}
+                </Text>
+              )}
             </View>
-          ) : stops.length > 0 ? (
-            stops.map((stop, idx) => (
-              <StopItem
-                key={stop.id}
-                stop={stop}
-                index={idx}
-                isLast={idx === stops.length - 1}
-              />
-            ))
-          ) : (
-            <Text style={cardStyles.timelineEmpty}>
-              {token ? 'No stop details available.' : 'Sign in to see stop details.'}
-            </Text>
-          )}
-        </View>
-
-        {/* Spacer so content clears the action buttons */}
-        <View style={cardStyles.bottomSpacer} />
+            <View style={cardStyles.bottomSpacer} />
+          </>
+        )}
       </ScrollView>
+
+      {/* Expand strip — only in collapsed mode, sits below the ScrollView */}
+      {!isExpanded && (
+        <Pressable style={cardStyles.expandCta} onPress={onExpand}>
+          <Ionicons
+            name="chevron-down"
+            size={18}
+            color={theme.colors.primaryDark}
+          />
+          <Text style={cardStyles.expandCtaText}>
+            See the stops on this trip
+          </Text>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -581,13 +767,15 @@ function StopItem({
           <Text style={stopStyles.stopIndex}>Stop {index + 1}</Text>
           <Text style={stopStyles.poiTitle}>{stop.poi.title}</Text>
           {description ? (
-            <Text style={stopStyles.poiDescription} numberOfLines={3}>{description}</Text>
+            <Text style={stopStyles.poiDescription} numberOfLines={3}>
+              {description}
+            </Text>
           ) : (
             <Text style={stopStyles.poiDescriptionFallback} numberOfLines={2}>
               Explore this location on your trip.
             </Text>
           )}
-          {(category || stop.poi.district) ? (
+          {category || stop.poi.district ? (
             <View style={stopStyles.tagsRow}>
               {category ? (
                 <View style={stopStyles.tag}>
@@ -613,8 +801,8 @@ const styles = StyleSheet.create({
   // States
   centerState: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: 40,
     gap: 12,
     paddingVertical: 40,
@@ -623,23 +811,23 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: '#DFF7F6',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#DFF7F6",
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: 4,
   },
   stateTitle: {
     fontFamily: font.bold,
     fontSize: 18,
     color: theme.colors.primaryDark,
-    textAlign: 'center',
+    textAlign: "center",
   },
   stateText: {
     fontFamily: font.regular,
     fontSize: 14,
     lineHeight: 21,
     color: theme.colors.textSecondary,
-    textAlign: 'center',
+    textAlign: "center",
     marginBottom: 4,
   },
   stateButton: {
@@ -652,7 +840,7 @@ const styles = StyleSheet.create({
   stateButtonText: {
     fontFamily: font.semiBold,
     fontSize: 15,
-    color: '#FFFFFF',
+    color: "#FFFFFF",
   },
   savedNote: {
     fontFamily: font.semiBold,
@@ -665,11 +853,11 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 20,
     paddingTop: 0,
-    paddingBottom: 16,
-    position: 'relative',
+    paddingBottom: 8,
+    position: "relative",
   },
   actionErrorBanner: {
-    backgroundColor: '#FFF7ED',
+    backgroundColor: "#FFF7ED",
     borderRadius: 12,
     padding: 10,
     marginBottom: 10,
@@ -677,53 +865,46 @@ const styles = StyleSheet.create({
   actionErrorText: {
     fontFamily: font.regular,
     fontSize: 13,
-    color: '#9A3412',
+    color: "#9A3412",
   },
 
-  // Card stack
-  deckArea: {
-    flex: 1,
-    position: 'relative',
+  // Card stack — two variants:
+  // collapsed: explicit height so the abs-positioned activeCard fills it correctly
+  // expanded:  flex:1 to fill available space
+  deckAreaCollapsed: {
+    position: "relative",
   },
-  peekCard: {
-    position: 'absolute',
-    left: 10,
-    right: 10,
-    top: 8,
-    bottom: 0,
-    opacity: 0.45,
-    transform: [{ scale: 0.96 }],
-    borderRadius: 24,
-    overflow: 'hidden',
-  },
-  peekCardInner: {
+  deckAreaExpanded: {
     flex: 1,
-    backgroundColor: '#DFF7F6',
+    position: "relative",
   },
   activeCard: {
-    position: 'absolute',
+    position: "absolute",
     left: 0,
     right: 0,
     top: 0,
     bottom: 0,
     zIndex: 2,
   },
+  cardHidden: {
+    opacity: 0,
+  },
 
-  // Action buttons — absolutely positioned over the card
+  // Action buttons
   actionsRow: {
-    position: 'absolute',
-    bottom: 20,
+    position: "absolute",
+    bottom: 12,
     left: 0,
     right: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     gap: 40,
     zIndex: 10,
   },
   actionBtn: {
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     shadowColor: theme.colors.primaryDark,
     shadowOpacity: 0.18,
     shadowRadius: 10,
@@ -734,9 +915,9 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     borderWidth: 1.5,
-    borderColor: '#FECACA',
+    borderColor: "#FECACA",
   },
   actionBtnSave: {
     width: 64,
@@ -744,14 +925,34 @@ const styles = StyleSheet.create({
     borderRadius: 32,
     backgroundColor: theme.colors.primary,
   },
+
+  // Collapse button — rendered at panel level so it sits above actionsRow
+  collapseBtnPanel: {
+    position: "absolute",
+    bottom: 24,
+    right: 28,
+    width: 48,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 12,
+    shadowColor: "#000000",
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 5,
+  },
 });
 
 // Card-level styles (outer + scroll + hero + timeline)
 const cardStyles = StyleSheet.create({
   outer: {
-    flex: 1,
     borderRadius: 24,
-    overflow: 'hidden',
+    overflow: "hidden",
     backgroundColor: theme.colors.surface,
     shadowColor: theme.colors.primaryDark,
     shadowOpacity: 0.14,
@@ -766,33 +967,33 @@ const cardStyles = StyleSheet.create({
   // Hero
   heroArea: {
     height: HERO_HEIGHT,
-    backgroundColor: '#DFF7F6',
+    backgroundColor: "#DFF7F6",
   },
   heroScrim: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-    height: '45%',
-    backgroundColor: 'rgba(11,36,48,0.65)',
+    height: "45%",
+    backgroundColor: "rgba(11,36,48,0.65)",
   },
   heroTopRow: {
-    position: 'absolute',
+    position: "absolute",
     top: 14,
     left: 14,
     right: 14,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   creatorBlock: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
-    backgroundColor: 'rgba(0,0,0,0.38)',
+    backgroundColor: "rgba(0,0,0,0.38)",
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
+    borderColor: "rgba(255,255,255,0.18)",
     paddingHorizontal: 12,
     paddingVertical: 9,
     maxWidth: 220,
@@ -803,35 +1004,35 @@ const cardStyles = StyleSheet.create({
     height: 26,
     borderRadius: 13,
     backgroundColor: theme.colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     flexShrink: 0,
   },
   creatorAvatarText: {
     fontFamily: font.bold,
     fontSize: 10,
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     letterSpacing: 0.3,
   },
   creatorName: {
     fontFamily: font.semiBold,
     fontSize: 13,
-    color: 'rgba(255,255,255,0.92)',
+    color: "rgba(255,255,255,0.92)",
     flexShrink: 1,
   },
   menuButton: {
     width: 36,
     height: 36,
     borderRadius: 10,
-    backgroundColor: 'rgba(0,0,0,0.38)',
+    backgroundColor: "rgba(0,0,0,0.38)",
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
     flexShrink: 0,
   },
   heroBottom: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
@@ -843,46 +1044,46 @@ const cardStyles = StyleSheet.create({
     fontFamily: font.bold,
     fontSize: 24,
     lineHeight: 30,
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     letterSpacing: -0.4,
   },
   heroMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 5,
-    flexWrap: 'wrap',
+    flexWrap: "wrap",
   },
   heroMetaText: {
     fontFamily: font.medium,
     fontSize: 13,
-    color: 'rgba(255,255,255,0.8)',
+    color: "rgba(255,255,255,0.8)",
   },
   heroMetaDot: {
     fontFamily: font.regular,
     fontSize: 13,
-    color: 'rgba(255,255,255,0.5)',
+    color: "rgba(255,255,255,0.5)",
   },
   heroCategoryLine: {
     fontFamily: font.regular,
     fontSize: 12,
-    color: 'rgba(255,255,255,0.6)',
+    color: "rgba(255,255,255,0.6)",
     letterSpacing: 0.1,
   },
   engagementRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 16,
     marginTop: 2,
   },
   engagementItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 4,
   },
   engagementCount: {
     fontFamily: font.medium,
     fontSize: 12,
-    color: 'rgba(255,255,255,0.55)',
+    color: "rgba(255,255,255,0.55)",
   },
 
   // Timeline
@@ -900,8 +1101,8 @@ const cardStyles = StyleSheet.create({
     marginBottom: 16,
   },
   timelineLoader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 10,
     paddingVertical: 20,
   },
@@ -920,17 +1121,35 @@ const cardStyles = StyleSheet.create({
     height: 100,
     backgroundColor: theme.colors.background,
   },
+
+  // Expand / collapse
+  expandCta: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    height: EXPAND_CTA_HEIGHT,
+    paddingHorizontal: 20,
+    backgroundColor: theme.colors.surface,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+  },
+  expandCtaText: {
+    fontFamily: font.semiBold,
+    fontSize: 14,
+    color: theme.colors.primaryDark,
+  },
 });
 
 // Stop item styles
 const stopStyles = StyleSheet.create({
   row: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 14,
   },
   connector: {
     width: 20,
-    alignItems: 'center',
+    alignItems: "center",
     paddingTop: 6,
   },
   dot: {
@@ -953,7 +1172,7 @@ const stopStyles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     borderColor: theme.colors.border,
-    overflow: 'hidden',
+    overflow: "hidden",
     marginBottom: 16,
     shadowColor: theme.colors.primaryDark,
     shadowOpacity: 0.05,
@@ -962,9 +1181,9 @@ const stopStyles = StyleSheet.create({
     elevation: 2,
   },
   poiImageWrap: {
-    width: '100%',
+    width: "100%",
     height: 120,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   poiContent: {
     padding: 14,
@@ -975,7 +1194,7 @@ const stopStyles = StyleSheet.create({
     fontSize: 10,
     letterSpacing: 1.0,
     color: theme.colors.primary,
-    textTransform: 'uppercase',
+    textTransform: "uppercase",
   },
   poiTitle: {
     fontFamily: font.bold,
@@ -994,16 +1213,16 @@ const stopStyles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
     color: theme.colors.textSecondary,
-    fontStyle: 'italic',
+    fontStyle: "italic",
   },
   tagsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 6,
     marginTop: 4,
   },
   tag: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: "#F1F5F9",
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 3,
