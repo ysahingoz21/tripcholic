@@ -1,5 +1,5 @@
 -- CreateEnum
-CREATE TYPE "TripVisibility" AS ENUM ('DRAFT', 'PRIVATE', 'PUBLIC');
+CREATE TYPE "TripVisibility" AS ENUM ('PRIVATE', 'PUBLIC');
 
 -- AlterTable
 ALTER TABLE "trips" ADD COLUMN "visibility" "TripVisibility";
@@ -11,7 +11,7 @@ WHERE "visibility" IS NULL;
 
 -- AlterTable
 ALTER TABLE "trips"
-ALTER COLUMN "visibility" SET DEFAULT 'DRAFT',
+ALTER COLUMN "visibility" SET DEFAULT 'PRIVATE',
 ALTER COLUMN "visibility" SET NOT NULL;
 
 -- CreateIndex

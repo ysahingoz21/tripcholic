@@ -65,15 +65,8 @@ function formatShortDate(dateStr: string) {
 type VisibilityConfig = { label: string; icon: string };
 
 function getVisibilityConfig(v: TripVisibility): VisibilityConfig {
-  switch (v) {
-    case 'PUBLIC':
-      return { label: 'Public', icon: 'earth-outline' };
-    case 'PRIVATE':
-      return { label: 'Private', icon: 'lock-closed-outline' };
-    case 'DRAFT':
-    default:
-      return { label: 'Draft', icon: 'create-outline' };
-  }
+  if (v === 'PUBLIC') return { label: 'Public', icon: 'earth-outline' };
+  return { label: 'Private', icon: 'lock-closed-outline' };
 }
 
 function formatCategory(cat: string | null | undefined) {
@@ -291,7 +284,7 @@ export default function TripsScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.safe} edges={['left', 'right']}>
       <View style={styles.container}>
         <ScrollView
           style={styles.scroll}
@@ -492,13 +485,7 @@ export default function TripsScreen() {
                 <TripCard
                   key={trip.id}
                   trip={trip}
-                  onPress={() =>
-                    router.push(
-                      trip.visibility === 'PUBLIC'
-                        ? (`/public-trip/${trip.id}` as any)
-                        : (`/trip/${trip.id}` as any)
-                    )
-                  }
+                  onPress={() => router.push(`/trip/${trip.id}` as any)}
                 />
               ))}
             </View>
@@ -671,8 +658,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#DFF7F6',
   },
   cardOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.12)',
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: '36%',
+    backgroundColor: 'rgba(11,36,48,0.62)',
   },
   cardTop: {
     position: 'absolute',
@@ -701,7 +692,6 @@ const styles = StyleSheet.create({
     right: 0,
     padding: 16,
     paddingBottom: 18,
-    backgroundColor: 'rgba(11,59,74,0.72)',
     gap: 5,
   },
   cardTitle: {

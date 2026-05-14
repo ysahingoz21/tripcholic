@@ -12,7 +12,7 @@ type ApiErrorEnvelope = {
   };
 };
 
-export type TripVisibility = 'DRAFT' | 'PRIVATE' | 'PUBLIC';
+export type TripVisibility = 'PRIVATE' | 'PUBLIC';
 export type ExploreWeather = 'clear' | 'cloudy' | 'rainy';
 
 export type TripPreview = {

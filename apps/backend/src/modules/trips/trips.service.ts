@@ -39,7 +39,7 @@ const DEFAULT_OPTIMIZER_TIME_END = '21:00';
 const DEFAULT_OPTIMIZER_WALKING_TOLERANCE_KM = 3.0;
 const DEFAULT_OPTIMIZER_MAX_POIS = 6;
 const DEFAULT_OPTIMIZER_BUDGET_TL = 6000;
-const MAX_CANDIDATE_POIS = 50;
+const MAX_CANDIDATE_POIS = 20;
 
 type TripDetailRecord = Prisma.TripGetPayload<{
   include: {
@@ -120,7 +120,7 @@ export class TripsService {
         weather:           payload.weather ?? null,
         walkingToleranceKm: payload.maxWalkingDistanceKm ?? null,
         maxPois:           payload.maxStops ?? null,
-        visibility:        payload.visibility ?? 'DRAFT',
+        visibility:        payload.visibility ?? 'PRIVATE',
       },
     });
 

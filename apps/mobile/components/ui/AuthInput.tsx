@@ -8,6 +8,8 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { font } from '@/constants/typography';
+import { theme } from '@/constants/theme';
 
 type Props = {
   icon: keyof typeof Ionicons.glyphMap;
@@ -38,12 +40,12 @@ export default function AuthInput({
   return (
     <View style={styles.container}>
       <View style={styles.iconWrap}>
-        <Ionicons name={icon} size={18} color="#71787C" />
+        <Ionicons name={icon} size={18} color={theme.colors.textSecondary} />
       </View>
       <TextInput
         style={styles.input}
         placeholder={placeholder}
-        placeholderTextColor="#A0ADB4"
+        placeholderTextColor={theme.colors.textSecondary}
         value={value}
         onChangeText={onChangeText}
         secureTextEntry={isSecure}
@@ -63,7 +65,7 @@ export default function AuthInput({
           <Ionicons
             name={showPassword ? 'eye-outline' : 'eye-off-outline'}
             size={18}
-            color="#71787C"
+            color={theme.colors.textSecondary}
           />
         </Pressable>
       )}
@@ -76,9 +78,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#D4D9DC',
-    borderRadius: 12,
-    backgroundColor: '#F7FAFC',
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.background,
     marginBottom: 12,
     paddingHorizontal: 14,
     minHeight: 52,
@@ -88,8 +90,10 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
+    fontFamily: font.regular,
     fontSize: 15,
-    color: '#181C1E',
+    lineHeight: 22,
+    color: theme.colors.primaryDark,
     paddingVertical: 14,
   },
   eyeWrap: {

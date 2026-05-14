@@ -29,7 +29,6 @@ enum TripStatus {
 }
 
 enum TripVisibility {
-  DRAFT
   PRIVATE
   PUBLIC
 }
@@ -84,7 +83,7 @@ model Trip {
   walkingToleranceKm    Float?
   maxPois               Int?
   status                TripStatus     @default(PENDING)
-  visibility            TripVisibility @default(DRAFT)
+  visibility            TripVisibility @default(PRIVATE)
   routeName             String?
   routeTotalDistanceKm  Float?
   routeTotalDurationMin Int?

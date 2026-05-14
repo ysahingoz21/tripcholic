@@ -19,6 +19,7 @@ import {
   getIstanbulWeather,
   type WeatherSummary,
 } from '@/services/weather';
+import { font, type } from '@/constants/typography';
 
 const OPTIMIZED_IMG = require('@/assets/images/planner/planner-optimized-trip.png');
 const MANUAL_IMG = require('@/assets/images/planner/planner-own-trip.png');
@@ -45,7 +46,7 @@ export default function PlannerEntryScreen() {
   }, []);
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.safe} edges={['left', 'right']}>
       <ScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
@@ -236,8 +237,10 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   recommendedText: {
-    ...type.labelCaps,
+    fontFamily: font.bold,
     fontSize: 11,
+    lineHeight: 16,
+    letterSpacing: 0.1,
     color: '#006A69',
   },
   soonBadge: {
@@ -250,8 +253,10 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   soonText: {
-    ...type.labelCaps,
+    fontFamily: font.bold,
     fontSize: 11,
+    lineHeight: 16,
+    letterSpacing: 0.1,
     color: theme.colors.textSecondary,
   },
   cardContent: {
@@ -260,7 +265,7 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     ...type.headlineLg,
-    fontSize: 22,
+    fontSize: 19,
     color: theme.colors.primaryDark,
   },
   cardDesc: {

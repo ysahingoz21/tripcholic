@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
@@ -22,6 +22,11 @@ type Props = {
   dateLabel?: string;
   token: string | null;
   onPress: () => void;
+  initialLiked?: boolean;
+  initialSaved?: boolean;
+  initialLikeCount?: number;
+  initialSaveCount?: number;
+  hideDistrictLabel?: boolean;
 };
 
 function getInitials(name: string | null): string {
@@ -48,15 +53,25 @@ export default function ExploreTripCard({
   dateLabel,
   token,
   onPress,
+  initialLiked = false,
+  initialSaved = false,
+  initialLikeCount = 0,
+  initialSaveCount = 0,
+  hideDistrictLabel = false,
 }: Props) {
   const imageUrl = preview.imageUrl?.trim() || null;
   const stopCount = preview.stopCount ?? 0;
-  const districtLabel = preview.districtLabel;
+  const districtLabel = hideDistrictLabel ? undefined : preview.districtLabel;
 
-  const [liked, setLiked] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [likeCount, setLikeCount] = useState(0);
-  const [saveCount, setSaveCount] = useState(0);
+  const [liked, setLiked] = useState(initialLiked);
+  const [saved, setSaved] = useState(initialSaved);
+  const [likeCount, setLikeCount] = useState(initialLikeCount);
+  const [saveCount, setSaveCount] = useState(initialSaveCount);
+
+  useEffect(() => { setLiked(initialLiked); }, [initialLiked]);
+  useEffect(() => { setSaved(initialSaved); }, [initialSaved]);
+  useEffect(() => { setLikeCount(initialLikeCount); }, [initialLikeCount]);
+  useEffect(() => { setSaveCount(initialSaveCount); }, [initialSaveCount]);
 
   const handleLike = async () => {
     if (!token) {
