@@ -28,6 +28,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Artwork from '@/components/ui/Artwork';
 import {
+  buildTripDetailParams,
   buildTripReturnTarget,
   getTripRouteSource,
 } from '@/utils/tripNavigation';
@@ -288,8 +289,18 @@ export default function EditTripScreen() {
   const primaryActionLabel = hasOptimizationChanges ? 'Save & Re-optimize' : 'Save Changes';
 
   const handleCancel = () => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    // Fallback for deep-linked entry with no back stack
     const tripId = tripDetail?.trip.id ?? (typeof id === 'string' ? id : '');
-    router.replace(`/public-trip/${tripId}` as any);
+    router.replace(
+      buildTripDetailParams(tripId, {
+        ...(routeSource ? { source: routeSource } : {}),
+        ...(typeof returnTripId === 'string' ? { returnTripId } : {}),
+      }),
+    );
   };
 
   const handleSave = async () => {
@@ -332,7 +343,16 @@ export default function EditTripScreen() {
         router.replace({ pathname: '/results', params: { tripId: id } });
         return;
       }
-      router.replace(`/public-trip/${id}` as any);
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace(
+          buildTripDetailParams(typeof id === 'string' ? id : '', {
+            ...(routeSource ? { source: routeSource } : {}),
+            ...(typeof returnTripId === 'string' ? { returnTripId } : {}),
+          }),
+        );
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unable to save trip.';
       setError(msg);

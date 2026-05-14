@@ -1,15 +1,20 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -24,6 +29,17 @@ import {
   type TripDetailResponse,
   type TripVisibility,
 } from "@/services/trips";
+import {
+  createPublicTripComment,
+  getPublicTrip,
+  getPublicTripComments,
+  likePublicTrip,
+  savePublicTrip,
+  unlikePublicTrip,
+  unsavePublicTrip,
+  type PublicTripComment,
+  type PublicTripEngagement,
+} from "@/services/publicTrips";
 import {
   buildTripEditParams,
   buildTripReturnTarget,
@@ -59,6 +75,305 @@ function getVisibilityConfig(visibility: TripVisibility) {
     return { label: "Public", icon: "earth-outline" as const };
   return { label: "Private", icon: "lock-closed-outline" as const };
 }
+
+function formatCreatorName(displayName: string | null) {
+  return displayName?.trim() || "Tripcholic traveler";
+}
+
+function formatCommentDate(value: string) {
+  return new Date(value).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+// ── CommentsModal ─────────────────────────────────────────────────────────────
+
+type CommentsModalProps = {
+  visible: boolean;
+  onClose: () => void;
+  comments: PublicTripComment[];
+  commentCount: number;
+  tripId: string;
+  token: string | null;
+  onCommentCreated: (
+    comments: PublicTripComment[],
+    engagement: PublicTripEngagement,
+  ) => void;
+};
+
+function CommentsModal({
+  visible,
+  onClose,
+  comments,
+  commentCount,
+  tripId,
+  token,
+  onCommentCreated,
+}: CommentsModalProps) {
+  const [input, setInput] = useState("");
+  const [isPending, setIsPending] = useState(false);
+  const [postError, setPostError] = useState<string | null>(null);
+
+  const handlePost = async () => {
+    if (!token || !input.trim() || isPending) return;
+    try {
+      setIsPending(true);
+      setPostError(null);
+      await createPublicTripComment(tripId, token, input.trim());
+      const response = await getPublicTripComments(tripId, token);
+      onCommentCreated(response.items, response.engagement);
+      setInput("");
+    } catch (err) {
+      setPostError(
+        err instanceof Error ? err.message : "Unable to post comment.",
+      );
+    } finally {
+      setIsPending(false);
+    }
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={onClose}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
+      >
+        <View style={modalStyles.container}>
+          <View style={modalStyles.header}>
+            <View style={modalStyles.dragHandle} />
+            <View style={modalStyles.headerRow}>
+              <Text style={modalStyles.headerTitle}>
+                Comments ({commentCount})
+              </Text>
+              <Pressable
+                style={modalStyles.closeBtn}
+                onPress={onClose}
+                hitSlop={8}
+              >
+                <Ionicons
+                  name="close"
+                  size={20}
+                  color={theme.colors.primaryDark}
+                />
+              </Pressable>
+            </View>
+          </View>
+
+          <ScrollView
+            style={modalStyles.list}
+            contentContainerStyle={modalStyles.listContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {comments.length === 0 ? (
+              <View style={modalStyles.empty}>
+                <Ionicons
+                  name="chatbubbles-outline"
+                  size={36}
+                  color={theme.colors.textSecondary}
+                />
+                <Text style={modalStyles.emptyText}>
+                  No comments yet. Be the first!
+                </Text>
+              </View>
+            ) : (
+              comments.map((comment) => (
+                <View key={comment.id} style={modalStyles.commentRow}>
+                  <View style={modalStyles.commentAvatar}>
+                    <Text style={modalStyles.commentAvatarText}>
+                      {getInitials(comment.author.displayName)}
+                    </Text>
+                  </View>
+                  <View style={modalStyles.commentCard}>
+                    <View style={modalStyles.commentMeta}>
+                      <Text style={modalStyles.commentAuthor}>
+                        {formatCreatorName(comment.author.displayName)}
+                      </Text>
+                      <Text style={modalStyles.commentDate}>
+                        {formatCommentDate(comment.createdAt)}
+                      </Text>
+                    </View>
+                    <Text style={modalStyles.commentText}>{comment.body}</Text>
+                  </View>
+                </View>
+              ))
+            )}
+          </ScrollView>
+
+          {postError ? (
+            <View style={modalStyles.errorRow}>
+              <Text style={modalStyles.errorText}>{postError}</Text>
+            </View>
+          ) : null}
+
+          <View style={modalStyles.composer}>
+            <TextInput
+              style={modalStyles.composerInput}
+              placeholder="Add a comment…"
+              placeholderTextColor={theme.colors.textSecondary}
+              value={input}
+              onChangeText={setInput}
+              multiline
+              textAlignVertical="top"
+            />
+            <Pressable
+              style={[
+                modalStyles.postBtn,
+                (!input.trim() || isPending) && modalStyles.postBtnDisabled,
+              ]}
+              onPress={() => void handlePost()}
+              disabled={!input.trim() || isPending}
+            >
+              <Ionicons name="send" size={17} color="#FFFFFF" />
+            </Pressable>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+const modalStyles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: theme.colors.background },
+  header: {
+    paddingTop: 12,
+    paddingBottom: 10,
+    paddingHorizontal: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.colors.border,
+    backgroundColor: theme.colors.surface,
+  },
+  dragHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: theme.colors.border,
+    alignSelf: "center",
+    marginBottom: 10,
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  headerTitle: {
+    fontFamily: font.bold,
+    fontSize: 16,
+    color: theme.colors.primaryDark,
+  },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  list: { flex: 1 },
+  listContent: { padding: 16, gap: 12 },
+  empty: {
+    alignItems: "center",
+    paddingVertical: 48,
+    gap: 10,
+  },
+  emptyText: {
+    fontFamily: font.regular,
+    fontSize: 14,
+    color: theme.colors.textSecondary,
+    textAlign: "center",
+  },
+  commentRow: { flexDirection: "row", gap: 10, alignItems: "flex-start" },
+  commentAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: theme.colors.primaryDark,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  commentAvatarText: {
+    fontFamily: font.bold,
+    fontSize: 11,
+    color: "#FFFFFF",
+  },
+  commentCard: {
+    flex: 1,
+    backgroundColor: theme.colors.surface,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.colors.border,
+    padding: 10,
+    gap: 4,
+  },
+  commentMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  commentAuthor: {
+    fontFamily: font.semiBold,
+    fontSize: 12,
+    color: theme.colors.primaryDark,
+  },
+  commentDate: {
+    fontFamily: font.regular,
+    fontSize: 11,
+    color: theme.colors.textSecondary,
+  },
+  commentText: {
+    fontFamily: font.regular,
+    fontSize: 13,
+    lineHeight: 19,
+    color: theme.colors.textSecondary,
+  },
+  errorRow: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  errorText: {
+    fontFamily: font.regular,
+    fontSize: 13,
+    color: "#EF4444",
+  },
+  composer: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 10,
+    padding: 12,
+    paddingBottom: Platform.OS === "ios" ? 28 : 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: theme.colors.border,
+    backgroundColor: theme.colors.surface,
+  },
+  composerInput: {
+    flex: 1,
+    minHeight: 40,
+    maxHeight: 100,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontFamily: font.regular,
+    fontSize: 14,
+    color: theme.colors.primaryDark,
+    backgroundColor: theme.colors.background,
+  },
+  postBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: theme.colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  postBtnDisabled: { opacity: 0.45 },
+});
 
 // ── PageHeader ────────────────────────────────────────────────────────────────
 
@@ -499,6 +814,16 @@ const tlStyles = StyleSheet.create({
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
+const DEFAULT_ENGAGEMENT: PublicTripEngagement = {
+  likeCount: 0,
+  commentCount: 0,
+  saveCount: 0,
+  completionCount: 0,
+  likedByMe: false,
+  savedByMe: false,
+  completedByMe: false,
+};
+
 export default function OwnerTripDetailScreen() {
   const router = useRouter();
   const { id, source, returnTripId } = useLocalSearchParams<{
@@ -511,6 +836,12 @@ export default function OwnerTripDetailScreen() {
   const [tripDetail, setTripDetail] = useState<TripDetailResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [engagement, setEngagement] = useState<PublicTripEngagement>(DEFAULT_ENGAGEMENT);
+  const [isPublicTrip, setIsPublicTrip] = useState(false);
+  const [comments, setComments] = useState<PublicTripComment[]>([]);
+  const [isLikePending, setIsLikePending] = useState(false);
+  const [isSavePending, setIsSavePending] = useState(false);
+  const [commentsModalOpen, setCommentsModalOpen] = useState(false);
 
   const returnTarget = buildTripReturnTarget({ source, returnTripId });
   const routeSource = getTripRouteSource(source);
@@ -530,8 +861,21 @@ export default function OwnerTripDetailScreen() {
     try {
       setIsLoading(true);
       setError(null);
+      setEngagement(DEFAULT_ENGAGEMENT);
+      setIsPublicTrip(false);
+      setComments([]);
       const data = await getTrip(token, id);
       setTripDetail(data);
+      if (data.trip.visibility === "PUBLIC") {
+        setIsPublicTrip(true);
+        try {
+          const publicData = await getPublicTrip(data.trip.id, token);
+          setEngagement(publicData.engagement);
+          setComments(publicData.comments);
+        } catch {
+          // Keep default 0 counts; social bar still renders
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load trip.");
     } finally {
@@ -539,9 +883,11 @@ export default function OwnerTripDetailScreen() {
     }
   }, [id, isAuthLoading, token]);
 
-  useEffect(() => {
-    void loadTrip();
-  }, [loadTrip]);
+  useFocusEffect(
+    useCallback(() => {
+      void loadTrip();
+    }, [loadTrip]),
+  );
 
   const sortedStops = useMemo(
     () => getSortedTripStops(tripDetail?.stops ?? []),
@@ -550,6 +896,40 @@ export default function OwnerTripDetailScreen() {
 
   const ownerName = user?.displayName ?? null;
   const ownerInitials = getInitials(user?.displayName ?? user?.email);
+
+  const recentComments = useMemo(() => comments.slice(0, 3), [comments]);
+
+  const handleToggleLike = async () => {
+    if (!token || !id || typeof id !== "string" || !isPublicTrip || isLikePending)
+      return;
+    try {
+      setIsLikePending(true);
+      const response = engagement.likedByMe
+        ? await unlikePublicTrip(id, token)
+        : await likePublicTrip(id, token);
+      setEngagement(response.engagement);
+    } catch {
+      // ignore
+    } finally {
+      setIsLikePending(false);
+    }
+  };
+
+  const handleToggleSave = async () => {
+    if (!token || !id || typeof id !== "string" || !isPublicTrip || isSavePending)
+      return;
+    try {
+      setIsSavePending(true);
+      const response = engagement.savedByMe
+        ? await unsavePublicTrip(id, token)
+        : await savePublicTrip(id, token);
+      setEngagement(response.engagement);
+    } catch {
+      // ignore
+    } finally {
+      setIsSavePending(false);
+    }
+  };
 
   // ── Loading ──────────────────────────────────────────────────────────────────
 
@@ -629,6 +1009,136 @@ export default function OwnerTripDetailScreen() {
             <Text style={styles.editBtnText}>Edit Trip</Text>
           </Pressable>
         </View>
+
+        {isPublicTrip ? (
+          /* ── Public own trip — social section identical to public-trip/[id].tsx ── */
+          <View style={styles.content}>
+            <View style={styles.socialBar}>
+              <Pressable
+                style={[styles.socialItem, isLikePending && styles.dimmed]}
+                onPress={() => void handleToggleLike()}
+                disabled={isLikePending}
+              >
+                <Ionicons
+                  name={engagement.likedByMe ? "heart" : "heart-outline"}
+                  size={22}
+                  color={engagement.likedByMe ? "#EF4444" : "#64748B"}
+                />
+                <Text
+                  style={[
+                    styles.socialCount,
+                    engagement.likedByMe && styles.socialCountLiked,
+                  ]}
+                >
+                  {engagement.likeCount}
+                </Text>
+              </Pressable>
+              <View style={styles.socialSep} />
+
+              <Pressable
+                style={styles.socialItem}
+                onPress={() => setCommentsModalOpen(true)}
+              >
+                <Ionicons
+                  name="chatbubble-outline"
+                  size={21}
+                  color="#64748B"
+                />
+                <Text style={styles.socialCount}>
+                  {engagement.commentCount}
+                </Text>
+              </Pressable>
+              <View style={styles.socialSep} />
+
+              <Pressable
+                style={[styles.socialItem, isSavePending && styles.dimmed]}
+                onPress={() => void handleToggleSave()}
+                disabled={isSavePending}
+              >
+                <Ionicons
+                  name={
+                    engagement.savedByMe ? "bookmark" : "bookmark-outline"
+                  }
+                  size={21}
+                  color={engagement.savedByMe ? "#006A69" : "#64748B"}
+                />
+                <Text
+                  style={[
+                    styles.socialCount,
+                    engagement.savedByMe && styles.socialCountSaved,
+                  ]}
+                >
+                  {engagement.saveCount}
+                </Text>
+              </Pressable>
+              <View style={styles.socialSep} />
+
+              <View style={styles.socialItem}>
+                <Ionicons
+                  name="footsteps-outline"
+                  size={21}
+                  color="#64748B"
+                />
+                <Text style={styles.socialCount}>
+                  {engagement.completionCount}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.commentsSection}>
+              <Text style={styles.commentsSectionTitle}>Recent comments</Text>
+
+              {recentComments.length > 0
+                ? recentComments.map((comment) => (
+                    <View key={comment.id} style={styles.commentRow}>
+                      <View style={styles.commentAvatar}>
+                        <Text style={styles.commentAvatarText}>
+                          {getInitials(comment.author.displayName)}
+                        </Text>
+                      </View>
+                      <View style={styles.commentCard}>
+                        <Text style={styles.commentAuthor}>
+                          {formatCreatorName(comment.author.displayName)}
+                        </Text>
+                        <Text style={styles.commentBody} numberOfLines={3}>
+                          {comment.body}
+                        </Text>
+                      </View>
+                    </View>
+                  ))
+                : null}
+
+              <Pressable
+                style={styles.viewAllBtn}
+                onPress={() => setCommentsModalOpen(true)}
+              >
+                <Text style={styles.viewAllBtnText}>
+                  {engagement.commentCount > 0
+                    ? `View all ${engagement.commentCount} ${engagement.commentCount === 1 ? "comment" : "comments"}`
+                    : "Add the first comment"}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : (
+          /* ── Private own trip — informational card, no social UI ── */
+          <View style={styles.content}>
+            <View style={styles.privateCard}>
+              <View style={styles.privateCardIconWrap}>
+                <Ionicons
+                  name="lock-closed"
+                  size={22}
+                  color={theme.colors.primary}
+                />
+              </View>
+              <Text style={styles.privateCardTitle}>This trip is private</Text>
+              <Text style={styles.privateCardBody}>
+                Set your trip to Public to enable likes, comments, saves, and
+                community discovery.
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* ── Content block 1 ─────────────────────────────────────────────── */}
         <View style={styles.content}>
@@ -733,6 +1243,21 @@ export default function OwnerTripDetailScreen() {
           ) : null}
         </View>
       </ScrollView>
+
+      {isPublicTrip && (
+        <CommentsModal
+          visible={commentsModalOpen}
+          onClose={() => setCommentsModalOpen(false)}
+          comments={comments}
+          commentCount={engagement.commentCount}
+          tripId={tripIdStr}
+          token={token}
+          onCommentCreated={(updatedComments, updatedEngagement) => {
+            setComments(updatedComments);
+            setEngagement(updatedEngagement);
+          }}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -921,5 +1446,135 @@ const styles = StyleSheet.create({
     fontFamily: font.bold,
     fontSize: 14,
     color: "#FFFFFF",
+  },
+
+  // Social bar — matches public-trip/[id].tsx exactly
+  socialBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#E8ECF0",
+    overflow: "hidden",
+  },
+  socialItem: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 13,
+    gap: 4,
+  },
+  socialSep: {
+    width: 1,
+    height: 32,
+    backgroundColor: "#E8ECF0",
+  },
+  socialCount: {
+    fontFamily: font.bold,
+    fontSize: 12,
+    color: theme.colors.textSecondary,
+  },
+  socialCountLiked: { color: "#EF4444" },
+  socialCountSaved: { color: "#006A69" },
+  dimmed: { opacity: 0.45 },
+
+  // Comments section — matches public-trip/[id].tsx exactly
+  commentsSection: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#E8ECF0",
+    padding: 16,
+    gap: 12,
+  },
+  commentsSectionTitle: {
+    fontFamily: font.bold,
+    fontSize: 15,
+    color: theme.colors.primaryDark,
+    letterSpacing: -0.1,
+  },
+  commentRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+  },
+  commentAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: theme.colors.primaryDark,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  commentAvatarText: {
+    fontFamily: font.bold,
+    fontSize: 11,
+    color: "#FFFFFF",
+  },
+  commentCard: {
+    flex: 1,
+    backgroundColor: "#F1F5F9",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 2,
+  },
+  commentAuthor: {
+    fontFamily: font.semiBold,
+    fontSize: 13,
+    color: theme.colors.primaryDark,
+  },
+  commentBody: {
+    fontFamily: font.regular,
+    fontSize: 13,
+    lineHeight: 19,
+    color: theme.colors.textSecondary,
+  },
+  viewAllBtn: {
+    alignItems: "center",
+    paddingTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "#E8ECF0",
+  },
+  viewAllBtnText: {
+    fontFamily: font.semiBold,
+    fontSize: 13,
+    color: theme.colors.primary,
+    textAlign: "center",
+  },
+
+  // Private trip social placeholder
+  privateCard: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    padding: 24,
+    alignItems: "center",
+    gap: 10,
+  },
+  privateCardIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: "#DFF7F6",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 2,
+  },
+  privateCardTitle: {
+    fontFamily: font.bold,
+    fontSize: 15,
+    color: theme.colors.primaryDark,
+    textAlign: "center",
+  },
+  privateCardBody: {
+    fontFamily: font.regular,
+    fontSize: 13,
+    lineHeight: 20,
+    color: theme.colors.textSecondary,
+    textAlign: "center",
   },
 });

@@ -38,7 +38,7 @@ export default function SavedCollectionScreen() {
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
 
   const cardWidth = Math.floor((screenWidth - H_PAD * 2 - CARD_GAP) / 2);
 
@@ -101,10 +101,17 @@ export default function SavedCollectionScreen() {
   const pressHandlers = useMemo(() => {
     const map = new Map<string, () => void>();
     for (const item of items) {
-      map.set(item.savedTripId, () => router.push(`/public-trip/${item.trip.id}` as any));
+      const isOwnTrip = item.creator.id !== null && item.creator.id === user?.id;
+      map.set(item.savedTripId, () =>
+        router.push(
+          isOwnTrip
+            ? (`/trip/${item.trip.id}` as any)
+            : (`/public-trip/${item.trip.id}` as any),
+        ),
+      );
     }
     return map;
-  }, [items, router]);
+  }, [items, router, user]);
 
   // ── Selection mode handlers ───────────────────────────────────────────────
 

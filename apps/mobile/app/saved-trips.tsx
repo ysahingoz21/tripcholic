@@ -134,7 +134,7 @@ export default function SavedTripsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
-  const { token, isLoading: isAuthLoading } = useAuth();
+  const { token, user, isLoading: isAuthLoading } = useAuth();
 
   const cardWidth = Math.floor((screenWidth - H_PAD * 2 - CARD_GAP) / 2);
 
@@ -312,7 +312,15 @@ export default function SavedTripsScreen() {
                     savedByMe={item.engagement.savedByMe}
                     token={token}
                     cardWidth={cardWidth}
-                    onPress={() => router.push(`/public-trip/${item.trip.id}` as any)}
+                    onPress={() => {
+                      const isOwnTrip =
+                        item.creator.id !== null && item.creator.id === user?.id;
+                      router.push(
+                        isOwnTrip
+                          ? (`/trip/${item.trip.id}` as any)
+                          : (`/public-trip/${item.trip.id}` as any),
+                      );
+                    }}
                     savedTripId={item.savedTripId}
                     currentCollectionIds={item.collections.map((c) => c.id)}
                     onUnsave={() => handleUnsave(item.savedTripId)}
