@@ -14,6 +14,10 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from 'react-native-safe-area-context';
+import {
+  getIstanbulWeather,
+  type WeatherSummary,
+} from '@/services/weather';
 import Artwork from '@/components/ui/Artwork';
 import { getSortedTripStops } from '@/components/trip/tripMapUtils';
 import { theme } from '@/constants/theme';
@@ -282,6 +286,7 @@ export default function ResultsScreen() {
   const [tripDetail, setTripDetail] = useState<TripDetailResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [weather, setWeather] = useState<WeatherSummary | null>(null);
 
   useEffect(() => {
     async function loadTrip() {
@@ -313,6 +318,19 @@ export default function ResultsScreen() {
     }
     void loadTrip();
   }, [token, tripId, isAuthLoading]);
+
+  useEffect(() => {
+  async function loadWeather() {
+    try {
+      const data = await getIstanbulWeather();
+      setWeather(data);
+    } catch (error) {
+      console.error('Weather fetch failed', error);
+    }
+  }
+
+  loadWeather();
+}, []);
 
   const handleGoHome = () => router.replace('/(tabs)');
 
@@ -473,7 +491,48 @@ export default function ResultsScreen() {
             </View>
           ))}
         </View>
+       
 
+       {weather ? (
+  <View style={styles.section}>
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionEyebrow}>AI CONTEXT</Text>
+      <Text style={styles.sectionTitle}>Weather Insight</Text>
+    </View>
+
+    <View style={styles.weatherInsightCard}>
+      <View style={styles.weatherInsightTop}>
+        <Ionicons
+          name={
+            weather.isOutdoorFriendly ? 'partly-sunny' : 'rainy'
+          }
+          size={18}
+          color={theme.colors.primary}
+        />
+
+        <Text style={styles.weatherInsightTitle}>
+          {weather.condition} · {weather.temperature}°C
+        </Text>
+      </View>
+
+      <Text style={styles.weatherInsightText}>
+        {weather.suggestion}
+      </Text>
+
+      <Text style={styles.weatherInsightMeta}>
+        Rain probability: {weather.precipitationProbability}%
+      </Text>
+
+      <Text style={styles.weatherInsightMeta}>
+        Route strategy:{' '}
+        {weather.isOutdoorFriendly
+          ? 'Outdoor-focused recommendations enabled.'
+          : 'Indoor-friendly alternatives prioritized.'}
+      </Text>
+    </View>
+  </View>
+) : null}
+      
         {/* 4 ── Categories ────────────────────────────────────────────────── */}
         {categories.length > 0 && (
           <View style={styles.section}>
@@ -988,4 +1047,38 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: theme.colors.primaryDark,
   },
+
+  weatherInsightCard: {
+  backgroundColor: '#FFFFFF',
+  borderRadius: 20,
+  borderWidth: 1,
+  borderColor: '#E8ECF0',
+  padding: 16,
+  gap: 10,
+},
+
+weatherInsightTop: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 8,
+},
+
+weatherInsightTitle: {
+  fontFamily: font.bold,
+  fontSize: 15,
+  color: theme.colors.primaryDark,
+},
+
+weatherInsightText: {
+  fontFamily: font.regular,
+  fontSize: 14,
+  lineHeight: 21,
+  color: theme.colors.textSecondary,
+},
+
+weatherInsightMeta: {
+  fontFamily: font.medium,
+  fontSize: 12,
+  color: theme.colors.primary,
+},
 });
