@@ -73,7 +73,7 @@ export default function HomeScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.safe} edges={['left', 'right']}>
       <View style={styles.container}>
         <ScrollView
           style={styles.scroll}
@@ -141,13 +141,7 @@ export default function HomeScreen() {
                 <TripSnapshotCard
                   key={trip.id}
                   trip={trip}
-                  onPress={() =>
-                    router.push(
-                      trip.visibility === 'PUBLIC'
-                        ? (`/public-trip/${trip.id}` as any)
-                        : (`/trip/${trip.id}` as any)
-                    )
-                  }
+                  onPress={() => router.push(`/trip/${trip.id}` as any)}
                 />
               ))}
               <Pressable

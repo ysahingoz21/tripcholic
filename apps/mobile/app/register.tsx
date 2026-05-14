@@ -4,6 +4,8 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
 import AuthScreenLayout from '@/components/ui/AuthScreenLayout';
 import AuthInput from '@/components/ui/AuthInput';
+import { font, type } from '@/constants/typography';
+import { theme } from '@/constants/theme';
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -111,34 +113,36 @@ export default function RegisterScreen() {
 
 const styles = StyleSheet.create({
   title: {
+    ...type.headlineLg,
     fontSize: 26,
-    fontWeight: '700',
-    color: '#111C2C',
+    color: theme.colors.primaryDark,
     marginBottom: 4,
     letterSpacing: -0.3,
   },
   subtitle: {
-    fontSize: 14,
-    color: '#6B7280',
+    ...type.bodySm,
+    color: theme.colors.textSecondary,
     marginBottom: 24,
-    lineHeight: 20,
   },
   form: {
     marginBottom: 8,
   },
   button: {
-    backgroundColor: '#006A69',
+    backgroundColor: theme.colors.primary,
     paddingVertical: 15,
-    borderRadius: 12,
+    borderRadius: theme.radius.lg,
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
   },
   buttonDisabled: {
     opacity: 0.6,
   },
   buttonText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 16,
+    fontFamily: font.semiBold,
+    fontSize: 15,
+    lineHeight: 22,
+    color: theme.colors.surface,
     letterSpacing: 0.2,
   },
   footerRow: {
@@ -148,12 +152,15 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   footerText: {
-    color: '#6B7280',
+    fontFamily: font.regular,
     fontSize: 14,
+    lineHeight: 21,
+    color: theme.colors.textSecondary,
   },
   linkText: {
-    color: '#006A69',
+    fontFamily: font.bold,
     fontSize: 14,
-    fontWeight: '700',
+    lineHeight: 21,
+    color: theme.colors.primary,
   },
 });

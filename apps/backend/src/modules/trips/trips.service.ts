@@ -120,7 +120,7 @@ export class TripsService {
         weather:           payload.weather ?? null,
         walkingToleranceKm: payload.maxWalkingDistanceKm ?? null,
         maxPois:           payload.maxStops ?? null,
-        visibility:        payload.visibility ?? 'DRAFT',
+        visibility:        payload.visibility ?? 'PRIVATE',
       },
     });
 

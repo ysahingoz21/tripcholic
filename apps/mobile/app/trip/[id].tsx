@@ -55,20 +55,9 @@ function getInitials(name: string | null | undefined): string {
 }
 
 function getVisibilityConfig(visibility: TripVisibility) {
-  if (visibility === "PUBLIC") {
-    return {
-      bg: "#E8F7EE",
-      border: "#BBE7CA",
-      text: "#166534",
-      label: "Public",
-    };
-  }
-  return {
-    bg: "#F1F5F9",
-    border: "#CBD5E1",
-    text: "#475569",
-    label: "Private",
-  };
+  if (visibility === "PUBLIC")
+    return { label: "Public", icon: "earth-outline" as const };
+  return { label: "Private", icon: "lock-closed-outline" as const };
 }
 
 // ── PageHeader ────────────────────────────────────────────────────────────────
@@ -207,17 +196,13 @@ function OwnerHeroSection({
 
       {/* Visibility badge — top right */}
       <View style={ownerHeroStyles.visBadge}>
-        <View
-          style={[
-            ownerHeroStyles.visPill,
-            { backgroundColor: visConfig.bg, borderColor: visConfig.border },
-          ]}
-        >
-          <Text
-            style={[ownerHeroStyles.visPillText, { color: visConfig.text }]}
-          >
-            {visConfig.label}
-          </Text>
+        <View style={ownerHeroStyles.visPill}>
+          <Ionicons
+            name={visConfig.icon}
+            size={11}
+            color={theme.colors.primaryDark}
+          />
+          <Text style={ownerHeroStyles.visPillText}>{visConfig.label}</Text>
         </View>
       </View>
 
@@ -276,7 +261,7 @@ const ownerHeroStyles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: "40%",
+    height: "54%",
     backgroundColor: "rgba(11,36,48,0.80)",
   },
   visBadge: {
@@ -286,15 +271,19 @@ const ownerHeroStyles = StyleSheet.create({
     zIndex: 2,
   },
   visPill: {
-    borderRadius: 999,
-    borderWidth: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(255,255,255,0.95)",
+    borderRadius: 9999,
     paddingHorizontal: 10,
     paddingVertical: 5,
   },
   visPillText: {
-    fontFamily: font.bold,
-    fontSize: 10,
-    letterSpacing: 0.3,
+    fontFamily: font.medium,
+    fontSize: 11,
+    color: theme.colors.primaryDark,
+    letterSpacing: 0.1,
   },
   bottomContent: {
     position: "absolute",
@@ -726,9 +715,16 @@ export default function OwnerTripDetailScreen() {
           {tripDetail.optimization.routeExplanation ? (
             <>
               <View style={styles.sectionHeader}>
+                <Text style={styles.sectionEyebrow}>ROUTE</Text>
                 <Text style={styles.sectionTitle}>Why this route works</Text>
               </View>
               <View style={styles.card}>
+                <View style={styles.routeCardHeader}>
+                  <View style={styles.routeIconBubble}>
+                    <Ionicons name="bulb-outline" size={15} color="#006A69" />
+                  </View>
+                  <Text style={styles.routeCardLabel}>Route rationale</Text>
+                </View>
                 <Text style={styles.routeText}>
                   {tripDetail.optimization.routeExplanation}
                 </Text>
@@ -863,6 +859,28 @@ const styles = StyleSheet.create({
     borderColor: "#E8ECF0",
     padding: 16,
     gap: 12,
+  },
+  routeCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingBottom: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#E8ECF0",
+  },
+  routeIconBubble: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#DFF7F6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  routeCardLabel: {
+    fontFamily: font.semiBold,
+    fontSize: 12,
+    color: "#006A69",
+    letterSpacing: 0.2,
   },
   routeText: {
     fontFamily: font.regular,

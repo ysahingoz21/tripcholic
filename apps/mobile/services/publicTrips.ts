@@ -527,6 +527,29 @@ export async function updateSavedTripCollections(
   );
 }
 
+export type SavedTripCollectionRenameResponse = {
+  collection: SavedTripCollectionSummary;
+};
+
+export async function renameSavedTripCollection(
+  token: string,
+  collectionId: string,
+  name: string
+) {
+  const response = await fetch(
+    `${API_BASE_URL}/public-trips/saved/collections/${collectionId}`,
+    {
+      method: 'PATCH',
+      headers: getAuthHeaders(token),
+      body: JSON.stringify({ name }),
+    }
+  );
+  return parseApiResponse<SavedTripCollectionRenameResponse>(
+    response,
+    'Failed to rename collection'
+  );
+}
+
 export async function deleteSavedTripCollection(token: string, collectionId: string) {
   const response = await fetch(
     `${API_BASE_URL}/public-trips/saved/collections/${collectionId}`,

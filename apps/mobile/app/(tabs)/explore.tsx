@@ -24,8 +24,10 @@ import { type, font } from '@/constants/typography';
 import { useAuth } from '@/context/AuthContext';
 import {
   getForYouPublicTrips,
+  getSavedPublicTrips,
   type ForYouTripItem,
   type ForYouTripsResponse,
+  type PublicTripEngagement,
 } from '@/services/publicTrips';
 import {
   getExploreTrips,
@@ -142,6 +144,9 @@ export default function ExploreScreen() {
   const [isExploreLoading, setIsExploreLoading] = useState(true);
   const [exploreError, setExploreError] = useState<string | null>(null);
 
+  // ── Saved trip engagement map (seeded from saved-trips; keyed by trip.id) ──
+  const [engagementMap, setEngagementMap] = useState<Map<string, PublicTripEngagement>>(new Map());
+
   // ── For You state ──
   const [forYouData, setForYouData] =
     useState<ForYouTripsResponse | null>(null);
@@ -230,6 +235,24 @@ export default function ExploreScreen() {
     }
   }, [isAuthLoading, token]);
 
+  // Clear engagement map on sign-out
+  useEffect(() => {
+    if (!token) setEngagementMap(new Map());
+  }, [token]);
+
+  const loadEngagement = useCallback(() => {
+    if (!token) return;
+    getSavedPublicTrips(token)
+      .then((result) => {
+        const map = new Map<string, PublicTripEngagement>();
+        for (const item of result.items) {
+          map.set(item.trip.id, item.engagement);
+        }
+        setEngagementMap(map);
+      })
+      .catch(() => {});
+  }, [token]);
+
   useFocusEffect(
     useCallback(() => {
       if (mode === 'for-you') {
@@ -237,8 +260,10 @@ export default function ExploreScreen() {
       } else if (mode === 'explore') {
         void loadExploreTrips();
       }
+      // Always refresh engagement data on focus so save/like state stays current
+      loadEngagement();
       // swipe mode loads itself inside InlineSwipePanel
-    }, [loadExploreTrips, loadForYouTrips, mode])
+    }, [loadExploreTrips, loadForYouTrips, loadEngagement, mode])
   );
 
   // ── Filter handlers ──
@@ -356,6 +381,7 @@ export default function ExploreScreen() {
               onRetry={() => void loadExploreTrips()}
               onTripPress={(id) => router.push(`/public-trip/${id}` as any)}
               token={token}
+              engagementMap={engagementMap}
             />
           ) : (
             <ForYouContent
@@ -368,6 +394,7 @@ export default function ExploreScreen() {
               onSwitchToExplore={() => setMode('explore')}
               onSwitchToSwipe={() => setMode('swipe')}
               token={token}
+              engagementMap={engagementMap}
             />
           )}
         </ScrollView>
@@ -423,6 +450,7 @@ type ExploreContentProps = {
   onRetry: () => void;
   onTripPress: (id: string) => void;
   token: string | null;
+  engagementMap: Map<string, PublicTripEngagement>;
 };
 
 function ExploreContent({
@@ -447,6 +475,7 @@ function ExploreContent({
   onRetry,
   onTripPress,
   token,
+  engagementMap,
 }: ExploreContentProps) {
   const currentSort = EXPLORE_SORT_MODES[sortModeIdx];
   const currentBudget = BUDGET_OPTIONS.find((b) => b.value === selectedBudget)!;
@@ -697,19 +726,26 @@ function ExploreContent({
         </View>
       ) : (
         <View style={styles.feedList}>
-          {sortedItems.map((trip) => (
-            <ExploreTripCard
-              key={trip.id}
-              tripId={trip.id}
-              title={trip.title}
-              categories={trip.categories}
-              preview={trip.preview}
-              creatorName={trip.creator.displayName}
-              dateLabel={formatOptimizedDate(trip.optimizedAt)}
-              token={token}
-              onPress={() => onTripPress(trip.id)}
-            />
-          ))}
+          {sortedItems.map((trip) => {
+            const eng = engagementMap.get(trip.id);
+            return (
+              <ExploreTripCard
+                key={trip.id}
+                tripId={trip.id}
+                title={trip.title}
+                categories={trip.categories}
+                preview={trip.preview}
+                creatorName={trip.creator.displayName}
+                dateLabel={formatOptimizedDate(trip.optimizedAt)}
+                token={token}
+                onPress={() => onTripPress(trip.id)}
+                initialSaved={eng?.savedByMe ?? false}
+                initialLiked={eng?.likedByMe ?? false}
+                initialLikeCount={eng?.likeCount ?? 0}
+                initialSaveCount={eng?.saveCount ?? 0}
+              />
+            );
+          })}
         </View>
       )}
     </>
@@ -728,6 +764,7 @@ type ForYouContentProps = {
   onSwitchToExplore: () => void;
   onSwitchToSwipe: () => void;
   token: string | null;
+  engagementMap: Map<string, PublicTripEngagement>;
 };
 
 function ForYouContent({
@@ -740,6 +777,7 @@ function ForYouContent({
   onSwitchToExplore,
   onSwitchToSwipe,
   token,
+  engagementMap,
 }: ForYouContentProps) {
   const isColdStart = data?.meta.personalizationState === 'cold_start';
 
@@ -818,19 +856,26 @@ function ForYouContent({
         </View>
       ) : (
         <View style={styles.feedList}>
-          {items.map((trip) => (
-            <ExploreTripCard
-              key={trip.id}
-              tripId={trip.id}
-              title={trip.title}
-              categories={trip.categories}
-              preview={trip.preview}
-              creatorName={trip.creator.displayName}
-              dateLabel={formatOptimizedDate(trip.optimizedAt)}
-              token={token}
-              onPress={() => onTripPress(trip.id)}
-            />
-          ))}
+          {items.map((trip) => {
+            const eng = engagementMap.get(trip.id);
+            return (
+              <ExploreTripCard
+                key={trip.id}
+                tripId={trip.id}
+                title={trip.title}
+                categories={trip.categories}
+                preview={trip.preview}
+                creatorName={trip.creator.displayName}
+                dateLabel={formatOptimizedDate(trip.optimizedAt)}
+                token={token}
+                onPress={() => onTripPress(trip.id)}
+                initialSaved={eng?.savedByMe ?? false}
+                initialLiked={eng?.likedByMe ?? false}
+                initialLikeCount={eng?.likeCount ?? 0}
+                initialSaveCount={eng?.saveCount ?? 0}
+              />
+            );
+          })}
         </View>
       )}
     </>

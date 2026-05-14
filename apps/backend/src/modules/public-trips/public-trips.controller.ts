@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Put,
   Query,
@@ -21,6 +22,7 @@ import { type Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { type AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { CreateSavedTripCollectionDto } from './dto/create-saved-trip-collection.dto';
+import { RenameSavedTripCollectionDto } from './dto/rename-saved-trip-collection.dto';
 import { CreateTripCommentDto } from './dto/create-trip-comment.dto';
 import { ListForYouTripsQueryDto } from './dto/list-for-you-trips-query.dto';
 import { ListSavedTripsQueryDto } from './dto/list-saved-trips-query.dto';
@@ -86,6 +88,18 @@ export class PublicTripsController {
       savedTripId,
       body,
     );
+  }
+
+  @Patch('saved/collections/:collectionId')
+  @ApiOperation({ summary: 'Rename a saved trip collection for the current user' })
+  @ApiBody({ type: RenameSavedTripCollectionDto })
+  @ApiOkResponse({ description: 'Saved trip collection renamed successfully.' })
+  renameCollection(
+    @Req() req: AuthenticatedRequest,
+    @Param('collectionId') collectionId: string,
+    @Body() body: RenameSavedTripCollectionDto,
+  ) {
+    return this.publicTripsService.renameSavedTripCollection(req.user.id, collectionId, body);
   }
 
   @Delete('saved/collections/:collectionId')

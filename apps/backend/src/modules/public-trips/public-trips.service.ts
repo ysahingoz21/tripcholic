@@ -12,6 +12,7 @@ import { buildTripPreview } from '../trips/trip-preview';
 import { CreateTripCommentDto } from './dto/create-trip-comment.dto';
 import { ListForYouTripsQueryDto } from './dto/list-for-you-trips-query.dto';
 import { ListSavedTripsQueryDto } from './dto/list-saved-trips-query.dto';
+import { RenameSavedTripCollectionDto } from './dto/rename-saved-trip-collection.dto';
 import { UpdateTripFeedbackDto } from './dto/update-trip-feedback.dto';
 import { UpdateSavedTripCollectionsDto } from './dto/update-saved-trip-collections.dto';
 
@@ -196,7 +197,7 @@ export class PublicTripsService {
           walkingToleranceKm: sourceTrip.walkingToleranceKm,
           maxPois: sourceTrip.maxPois,
           status: sourceTrip.status,
-          visibility: 'DRAFT',
+          visibility: 'PRIVATE',
           routeName: sourceTrip.routeName,
           routeTotalDistanceKm: sourceTrip.routeTotalDistanceKm,
           routeTotalDurationMin: sourceTrip.routeTotalDurationMin,
@@ -761,6 +762,40 @@ export class PublicTripsService {
       updatedAt: Date;
     }>;
     const [collection] = createdCollections;
+
+    return {
+      collection: this.toSavedTripCollectionSummary(collection, 0),
+    };
+  }
+
+  async renameSavedTripCollection(
+    userId: string,
+    collectionId: string,
+    payload: RenameSavedTripCollectionDto,
+  ) {
+    const client = await this.prisma.getClient();
+    const db = client as any;
+    const name = payload.name.trim();
+
+    if (!name) {
+      throw new BadRequestException('Collection name cannot be empty');
+    }
+
+    await this.findOwnedCollectionOrThrow(db, userId, collectionId);
+
+    const updatedCollections = (await db.$queryRaw(Prisma.sql`
+      UPDATE "saved_trip_collections"
+      SET "name" = ${name}, "updatedAt" = NOW()
+      WHERE "id" = ${collectionId} AND "userId" = ${userId}
+      RETURNING "id", "name", "createdAt", "updatedAt"
+    `)) as Array<{
+      id: string;
+      name: string;
+      createdAt: Date;
+      updatedAt: Date;
+    }>;
+
+    const [collection] = updatedCollections;
 
     return {
       collection: this.toSavedTripCollectionSummary(collection, 0),
