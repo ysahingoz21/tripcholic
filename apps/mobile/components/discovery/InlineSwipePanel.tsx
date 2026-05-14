@@ -88,6 +88,9 @@ export default function InlineSwipePanel({ token, isAuthLoading }: Props) {
   const swipeThreshold = Math.max(width * 0.24, 90);
 
   const cardTranslate = useRef(new Animated.ValueXY()).current;
+  // Native Animated.Value for opacity so hide/show travels through the same
+  // native animation channel as cardTranslate, guaranteeing ordering.
+  const cardOpacity = useRef(new Animated.Value(1)).current;
   const isAnimatingRef = useRef(false);
   const dismissedIdsRef = useRef<string[]>([]);
 
@@ -103,11 +106,6 @@ export default function InlineSwipePanel({ token, isAuthLoading }: Props) {
   // Lifted from SwipeCard so (a) the panel can render the collapse button above
   // the action buttons, and (b) deckArea height can be keyed on expand state.
   const [isExpanded, setIsExpanded] = useState(false);
-  // Hides the active card during the deck-transition window so neither the
-  // outgoing card nor an intermediate empty frame can flash at center.
-  // Controlled via React state (not a native Animated value) so the
-  // hide/show is committed synchronously with the view tree swap.
-  const [cardSuppressed, setCardSuppressed] = useState(false);
 
   const currentTrip = deckItems[0] ?? null;
 
@@ -195,17 +193,21 @@ export default function InlineSwipePanel({ token, isAuthLoading }: Props) {
     }
   }, [deckItems.length, hasReachedEnd, isLoading, isRefilling, loadDeck]);
 
-  // Reset card position and restore opacity whenever the top-of-deck card changes.
-  // useLayoutEffect fires before the screen paints, so the incoming card never
-  // appears at the outgoing card's off-screen transform position.
-  // Setting state here is intentional: React batches this with the layout phase
-  // so no intermediate frame is painted between the old and new state.
+  // Safety reset when the active trip changes (covers button-triggered pass/save
+  // where cardTranslate was not pre-reset in the swipe callback).
   const currentTripId = currentTrip?.id ?? null;
   useLayoutEffect(() => {
     cardTranslate.setValue({ x: 0, y: 0 });
     isAnimatingRef.current = false;
-    setCardSuppressed(false);
     setIsExpanded(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTripId]);
+
+  // Reveal the card after the new SwipeCard content is committed to the React
+  // tree. useEffect fires after commit so native has already received the new
+  // content by the time opacity is restored.
+  useEffect(() => {
+    cardOpacity.setValue(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTripId]);
 
@@ -241,7 +243,7 @@ export default function InlineSwipePanel({ token, isAuthLoading }: Props) {
     async (tripId: string) => {
       if (!token) {
         setActionError("Authentication required.");
-        setCardSuppressed(false);
+        cardOpacity.setValue(1);
         resetCardPosition();
         return;
       }
@@ -254,7 +256,7 @@ export default function InlineSwipePanel({ token, isAuthLoading }: Props) {
         setActionError(
           err instanceof Error ? err.message : "Unable to save this trip.",
         );
-        setCardSuppressed(false);
+        cardOpacity.setValue(1);
         resetCardPosition();
       } finally {
         setIsSavePending(false);
@@ -284,8 +286,14 @@ export default function InlineSwipePanel({ token, isAuthLoading }: Props) {
         duration: 180,
         useNativeDriver: true,
       }).start(() => {
+        // Hide first so native processes opacity=0 before anything else.
+        cardOpacity.setValue(0);
+        // Reset position while invisible. Crucially this runs before the state
+        // updates that change currentTripId, so when the new Animated.View
+        // mounts (new key) the native animated module registers it at {x:0,y:0}
+        // instead of at targetX — eliminating the blank-center gap.
+        cardTranslate.setValue({ x: 0, y: 0 });
         cardTranslate.stopAnimation();
-        setCardSuppressed(true);
         if (direction === "right") void commitSave(trip.id);
         else commitPass(trip.id);
       });
@@ -354,6 +362,7 @@ export default function InlineSwipePanel({ token, isAuthLoading }: Props) {
 
   const currentCardAnimStyle = {
     transform: [{ translateX: cardTranslate.x }, { rotate }],
+    opacity: cardOpacity,
   };
 
   // ── Loading ────────────────────────────────────────────────────────────────
@@ -455,13 +464,13 @@ export default function InlineSwipePanel({ token, isAuthLoading }: Props) {
 
       {/* Card deck area */}
       <View style={deckAreaStyle}>
-        {/* Active card — swipeable */}
+        {/* Active card — swipeable.
+            key=currentTrip.id destroys the old native wrapper on trip change.
+            cardOpacity hides the wrapper during the swipe→handoff window so
+            the center never appears blank while the new wrapper initialises. */}
         <Animated.View
-          style={[
-            styles.activeCard,
-            currentCardAnimStyle,
-            cardSuppressed && styles.cardHidden,
-          ]}
+          key={currentTrip.id}
+          style={[styles.activeCard, currentCardAnimStyle]}
           {...panResponder.panHandlers}
         >
           <SwipeCard
@@ -885,9 +894,6 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     zIndex: 2,
-  },
-  cardHidden: {
-    opacity: 0,
   },
 
   // Action buttons
