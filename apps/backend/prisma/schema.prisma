@@ -73,6 +73,7 @@ model Trip {
   userId String?
 
   title                 String
+  destination           String?
   description           String?
   date                  DateTime
   timeStart             String?

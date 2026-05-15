@@ -30,6 +30,7 @@ export type TripDetailResponse = {
   trip: {
     id: string;
     title: string;
+    destination: string | null;
     description: string | null;
     date: string;
     timeStart: string | null;
@@ -95,6 +96,7 @@ export type TripListItem = {
   id: string;
   userId: string | null;
   title: string;
+  destination: string | null;
   description: string | null;
   date: string;
   timeStart: string | null;
@@ -161,6 +163,7 @@ export type ExploreTripsQuery = {
 
 export type CreateTripPayload = {
   title: string;
+  destination: string;
   description?: string;
   date: string;
   startTime?: string;
@@ -174,6 +177,7 @@ export type CreateTripPayload = {
 
 export type UpdateTripPayload = {
   title?: string;
+  destination?: string;
   description?: string;
   date?: string;
   startTime?: string;

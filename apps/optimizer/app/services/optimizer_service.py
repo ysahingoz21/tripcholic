@@ -126,7 +126,7 @@ def generate_route(request: OptimizeRequest) -> OptimizeResponse:
     ))
 
     # ── 4. Score each candidate ──────────────────────────────────────────────
-    scores = _compute_scores(candidates, prefs.categories)
+    scores = _compute_scores(candidates, prefs.categories, request.destination_anchor)
 
     # ── 4. Solve with OR-Tools CP-SAT ────────────────────────────────────────
     selected_indices, start_times, solver_status = _solve_cpsat(
@@ -414,9 +414,18 @@ def _preflight_diagnostics(
 
 # ── Score computation ─────────────────────────────────────────────────────────
 
-def _compute_scores(candidates: list[POI], preferred_categories: list) -> list[int]:
+def _compute_scores(
+    candidates: list[POI],
+    preferred_categories: list,
+    destination_anchor=None,
+) -> list[int]:
     """
-    Score = 100 * (category match bonus) + normalised visit_duration bonus.
+    Score = category match bonus + visit_duration bonus + proximity bonus.
+
+    Proximity bonus rewards POIs geographically close to the user's destination
+    anchor (district centroid). Acts as a tie-breaker between same-category POIs
+    so the route stays anchored to the user's chosen area even when the backend
+    had to pull in nearby out-of-district candidates.
 
     Keeps integers for CP-SAT while still differentiating POIs.
     """
@@ -426,8 +435,34 @@ def _compute_scores(candidates: list[POI], preferred_categories: list) -> list[i
         score = 200 if poi.category in preferred_set else 100
         # Small bonus for longer/richer experiences (max +50)
         duration_bonus = min(50, poi.visit_duration_minutes // 6)
-        scores.append(score + duration_bonus)
+        proximity_bonus = _proximity_bonus(poi, destination_anchor)
+        scores.append(score + duration_bonus + proximity_bonus)
     return scores
+
+
+def _proximity_bonus(poi: POI, anchor) -> int:
+    """+60 within 5 km, +30 within 15 km, 0 beyond. No anchor → 0."""
+    if anchor is None:
+        return 0
+    distance_km = _haversine_km(
+        anchor.lat, anchor.lng, poi.location.lat, poi.location.lng
+    )
+    if distance_km <= 5:
+        return 60
+    if distance_km <= 15:
+        return 30
+    return 0
+
+
+def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    import math
+
+    r = 6371.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp = math.radians(lat2 - lat1)
+    dl = math.radians(lng2 - lng1)
+    h = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * r * math.asin(math.sqrt(h))
 
 
 # ── Response builders ─────────────────────────────────────────────────────────

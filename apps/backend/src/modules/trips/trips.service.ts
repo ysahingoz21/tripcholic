@@ -37,9 +37,19 @@ const BUDGET_LEVEL_TO_TL: Record<string, number> = {
 const DEFAULT_OPTIMIZER_TIME_START = '09:00';
 const DEFAULT_OPTIMIZER_TIME_END = '21:00';
 const DEFAULT_OPTIMIZER_WALKING_TOLERANCE_KM = 3.0;
-const DEFAULT_OPTIMIZER_MAX_POIS = 6;
 const DEFAULT_OPTIMIZER_BUDGET_TL = 6000;
 const MAX_CANDIDATE_POIS = 20;
+// When the destination doesn't match any known district (typo, freeform input,
+// etc.) we fall back to a geographic radius around the city centre so the user
+// still gets a route. Anchor is Sultanahmet (Istanbul historic centre).
+const FALLBACK_RADIUS_KM = 15;
+const ISTANBUL_CENTER = { lat: 41.0082, lng: 28.9784 };
+// Rough budget per POI when sizing the candidate pool against the user's time
+// window: 60 min visit + 30 min transit/buffer. Used only to set how many
+// candidates the optimizer has to choose from — the optimizer still makes the
+// final pick based on real time/budget/walking constraints.
+const MINUTES_PER_POI_BUDGET = 90;
+const RADIUS_EXPANSION_TIERS_KM = [5, 10, 15, 25];
 
 type TripDetailRecord = Prisma.TripGetPayload<{
   include: {
@@ -111,6 +121,7 @@ export class TripsService {
       data: {
         userId,
         title:             payload.title,
+        destination:       payload.destination,
         description:       payload.description ?? null,
         date:              new Date(payload.date),
         timeStart:         payload.startTime ?? null,
@@ -272,6 +283,7 @@ export class TripsService {
       where: { id },
       data: {
         ...(payload.title !== undefined           && { title: payload.title }),
+        ...(payload.destination !== undefined     && { destination: payload.destination }),
         ...(payload.description !== undefined     && { description: payload.description }),
         ...(payload.date !== undefined            && { date: new Date(payload.date) }),
         ...(payload.startTime !== undefined       && { timeStart: payload.startTime }),
@@ -321,11 +333,25 @@ export class TripsService {
       budgetLevel: { in: affordableLevels as never[] },
     };
 
-    const pois = await client.pointOfInterest.findMany({
+    const candidatePoiPool = await client.pointOfInterest.findMany({
       where: poiWhere,
       orderBy: [{ category: 'asc' }, { avgDurationMin: 'asc' }, { name: 'asc' }],
-      take: MAX_CANDIDATE_POIS,
     });
+
+    const targetCandidateCount = this.targetCandidateCountForTimeWindow(
+      trip.timeStart,
+      trip.timeEnd,
+    );
+    const pois = (await this.selectCandidatesForDestination(
+      candidatePoiPool,
+      trip.destination,
+      targetCandidateCount,
+    )).slice(0, MAX_CANDIDATE_POIS);
+
+    const destinationAnchor = this.resolveDestinationAnchorFromPool(
+      candidatePoiPool,
+      trip.destination,
+    );
 
     const candidatePois = pois.map((poi) => this.mapPoiToOptimizerCandidate(poi));
     const effectiveBudgetTl = this.resolveOptimizerBudgetTl(
@@ -342,9 +368,10 @@ export class TripsService {
         budget_tl: effectiveBudgetTl,
         walking_tolerance_km:
           trip.walkingToleranceKm ?? DEFAULT_OPTIMIZER_WALKING_TOLERANCE_KM,
-        max_pois: trip.maxPois ?? DEFAULT_OPTIMIZER_MAX_POIS,
+        ...(trip.maxPois !== null && { max_pois: trip.maxPois }),
         weather: this.normalizeWeather(trip.weather),
       },
+      ...(destinationAnchor && { destination_anchor: destinationAnchor }),
       candidate_pois: candidatePois,
     };
 
@@ -447,6 +474,102 @@ export class TripsService {
     }
 
     return DEFAULT_OPTIMIZER_BUDGET_TL;
+  }
+
+  private targetCandidateCountForTimeWindow(
+    timeStart: string | null,
+    timeEnd: string | null,
+  ): number {
+    if (!timeStart || !timeEnd) {
+      return 0;
+    }
+    const toMin = (hhmm: string) => {
+      const [h, m] = hhmm.split(':').map(Number);
+      return h * 60 + m;
+    };
+    const windowMin = Math.max(0, toMin(timeEnd) - toMin(timeStart));
+    return Math.ceil(windowMin / MINUTES_PER_POI_BUDGET);
+  }
+
+  private async selectCandidatesForDestination(
+    pool: PointOfInterest[],
+    destination: string | null,
+    targetCount: number,
+  ): Promise<PointOfInterest[]> {
+    const needle = destination?.trim();
+
+    if (needle) {
+      const inDistrict = pool.filter(
+        (poi) => poi.district?.toLowerCase() === needle.toLowerCase(),
+      );
+
+      // District has enough for the time window — keep it tight, don't pull
+      // from neighboring districts even if they're geographically close.
+      if (inDistrict.length > 0 && inDistrict.length >= targetCount) {
+        return inDistrict;
+      }
+
+      // District matched but won't fill the user's day. Top up with the
+      // geographically nearest POIs from other districts, expanding the radius
+      // until we have enough or we exhaust the widest tier.
+      if (inDistrict.length > 0) {
+        const anchor = this.centroidOf(inDistrict);
+        const inDistrictIds = new Set(inDistrict.map((p) => p.id));
+        const neighbors = pool.filter((p) => !inDistrictIds.has(p.id));
+        for (const radiusKm of RADIUS_EXPANSION_TIERS_KM) {
+          const extra = neighbors.filter(
+            (poi) =>
+              haversineKm(anchor, { lat: poi.lat, lng: poi.lng }) <= radiusKm,
+          );
+          const merged = [...inDistrict, ...extra];
+          if (merged.length >= targetCount) {
+            return merged;
+          }
+        }
+        // Widest tier still not enough — return everything we gathered.
+        const widest = RADIUS_EXPANSION_TIERS_KM[RADIUS_EXPANSION_TIERS_KM.length - 1];
+        const extra = neighbors.filter(
+          (poi) =>
+            haversineKm(anchor, { lat: poi.lat, lng: poi.lng }) <= widest,
+        );
+        return [...inDistrict, ...extra];
+      }
+    }
+
+    // Destination didn't match any district (typo, freeform input, empty).
+    // Fall back to a geographic radius around the city centre.
+    return pool.filter(
+      (poi) =>
+        haversineKm(ISTANBUL_CENTER, { lat: poi.lat, lng: poi.lng }) <=
+        FALLBACK_RADIUS_KM,
+    );
+  }
+
+  private resolveDestinationAnchorFromPool(
+    pool: PointOfInterest[],
+    destination: string | null,
+  ): { lat: number; lng: number } | null {
+    const needle = destination?.trim();
+    if (!needle) {
+      return null;
+    }
+    const inDistrict = pool.filter(
+      (poi) => poi.district?.toLowerCase() === needle.toLowerCase(),
+    );
+    if (inDistrict.length === 0) {
+      return null;
+    }
+    return this.centroidOf(inDistrict);
+  }
+
+  private centroidOf(
+    pois: { lat: number; lng: number }[],
+  ): { lat: number; lng: number } {
+    const sum = pois.reduce(
+      (acc, p) => ({ lat: acc.lat + p.lat, lng: acc.lng + p.lng }),
+      { lat: 0, lng: 0 },
+    );
+    return { lat: sum.lat / pois.length, lng: sum.lng / pois.length };
   }
 
   private mapPoiToOptimizerCandidate(poi: PointOfInterest) {
@@ -628,6 +751,7 @@ export class TripsService {
       id: trip.id,
       userId: trip.userId,
       title: trip.title,
+      destination: trip.destination,
       description: trip.description,
       date: trip.date,
       timeStart: trip.timeStart,
@@ -742,6 +866,7 @@ export class TripsService {
       trip: {
         id: trip.id,
         title: trip.title,
+        destination: trip.destination,
         description: trip.description,
         date: trip.date,
         timeStart: trip.timeStart,
@@ -771,4 +896,20 @@ export class TripsService {
       stops,
     };
   }
+}
+
+function haversineKm(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number },
+): number {
+  const R = 6371;
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
 }

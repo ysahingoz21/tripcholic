@@ -13,13 +13,12 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { theme } from '@/constants/theme';
-import { type } from '@/constants/typography';
+import { font, type } from '@/constants/typography';
 import InfoCard from '@/components/ui/InfoCard';
 import {
   getIstanbulWeather,
   type WeatherSummary,
 } from '@/services/weather';
-import { font, type } from '@/constants/typography';
 
 const OPTIMIZED_IMG = require('@/assets/images/planner/planner-optimized-trip.png');
 const MANUAL_IMG = require('@/assets/images/planner/planner-own-trip.png');

@@ -53,10 +53,24 @@ class DailyRoute(BaseModel):
     )
 
 
+class GeoPoint(BaseModel):
+    lat: float = Field(description="Latitude in decimal degrees")
+    lng: float = Field(description="Longitude in decimal degrees")
+
+
 class OptimizeRequest(BaseModel):
     trip_id: str = Field(description="Unique identifier for the trip (from backend)")
     date: str = Field(description="Trip date in YYYY-MM-DD format")
     preferences: UserPreferences = Field(description="User preferences and constraints")
+    destination_anchor: GeoPoint | None = Field(
+        default=None,
+        description=(
+            "Centre of the user's chosen destination (e.g. district centroid). "
+            "Used to bias scoring toward POIs that are geographically close to "
+            "the destination when the candidate pool includes POIs from outside "
+            "the user's primary district."
+        ),
+    )
     candidate_pois: list[POI] = Field(
         min_length=1,
         max_length=20,
