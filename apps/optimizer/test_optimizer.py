@@ -104,7 +104,7 @@ def filter_candidates(
         if weather == "rainy" and poi.category in outdoor:
             continue
         result.append(poi)
-    return result[:50]
+    return result[:20]
 
 
 def build_request(
@@ -198,6 +198,13 @@ def test_historical_food():
     check("Budget respected", resp.route.total_cost_tl <= 3000,
           f"{resp.route.total_cost_tl} TL")
     check("Algorithm is CP-SAT", "cpsat" in resp.algorithm_used)
+    stop_categories = {
+        next(p for p in candidates if p.poi_id == s.poi_id).category
+        for s in resp.route.stops
+    }
+    check("Food category is represented when feasible",
+          POICategory.FOOD in stop_categories,
+          f"covered: {[c.value for c in stop_categories]}")
 
     stops = resp.route.stops
     for i in range(1, len(stops)):
@@ -349,6 +356,30 @@ def test_opening_hours_respected():
               f"departure {s.departure_time} > close {poi.opening_hours.close}")
 
 
+def test_overnight_window():
+    """18:00–02:00 should be treated as an overnight window, not invalid input."""
+    req, candidates = build_request(
+        trip_id="t9",
+        categories=["food", "entertainment"],
+        time_start="18:00", time_end="02:00",
+        budget_tl=20000, max_pois=3,
+    )
+    resp = run("Overnight food + entertainment (18:00–02:00)", req, candidates)
+
+    check("Overnight request accepted", resp.solver_status.name != "NOT_RUN")
+    check("At least 1 stop", len(resp.route.stops) >= 1)
+    check("Duration is positive", resp.route.total_duration_minutes > 0)
+    for s in resp.route.stops:
+        arr_min = sum(int(x) * m for x, m in zip(s.arrival_time.split(":"), [60, 1]))
+        dep_min = sum(int(x) * m for x, m in zip(s.departure_time.split(":"), [60, 1]))
+        check(f"{s.name} starts in overnight window",
+              arr_min >= 18 * 60 or arr_min <= 2 * 60,
+              s.arrival_time)
+        check(f"{s.name} ends in overnight window",
+              dep_min >= 18 * 60 or dep_min <= 2 * 60,
+              s.departure_time)
+
+
 # ── Run all ───────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -362,6 +393,7 @@ if __name__ == "__main__":
         test_full_day_all_categories,
         test_large_candidate_pool,
         test_opening_hours_respected,
+        test_overnight_window,
     ]
 
     import time
