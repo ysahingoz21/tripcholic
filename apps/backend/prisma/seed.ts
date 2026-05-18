@@ -168,6 +168,7 @@ type CsvPoiRow = {
   budget: string;
   opening_hours?: string;
   available_hours?: string;
+  image_url?: string;
 };
 
 function parseCategory(raw: string): string {
@@ -229,7 +230,7 @@ function mapCsvRowToPoi(row: CsvPoiRow) {
     description: null,
     district: row.district || null,
     address: row.address || null,
-    imageUrl: null,
+    imageUrl: row.image_url || null,
     source: DATASET_FILE_NAME,
     lat: parseFloatField(row.lat, 'lat'),
     lng: parseFloatField(row.lng, 'lng'),

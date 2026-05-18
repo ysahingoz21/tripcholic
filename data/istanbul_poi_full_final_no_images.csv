@@ -1,130 +1,130 @@
-name,category,district,address,lat,lng,avg_duration_min,budget,available_hours
-Ayasofya Camii,historical,Fatih,"Sultanahmet, Fatih, İstanbul",41.008583,28.980175,90,low,09:00-18:00
-Topkapı Sarayı Müzesi,historical,Fatih,"Cankurtaran, Fatih, İstanbul",41.011520,28.983379,120,medium,09:00-18:00
-Yerebatan Sarnıcı,historical,Fatih,"Alemdar, Fatih, İstanbul",41.008384,28.977878,60,medium,09:00-18:00
-Sultan Ahmet Camii,historical,Fatih,"Sultanahmet, Fatih, İstanbul",41.005410,28.976814,45,low,09:00-18:00
-Sultanahmet Meydanı,historical,Fatih,"Sultanahmet, Fatih, İstanbul",41.006329,28.975705,45,low,00:00-23:59
-Dolmabahçe Sarayı,historical,Beşiktaş,"Vişnezade, Beşiktaş, İstanbul",41.039164,29.000459,120,high,09:00-18:00
-Galata Kulesi,historical,Beyoğlu,"Bereketzade, Beyoğlu, İstanbul",41.025569,28.974129,45,medium,09:00-18:00
-İstanbul Boğazı,scenic,Sarıyer,"İstanbul Boğazı, İstanbul",41.221313,29.129016,120,low,00:00-23:59
-Kız Kulesi,historical,Üsküdar,"Salacak, Üsküdar, İstanbul",41.021141,29.004131,60,medium,09:00-18:00
-Kapalı Çarşı (Grand Bazaar),shopping,Fatih,"Beyazıt, Fatih, İstanbul",41.010685,28.968068,90,medium,10:00-22:00
-Eminönü,neighborhood,Fatih,"Eminönü, Fatih, İstanbul",41.014936,28.965977,60,low,00:00-23:59
-Mısır Çarşısı,shopping,Fatih,"Eminönü, Fatih, İstanbul",41.016500,28.970519,60,medium,10:00-22:00
-Taksim Meydanı,entertainment,Beyoğlu,"Taksim, Beyoğlu, İstanbul",41.037002,28.985092,60,low,00:00-23:59
-Aya İrini Müzesi,historical,Fatih,"Cankurtaran, Fatih, İstanbul",41.009610,28.981183,45,medium,09:00-18:00
-Rahmi M. Koç Müzesi,entertainment,Beyoğlu,"Hasköy, Beyoğlu, İstanbul",41.042539,28.949184,90,medium,10:00-20:00
-Süleymaniye Camii,historical,Fatih,"Süleymaniye, Fatih, İstanbul",41.016047,28.963971,45,low,09:00-18:00
-Gülhane Parkı,nature,Fatih,"Cankurtaran, Fatih, İstanbul",41.013308,28.981510,90,low,00:00-23:59
-Ortaköy Camii,historical,Beşiktaş,"Ortaköy, Beşiktaş, İstanbul",41.047215,29.026948,45,low,09:00-18:00
-Yıldız Sarayı,historical,Beşiktaş,"Yıldız, Beşiktaş, İstanbul",41.050021,29.011557,90,medium,09:00-18:00
-Fatih Camii,historical,Fatih,"Fatih, İstanbul",41.019653,28.949919,45,low,09:00-18:00
-Yeni Camii,historical,Fatih,"Eminönü, Fatih, İstanbul",41.016986,28.971959,30,low,09:00-18:00
-Ahrida Sinagogu,historical,Fatih,"Balat, Fatih, İstanbul",41.032883,28.945730,30,low,09:00-18:00
-Eyüp Sultan Camii,historical,Eyüpsultan,"Eyüp, Eyüpsultan, İstanbul",41.047849,28.933759,45,low,09:00-18:00
-Pierre Loti Tepesi,scenic,Eyüpsultan,"Eyüp, Eyüpsultan, İstanbul",41.054328,28.933408,60,low,00:00-23:59
-Miniatürk,entertainment,Beyoğlu,"Sütlüce, Beyoğlu, İstanbul",41.058993,28.949219,90,medium,10:00-20:00
-İstanbul Oyuncak Müzesi,entertainment,Kadıköy,"Göztepe, Kadıköy, İstanbul",40.975973,29.070712,60,medium,10:00-20:00
-Türk ve İslam Eserleri Müzesi,entertainment,Fatih,"Sultanahmet, Fatih, İstanbul",41.006224,28.974720,75,medium,10:00-20:00
-Pera Müzesi,entertainment,Beyoğlu,"Tepebaşı, Beyoğlu, İstanbul",41.031854,28.975058,75,medium,10:00-20:00
-Sakıp Sabancı Müzesi,entertainment,Sarıyer,"Emirgan, Sarıyer, İstanbul",41.105556,29.056944,90,medium,10:00-20:00
-Emirgan Korusu,nature,Sarıyer,"Emirgan, Sarıyer, İstanbul",41.108650,29.053112,120,low,00:00-23:59
-Atatürk Arboretumu,nature,Sarıyer,"Bahçeköy, Sarıyer, İstanbul",41.176626,28.985378,120,low,00:00-23:59
-Belgrad Ormanı,nature,Sarıyer,"Belgrad Ormanı, Sarıyer, İstanbul",41.184012,28.988502,180,low,00:00-23:59
-Maçka Demokrasi Parkı,nature,Şişli,"Maçka, Şişli, İstanbul",41.044794,28.993057,90,low,00:00-23:59
-Polonezköy Tabiat Parkı,nature,Beykoz,"Polonezköy, Beykoz, İstanbul",41.110617,29.204458,180,low,00:00-23:59
-Fenerbahçe Parkı,nature,Kadıköy,"Fenerbahçe, Kadıköy, İstanbul",40.969042,29.036065,90,low,00:00-23:59
-Nezahat Gökyiğit Botanik Bahçesi,nature,Ataşehir,"Ataşehir, İstanbul",40.998714,29.120176,90,low,00:00-23:59
-Nişantaşı,shopping,Şişli,"Nişantaşı, Şişli, İstanbul",41.049464,28.992018,120,high,10:00-22:00
-Bebek,scenic,Beşiktaş,"Bebek, Beşiktaş, İstanbul",41.077744,29.041629,90,medium,00:00-23:59
-Balat,neighborhood,Fatih,"Balat, Fatih, İstanbul",41.029211,28.948498,120,low,00:00-23:59
-Rumeli Hisarı,historical,Sarıyer,"Rumeli Hisarı, Sarıyer, İstanbul",41.084822,29.056698,60,medium,09:00-18:00
-Beylerbeyi Sarayı,historical,Üsküdar,"Beylerbeyi, Üsküdar, İstanbul",41.042645,29.039905,90,medium,09:00-18:00
-Garipçe,scenic,Sarıyer,"Garipçe, Sarıyer, İstanbul",41.210072,29.106903,90,low,00:00-23:59
-Çamlıca Tepesi,scenic,Üsküdar,"Çamlıca, Üsküdar, İstanbul",41.028244,29.069162,90,low,00:00-23:59
-Anadolu Kavağı,neighborhood,Beykoz,"Anadolu Kavağı, Beykoz, İstanbul",41.173816,29.088682,120,medium,00:00-23:59
-Mihrabat Korusu,nature,Beykoz,"Kanlıca, Beykoz, İstanbul",41.096771,29.068753,90,low,00:00-23:59
-Büyükada,scenic,Adalar,"Büyükada, Adalar, İstanbul",40.856040,29.118710,180,medium,00:00-23:59
-Heybeliada,scenic,Adalar,"Heybeliada, Adalar, İstanbul",40.873336,29.089627,180,medium,00:00-23:59
-Kınalıada,scenic,Adalar,"Kınalıada, Adalar, İstanbul",40.908056,29.052222,150,medium,00:00-23:59
-Burgazada,scenic,Adalar,"Burgazada, Adalar, İstanbul",40.880000,29.066944,150,medium,00:00-23:59
-Küçüksu Kasrı,historical,Beykoz,"Küçüksu, Beykoz, İstanbul",41.078418,29.064879,60,medium,09:00-18:00
-Adile Sultan Sarayı,historical,Üsküdar,"Kandilli, Üsküdar, İstanbul",41.070951,29.057289,90,high,09:00-18:00
-Caddebostan Sahili,scenic,Kadıköy,"Caddebostan, Kadıköy, İstanbul",40.962217,29.062227,90,low,00:00-23:59
-Moda Sahili,scenic,Kadıköy,"Moda, Kadıköy, İstanbul",40.980008,29.022831,90,low,00:00-23:59
-Kadıköy Boğa Heykeli,neighborhood,Kadıköy,"Altıyol, Kadıköy, İstanbul",40.990468,29.029171,30,low,00:00-23:59
-Bağdat Caddesi,shopping,Kadıköy,"Bağdat Caddesi, Kadıköy, İstanbul",40.958840,29.083769,120,high,10:00-22:00
-Kanlıca,neighborhood,Beykoz,"Kanlıca, Beykoz, İstanbul",41.099008,29.073629,90,medium,00:00-23:59
-Kuzguncuk,neighborhood,Üsküdar,"Kuzguncuk, Üsküdar, İstanbul",41.036122,29.037264,90,medium,00:00-23:59
-Gözdağı Korusu,nature,İstanbul,"Gözdağı Korusu, İstanbul",40.890641,29.253609,90,low,00:00-23:59
-Çubuklu Korusu,nature,İstanbul,"Çubuklu Korusu, İstanbul",41.101984,29.083810,90,low,00:00-23:59
-Otağtepe Parkı,nature,İstanbul,"Otağtepe Parkı, İstanbul",41.090137,29.071269,60,low,00:00-23:59
-Haydarpaşa Garı,historical,Kadıköy,"Rasimpaşa, Kadıköy, İstanbul",40.996825,29.019294,45,low,09:00-18:00
-Çinili Camii,historical,İstanbul,"Çinili Camii, İstanbul",41.019924,29.029190,30,low,09:00-18:00
-Çemberlitaş Hamamı,historical,Fatih,"Çemberlitaş, Fatih, İstanbul",41.008533,28.971600,90,high,09:00-18:00
-Cağaloğlu Hamamı,historical,Fatih,"Cağaloğlu, Fatih, İstanbul",41.010594,28.975337,90,high,09:00-18:00
-Kılıç Ali Paşa Hamamı,historical,Beyoğlu,"Tophane, Beyoğlu, İstanbul",41.026191,28.980632,90,high,09:00-18:00
-Yedikule Zindanları,historical,Fatih,"Yedikule, Fatih, İstanbul",40.993485,28.922740,60,medium,09:00-18:00
-Panorama 1453 Tarih Müzesi,entertainment,Zeytinburnu,"Merkezefendi, Zeytinburnu, İstanbul",41.018277,28.920391,75,medium,10:00-20:00
-Anadolu Hisarı,historical,Beykoz,"Anadolu Hisarı, Beykoz, İstanbul",41.085932,29.070720,45,low,09:00-18:00
-Tarihi Çınaraltı Çay Bahçesi,food,Üsküdar,"Çengelköy, Üsküdar, İstanbul",41.050281,29.052401,60,low,08:00-23:00
-Deniz Müzesi,entertainment,Beşiktaş,"Sinanpaşa, Beşiktaş, İstanbul",41.041464,29.005435,75,medium,10:00-20:00
-Masumiyet Müzesi,entertainment,Beyoğlu,"Çukurcuma, Beyoğlu, İstanbul",41.030849,28.979854,60,medium,10:00-20:00
-Florya Atatürk Deniz Köşkü,historical,Bakırköy,"Florya, Bakırköy, İstanbul",40.973797,28.783353,60,medium,09:00-18:00
-Çamlıca Kulesi,entertainment,Üsküdar,"Çamlıca, Üsküdar, İstanbul",41.016699,29.065992,60,medium,10:00-20:00
-Ağva,scenic,Şile,"Ağva, Şile, İstanbul",41.138653,29.856061,180,medium,00:00-23:59
-Şile,scenic,Şile,"Şile, İstanbul",41.102730,29.653418,180,medium,00:00-23:59
-Dragos Tepesi,scenic,Kartal,"Dragos, Kartal, İstanbul",40.901348,29.146660,60,low,00:00-23:59
-Selimiye Kışlası,historical,Üsküdar,"Selimiye, Üsküdar, İstanbul",41.008215,29.015883,30,low,09:00-18:00
-Göztepe 60. Yıl Parkı,nature,Kadıköy,"Göztepe, Kadıköy, İstanbul",40.969968,29.057860,90,low,00:00-23:59
-İsfanbul,entertainment,Eyüpsultan,"Yeşilpınar, Eyüpsultan, İstanbul",41.074267,28.924014,180,high,10:00-20:00
-Mihrimah Sultan Camii,historical,Üsküdar,"Mimar Sinan, Üsküdar, İstanbul",41.026779,29.015982,30,low,09:00-18:00
-Galatasaray Hamamı,historical,Beyoğlu,"Galatasaray, Beyoğlu, İstanbul",41.032831,28.979890,90,high,09:00-18:00
-İstanbul Arkeoloji Müzeleri,entertainment,Fatih,"Cankurtaran, Fatih, İstanbul",41.011686,28.981331,90,medium,10:00-20:00
-İstanbul Modern Sanat Müzesi,entertainment,Beyoğlu,"Karaköy, Beyoğlu, İstanbul",41.025920,28.982838,90,medium,10:00-20:00
-Boğaz Turu,entertainment,Beşiktaş,"Beşiktaş İskelesi, Beşiktaş, İstanbul",41.079257,29.046922,120,medium,10:00-20:00
-Beşiktaş İskelesi,neighborhood,Beşiktaş,"Beşiktaş, İstanbul",41.041212,29.007308,30,low,00:00-23:59
-Fişekhane,entertainment,Zeytinburnu,"Kazlıçeşme, Zeytinburnu, İstanbul",40.983048,28.905100,120,medium,10:00-20:00
-Kanlıca İskelesi,neighborhood,Beykoz,"Kanlıca, Beykoz, İstanbul",41.100224,29.065385,30,low,00:00-23:59
-Arasta Çarşısı,shopping,Fatih,"Sultanahmet, Fatih, İstanbul",41.005329,28.978202,45,medium,10:00-22:00
-Galataport,shopping,Beyoğlu,"Karaköy, Beyoğlu, İstanbul",41.027352,28.985484,120,high,10:00-22:00
-Çemberlitaş Sütunu,historical,Fatih,"Çemberlitaş, Fatih, İstanbul",41.009180,28.970169,20,low,00:00-23:59
-Kumkapı,food,Fatih,"Kumkapı, Fatih, İstanbul",41.004260,28.964697,90,medium,08:00-23:00
-Kanlıca Yoğurtçu Parkı,nature,Beykoz,"Kanlıca, Beykoz, İstanbul",41.099008,29.073629,60,low,00:00-23:59
-Asmalımescit,food,Beyoğlu,"Asmalımescit, Beyoğlu, İstanbul",41.030909,28.975060,120,medium,08:00-23:00
-Vefa Bozacısı,food,Fatih,"Vefa, Fatih, İstanbul",41.015318,28.958420,30,low,08:00-23:00
-Yıldız Parkı,nature,Beşiktaş,"Yıldız, Beşiktaş, İstanbul",41.049143,29.015263,90,low,00:00-23:59
-Ayasofya Hürrem Sultan Hamamı,historical,Fatih,"Sultanahmet, Fatih, İstanbul",41.007258,28.979137,90,high,09:00-18:00
-Arnavutköy,neighborhood,Beşiktaş,"Arnavutköy, Beşiktaş, İstanbul",41.186394,28.738889,90,medium,00:00-23:59
-Yeşilköy Rum Ortodoks Kilisesi,historical,Bakırköy,"Yeşilköy, Bakırköy, İstanbul",40.977648,28.818895,30,low,09:00-18:00
-Turkcell Platinum Park,nature,Sarıyer,"Hacıosman, Sarıyer, İstanbul",41.115306,28.993554,60,low,00:00-23:59
-Fethi Paşa Korusu,nature,Üsküdar,"Paşalimanı, Üsküdar, İstanbul",41.0299,29.0302,90,low,00:00-23:59
-Yoros Kalesi,historical,Beykoz,"Anadolu Kavağı, Beykoz, İstanbul",41.1812,29.0926,60,low,09:00-18:00
-Beykoz Mecidiye Kasrı,historical,Beykoz,"Beykoz, İstanbul",41.1336,29.0987,60,medium,09:00-18:00
-Khedive Kasrı,historical,Beykoz,"Çubuklu, Beykoz, İstanbul",41.1066,29.0883,90,medium,09:00-18:00
-Validebağ Korusu,nature,Üsküdar,"Altunizade, Üsküdar, İstanbul",41.0132,29.0462,90,low,00:00-23:59
-Fener Rum Patrikhanesi,historical,Fatih,"Fener, Fatih, İstanbul",41.0306,28.9488,45,low,09:00-18:00
-Bulgar Kilisesi (Demir Kilise),historical,Fatih,"Balat, Fatih, İstanbul",41.0317,28.9472,45,low,09:00-18:00
-Zeyrek Camii,historical,Fatih,"Zeyrek, Fatih, İstanbul",41.0166,28.9594,45,low,09:00-18:00
-Vefa Kilise Camii,historical,Fatih,"Vefa, Fatih, İstanbul",41.0155,28.9604,30,low,09:00-18:00
-İstanbul Üniversitesi Beyazıt Kampüsü,neighborhood,Fatih,"Beyazıt, Fatih, İstanbul",41.0122,28.9670,60,low,00:00-23:59
-Beyazıt Meydanı,historical,Fatih,"Beyazıt, Fatih, İstanbul",41.0103,28.9659,45,low,00:00-23:59
-Çorlulu Ali Paşa Medresesi,historical,Fatih,"Çemberlitaş, Fatih, İstanbul",41.0087,28.9703,30,low,09:00-18:00
-Salt Galata,entertainment,Beyoğlu,"Karaköy, Beyoğlu, İstanbul",41.0237,28.9737,60,low,10:00-20:00
-Galata Köprüsü,scenic,Beyoğlu,"Karaköy-Eminönü, İstanbul",41.0190,28.9704,30,low,00:00-23:59
-Haliç Metro Köprüsü,scenic,Beyoğlu,"Haliç, Beyoğlu, İstanbul",41.0258,28.9675,30,low,00:00-23:59
-Atatürk Kültür Merkezi (AKM),entertainment,Beyoğlu,"Taksim, Beyoğlu, İstanbul",41.0369,28.9862,60,medium,10:00-22:00
-Bomontiada,entertainment,Şişli,"Bomonti, Şişli, İstanbul",41.0544,28.9847,90,medium,10:00-23:00
-Yedikule Hisarı,historical,Fatih,"Yedikule, Fatih, İstanbul",40.9935,28.9227,60,medium,09:00-18:00
-Florya Sahili,scenic,Bakırköy,"Florya, Bakırköy, İstanbul",40.9760,28.7915,90,low,00:00-23:59
-Menekşe Plajı,scenic,Küçükçekmece,"Menekşe, Küçükçekmece, İstanbul",40.9836,28.7636,90,low,00:00-23:59
-Riva,scenic,Beykoz,"Riva, Beykoz, İstanbul",41.2210,29.2405,120,medium,00:00-23:59
-Anadolu Feneri,scenic,Beykoz,"Anadolu Feneri, Beykoz, İstanbul",41.2350,29.1150,90,low,00:00-23:59
-Rumeli Feneri,scenic,Sarıyer,"Rumeli Feneri, Sarıyer, İstanbul",41.2355,29.1090,90,low,00:00-23:59
-Beykoz Korusu,nature,Beykoz,"Beykoz, İstanbul",41.1305,29.0956,90,low,00:00-23:59
-Mihrimah Sultan Camii (Üsküdar),historical,Üsküdar,"Mimar Sinan, Üsküdar, İstanbul",41.0256,29.0150,45,low,09:00-18:00
-Selimiye Camii (Üsküdar),historical,Üsküdar,"Selimiye, Üsküdar, İstanbul",41.0057,29.0178,45,low,09:00-18:00
-Karaköy Sahili,scenic,Beyoğlu,"Karaköy, Beyoğlu, İstanbul",41.0245,28.9770,60,low,00:00-23:59
-Moda Parkı,nature,Kadıköy,"Moda, Kadıköy, İstanbul",40.9833,29.0244,60,low,00:00-23:59
-Yoğurtçu Parkı,nature,Kadıköy,"Osmanağa, Kadıköy, İstanbul",40.9892,29.0345,60,low,00:00-23:59
-Kalamış Marina,scenic,Kadıköy,"Kalamış, Kadıköy, İstanbul",40.9725,29.0440,60,medium,00:00-23:59
+name,category,district,address,lat,lng,avg_duration_min,budget,available_hours,image_url
+Ayasofya Camii,historical,Fatih,"Sultanahmet, Fatih, İstanbul",41.008583,28.980175,90,low,09:00-18:00,https://i.ibb.co/vCzf0HS6/ayasofya-camii.jpg
+Topkapı Sarayı Müzesi,historical,Fatih,"Cankurtaran, Fatih, İstanbul",41.011520,28.983379,120,medium,09:00-18:00,https://i.ibb.co/xKRdPq23/topkapi-sarayi-muzesi.jpg
+Yerebatan Sarnıcı,historical,Fatih,"Alemdar, Fatih, İstanbul",41.008384,28.977878,60,medium,09:00-18:00,https://i.ibb.co/chBCcmyj/yerebatan-sarnici.jpg
+Sultan Ahmet Camii,historical,Fatih,"Sultanahmet, Fatih, İstanbul",41.005410,28.976814,45,low,09:00-18:00,
+Sultanahmet Meydanı,historical,Fatih,"Sultanahmet, Fatih, İstanbul",41.006329,28.975705,45,low,00:00-23:59,
+Dolmabahçe Sarayı,historical,Beşiktaş,"Vişnezade, Beşiktaş, İstanbul",41.039164,29.000459,120,high,09:00-18:00,
+Galata Kulesi,historical,Beyoğlu,"Bereketzade, Beyoğlu, İstanbul",41.025569,28.974129,45,medium,09:00-18:00,
+İstanbul Boğazı,scenic,Sarıyer,"İstanbul Boğazı, İstanbul",41.221313,29.129016,120,low,00:00-23:59,
+Kız Kulesi,historical,Üsküdar,"Salacak, Üsküdar, İstanbul",41.021141,29.004131,60,medium,09:00-18:00,
+Kapalı Çarşı (Grand Bazaar),shopping,Fatih,"Beyazıt, Fatih, İstanbul",41.010685,28.968068,90,medium,10:00-22:00,
+Eminönü,neighborhood,Fatih,"Eminönü, Fatih, İstanbul",41.014936,28.965977,60,low,00:00-23:59,
+Mısır Çarşısı,shopping,Fatih,"Eminönü, Fatih, İstanbul",41.016500,28.970519,60,medium,10:00-22:00,
+Taksim Meydanı,entertainment,Beyoğlu,"Taksim, Beyoğlu, İstanbul",41.037002,28.985092,60,low,00:00-23:59,
+Aya İrini Müzesi,historical,Fatih,"Cankurtaran, Fatih, İstanbul",41.009610,28.981183,45,medium,09:00-18:00,
+Rahmi M. Koç Müzesi,entertainment,Beyoğlu,"Hasköy, Beyoğlu, İstanbul",41.042539,28.949184,90,medium,10:00-20:00,
+Süleymaniye Camii,historical,Fatih,"Süleymaniye, Fatih, İstanbul",41.016047,28.963971,45,low,09:00-18:00,
+Gülhane Parkı,nature,Fatih,"Cankurtaran, Fatih, İstanbul",41.013308,28.981510,90,low,00:00-23:59,
+Ortaköy Camii,historical,Beşiktaş,"Ortaköy, Beşiktaş, İstanbul",41.047215,29.026948,45,low,09:00-18:00,
+Yıldız Sarayı,historical,Beşiktaş,"Yıldız, Beşiktaş, İstanbul",41.050021,29.011557,90,medium,09:00-18:00,
+Fatih Camii,historical,Fatih,"Fatih, İstanbul",41.019653,28.949919,45,low,09:00-18:00,
+Yeni Camii,historical,Fatih,"Eminönü, Fatih, İstanbul",41.016986,28.971959,30,low,09:00-18:00,
+Ahrida Sinagogu,historical,Fatih,"Balat, Fatih, İstanbul",41.032883,28.945730,30,low,09:00-18:00,
+Eyüp Sultan Camii,historical,Eyüpsultan,"Eyüp, Eyüpsultan, İstanbul",41.047849,28.933759,45,low,09:00-18:00,
+Pierre Loti Tepesi,scenic,Eyüpsultan,"Eyüp, Eyüpsultan, İstanbul",41.054328,28.933408,60,low,00:00-23:59,
+Miniatürk,entertainment,Beyoğlu,"Sütlüce, Beyoğlu, İstanbul",41.058993,28.949219,90,medium,10:00-20:00,
+İstanbul Oyuncak Müzesi,entertainment,Kadıköy,"Göztepe, Kadıköy, İstanbul",40.975973,29.070712,60,medium,10:00-20:00,
+Türk ve İslam Eserleri Müzesi,entertainment,Fatih,"Sultanahmet, Fatih, İstanbul",41.006224,28.974720,75,medium,10:00-20:00,
+Pera Müzesi,entertainment,Beyoğlu,"Tepebaşı, Beyoğlu, İstanbul",41.031854,28.975058,75,medium,10:00-20:00,
+Sakıp Sabancı Müzesi,entertainment,Sarıyer,"Emirgan, Sarıyer, İstanbul",41.105556,29.056944,90,medium,10:00-20:00,
+Emirgan Korusu,nature,Sarıyer,"Emirgan, Sarıyer, İstanbul",41.108650,29.053112,120,low,00:00-23:59,
+Atatürk Arboretumu,nature,Sarıyer,"Bahçeköy, Sarıyer, İstanbul",41.176626,28.985378,120,low,00:00-23:59,
+Belgrad Ormanı,nature,Sarıyer,"Belgrad Ormanı, Sarıyer, İstanbul",41.184012,28.988502,180,low,00:00-23:59,
+Maçka Demokrasi Parkı,nature,Şişli,"Maçka, Şişli, İstanbul",41.044794,28.993057,90,low,00:00-23:59,
+Polonezköy Tabiat Parkı,nature,Beykoz,"Polonezköy, Beykoz, İstanbul",41.110617,29.204458,180,low,00:00-23:59,
+Fenerbahçe Parkı,nature,Kadıköy,"Fenerbahçe, Kadıköy, İstanbul",40.969042,29.036065,90,low,00:00-23:59,
+Nezahat Gökyiğit Botanik Bahçesi,nature,Ataşehir,"Ataşehir, İstanbul",40.998714,29.120176,90,low,00:00-23:59,
+Nişantaşı,shopping,Şişli,"Nişantaşı, Şişli, İstanbul",41.049464,28.992018,120,high,10:00-22:00,
+Bebek,scenic,Beşiktaş,"Bebek, Beşiktaş, İstanbul",41.077744,29.041629,90,medium,00:00-23:59,
+Balat,neighborhood,Fatih,"Balat, Fatih, İstanbul",41.029211,28.948498,120,low,00:00-23:59,
+Rumeli Hisarı,historical,Sarıyer,"Rumeli Hisarı, Sarıyer, İstanbul",41.084822,29.056698,60,medium,09:00-18:00,
+Beylerbeyi Sarayı,historical,Üsküdar,"Beylerbeyi, Üsküdar, İstanbul",41.042645,29.039905,90,medium,09:00-18:00,
+Garipçe,scenic,Sarıyer,"Garipçe, Sarıyer, İstanbul",41.210072,29.106903,90,low,00:00-23:59,
+Çamlıca Tepesi,scenic,Üsküdar,"Çamlıca, Üsküdar, İstanbul",41.028244,29.069162,90,low,00:00-23:59,
+Anadolu Kavağı,neighborhood,Beykoz,"Anadolu Kavağı, Beykoz, İstanbul",41.173816,29.088682,120,medium,00:00-23:59,
+Mihrabat Korusu,nature,Beykoz,"Kanlıca, Beykoz, İstanbul",41.096771,29.068753,90,low,00:00-23:59,
+Büyükada,scenic,Adalar,"Büyükada, Adalar, İstanbul",40.856040,29.118710,180,medium,00:00-23:59,
+Heybeliada,scenic,Adalar,"Heybeliada, Adalar, İstanbul",40.873336,29.089627,180,medium,00:00-23:59,
+Kınalıada,scenic,Adalar,"Kınalıada, Adalar, İstanbul",40.908056,29.052222,150,medium,00:00-23:59,
+Burgazada,scenic,Adalar,"Burgazada, Adalar, İstanbul",40.880000,29.066944,150,medium,00:00-23:59,
+Küçüksu Kasrı,historical,Beykoz,"Küçüksu, Beykoz, İstanbul",41.078418,29.064879,60,medium,09:00-18:00,
+Adile Sultan Sarayı,historical,Üsküdar,"Kandilli, Üsküdar, İstanbul",41.070951,29.057289,90,high,09:00-18:00,
+Caddebostan Sahili,scenic,Kadıköy,"Caddebostan, Kadıköy, İstanbul",40.962217,29.062227,90,low,00:00-23:59,
+Moda Sahili,scenic,Kadıköy,"Moda, Kadıköy, İstanbul",40.980008,29.022831,90,low,00:00-23:59,
+Kadıköy Boğa Heykeli,neighborhood,Kadıköy,"Altıyol, Kadıköy, İstanbul",40.990468,29.029171,30,low,00:00-23:59,
+Bağdat Caddesi,shopping,Kadıköy,"Bağdat Caddesi, Kadıköy, İstanbul",40.958840,29.083769,120,high,10:00-22:00,
+Kanlıca,neighborhood,Beykoz,"Kanlıca, Beykoz, İstanbul",41.099008,29.073629,90,medium,00:00-23:59,
+Kuzguncuk,neighborhood,Üsküdar,"Kuzguncuk, Üsküdar, İstanbul",41.036122,29.037264,90,medium,00:00-23:59,
+Gözdağı Korusu,nature,İstanbul,"Gözdağı Korusu, İstanbul",40.890641,29.253609,90,low,00:00-23:59,
+Çubuklu Korusu,nature,İstanbul,"Çubuklu Korusu, İstanbul",41.101984,29.083810,90,low,00:00-23:59,
+Otağtepe Parkı,nature,İstanbul,"Otağtepe Parkı, İstanbul",41.090137,29.071269,60,low,00:00-23:59,
+Haydarpaşa Garı,historical,Kadıköy,"Rasimpaşa, Kadıköy, İstanbul",40.996825,29.019294,45,low,09:00-18:00,
+Çinili Camii,historical,İstanbul,"Çinili Camii, İstanbul",41.019924,29.029190,30,low,09:00-18:00,
+Çemberlitaş Hamamı,historical,Fatih,"Çemberlitaş, Fatih, İstanbul",41.008533,28.971600,90,high,09:00-18:00,
+Cağaloğlu Hamamı,historical,Fatih,"Cağaloğlu, Fatih, İstanbul",41.010594,28.975337,90,high,09:00-18:00,
+Kılıç Ali Paşa Hamamı,historical,Beyoğlu,"Tophane, Beyoğlu, İstanbul",41.026191,28.980632,90,high,09:00-18:00,
+Yedikule Zindanları,historical,Fatih,"Yedikule, Fatih, İstanbul",40.993485,28.922740,60,medium,09:00-18:00,
+Panorama 1453 Tarih Müzesi,entertainment,Zeytinburnu,"Merkezefendi, Zeytinburnu, İstanbul",41.018277,28.920391,75,medium,10:00-20:00,
+Anadolu Hisarı,historical,Beykoz,"Anadolu Hisarı, Beykoz, İstanbul",41.085932,29.070720,45,low,09:00-18:00,
+Tarihi Çınaraltı Çay Bahçesi,food,Üsküdar,"Çengelköy, Üsküdar, İstanbul",41.050281,29.052401,60,low,08:00-23:00,
+Deniz Müzesi,entertainment,Beşiktaş,"Sinanpaşa, Beşiktaş, İstanbul",41.041464,29.005435,75,medium,10:00-20:00,
+Masumiyet Müzesi,entertainment,Beyoğlu,"Çukurcuma, Beyoğlu, İstanbul",41.030849,28.979854,60,medium,10:00-20:00,
+Florya Atatürk Deniz Köşkü,historical,Bakırköy,"Florya, Bakırköy, İstanbul",40.973797,28.783353,60,medium,09:00-18:00,
+Çamlıca Kulesi,entertainment,Üsküdar,"Çamlıca, Üsküdar, İstanbul",41.016699,29.065992,60,medium,10:00-20:00,
+Ağva,scenic,Şile,"Ağva, Şile, İstanbul",41.138653,29.856061,180,medium,00:00-23:59,
+Şile,scenic,Şile,"Şile, İstanbul",41.102730,29.653418,180,medium,00:00-23:59,
+Dragos Tepesi,scenic,Kartal,"Dragos, Kartal, İstanbul",40.901348,29.146660,60,low,00:00-23:59,
+Selimiye Kışlası,historical,Üsküdar,"Selimiye, Üsküdar, İstanbul",41.008215,29.015883,30,low,09:00-18:00,
+Göztepe 60. Yıl Parkı,nature,Kadıköy,"Göztepe, Kadıköy, İstanbul",40.969968,29.057860,90,low,00:00-23:59,
+İsfanbul,entertainment,Eyüpsultan,"Yeşilpınar, Eyüpsultan, İstanbul",41.074267,28.924014,180,high,10:00-20:00,
+Mihrimah Sultan Camii,historical,Üsküdar,"Mimar Sinan, Üsküdar, İstanbul",41.026779,29.015982,30,low,09:00-18:00,
+Galatasaray Hamamı,historical,Beyoğlu,"Galatasaray, Beyoğlu, İstanbul",41.032831,28.979890,90,high,09:00-18:00,
+İstanbul Arkeoloji Müzeleri,entertainment,Fatih,"Cankurtaran, Fatih, İstanbul",41.011686,28.981331,90,medium,10:00-20:00,
+İstanbul Modern Sanat Müzesi,entertainment,Beyoğlu,"Karaköy, Beyoğlu, İstanbul",41.025920,28.982838,90,medium,10:00-20:00,
+Boğaz Turu,entertainment,Beşiktaş,"Beşiktaş İskelesi, Beşiktaş, İstanbul",41.079257,29.046922,120,medium,10:00-20:00,
+Beşiktaş İskelesi,neighborhood,Beşiktaş,"Beşiktaş, İstanbul",41.041212,29.007308,30,low,00:00-23:59,
+Fişekhane,entertainment,Zeytinburnu,"Kazlıçeşme, Zeytinburnu, İstanbul",40.983048,28.905100,120,medium,10:00-20:00,
+Kanlıca İskelesi,neighborhood,Beykoz,"Kanlıca, Beykoz, İstanbul",41.100224,29.065385,30,low,00:00-23:59,
+Arasta Çarşısı,shopping,Fatih,"Sultanahmet, Fatih, İstanbul",41.005329,28.978202,45,medium,10:00-22:00,
+Galataport,shopping,Beyoğlu,"Karaköy, Beyoğlu, İstanbul",41.027352,28.985484,120,high,10:00-22:00,
+Çemberlitaş Sütunu,historical,Fatih,"Çemberlitaş, Fatih, İstanbul",41.009180,28.970169,20,low,00:00-23:59,
+Kumkapı,food,Fatih,"Kumkapı, Fatih, İstanbul",41.004260,28.964697,90,medium,08:00-23:00,
+Kanlıca Yoğurtçu Parkı,nature,Beykoz,"Kanlıca, Beykoz, İstanbul",41.099008,29.073629,60,low,00:00-23:59,
+Asmalımescit,food,Beyoğlu,"Asmalımescit, Beyoğlu, İstanbul",41.030909,28.975060,120,medium,08:00-23:00,
+Vefa Bozacısı,food,Fatih,"Vefa, Fatih, İstanbul",41.015318,28.958420,30,low,08:00-23:00,
+Yıldız Parkı,nature,Beşiktaş,"Yıldız, Beşiktaş, İstanbul",41.049143,29.015263,90,low,00:00-23:59,
+Ayasofya Hürrem Sultan Hamamı,historical,Fatih,"Sultanahmet, Fatih, İstanbul",41.007258,28.979137,90,high,09:00-18:00,
+Arnavutköy,neighborhood,Beşiktaş,"Arnavutköy, Beşiktaş, İstanbul",41.186394,28.738889,90,medium,00:00-23:59,
+Yeşilköy Rum Ortodoks Kilisesi,historical,Bakırköy,"Yeşilköy, Bakırköy, İstanbul",40.977648,28.818895,30,low,09:00-18:00,
+Turkcell Platinum Park,nature,Sarıyer,"Hacıosman, Sarıyer, İstanbul",41.115306,28.993554,60,low,00:00-23:59,
+Fethi Paşa Korusu,nature,Üsküdar,"Paşalimanı, Üsküdar, İstanbul",41.0299,29.0302,90,low,00:00-23:59,
+Yoros Kalesi,historical,Beykoz,"Anadolu Kavağı, Beykoz, İstanbul",41.1812,29.0926,60,low,09:00-18:00,
+Beykoz Mecidiye Kasrı,historical,Beykoz,"Beykoz, İstanbul",41.1336,29.0987,60,medium,09:00-18:00,
+Khedive Kasrı,historical,Beykoz,"Çubuklu, Beykoz, İstanbul",41.1066,29.0883,90,medium,09:00-18:00,
+Validebağ Korusu,nature,Üsküdar,"Altunizade, Üsküdar, İstanbul",41.0132,29.0462,90,low,00:00-23:59,
+Fener Rum Patrikhanesi,historical,Fatih,"Fener, Fatih, İstanbul",41.0306,28.9488,45,low,09:00-18:00,
+Bulgar Kilisesi (Demir Kilise),historical,Fatih,"Balat, Fatih, İstanbul",41.0317,28.9472,45,low,09:00-18:00,
+Zeyrek Camii,historical,Fatih,"Zeyrek, Fatih, İstanbul",41.0166,28.9594,45,low,09:00-18:00,
+Vefa Kilise Camii,historical,Fatih,"Vefa, Fatih, İstanbul",41.0155,28.9604,30,low,09:00-18:00,
+İstanbul Üniversitesi Beyazıt Kampüsü,neighborhood,Fatih,"Beyazıt, Fatih, İstanbul",41.0122,28.9670,60,low,00:00-23:59,
+Beyazıt Meydanı,historical,Fatih,"Beyazıt, Fatih, İstanbul",41.0103,28.9659,45,low,00:00-23:59,
+Çorlulu Ali Paşa Medresesi,historical,Fatih,"Çemberlitaş, Fatih, İstanbul",41.0087,28.9703,30,low,09:00-18:00,
+Salt Galata,entertainment,Beyoğlu,"Karaköy, Beyoğlu, İstanbul",41.0237,28.9737,60,low,10:00-20:00,
+Galata Köprüsü,scenic,Beyoğlu,"Karaköy-Eminönü, İstanbul",41.0190,28.9704,30,low,00:00-23:59,
+Haliç Metro Köprüsü,scenic,Beyoğlu,"Haliç, Beyoğlu, İstanbul",41.0258,28.9675,30,low,00:00-23:59,
+Atatürk Kültür Merkezi (AKM),entertainment,Beyoğlu,"Taksim, Beyoğlu, İstanbul",41.0369,28.9862,60,medium,10:00-22:00,
+Bomontiada,entertainment,Şişli,"Bomonti, Şişli, İstanbul",41.0544,28.9847,90,medium,10:00-23:00,
+Yedikule Hisarı,historical,Fatih,"Yedikule, Fatih, İstanbul",40.9935,28.9227,60,medium,09:00-18:00,
+Florya Sahili,scenic,Bakırköy,"Florya, Bakırköy, İstanbul",40.9760,28.7915,90,low,00:00-23:59,
+Menekşe Plajı,scenic,Küçükçekmece,"Menekşe, Küçükçekmece, İstanbul",40.9836,28.7636,90,low,00:00-23:59,
+Riva,scenic,Beykoz,"Riva, Beykoz, İstanbul",41.2210,29.2405,120,medium,00:00-23:59,
+Anadolu Feneri,scenic,Beykoz,"Anadolu Feneri, Beykoz, İstanbul",41.2350,29.1150,90,low,00:00-23:59,
+Rumeli Feneri,scenic,Sarıyer,"Rumeli Feneri, Sarıyer, İstanbul",41.2355,29.1090,90,low,00:00-23:59,
+Beykoz Korusu,nature,Beykoz,"Beykoz, İstanbul",41.1305,29.0956,90,low,00:00-23:59,
+Mihrimah Sultan Camii (Üsküdar),historical,Üsküdar,"Mimar Sinan, Üsküdar, İstanbul",41.0256,29.0150,45,low,09:00-18:00,
+Selimiye Camii (Üsküdar),historical,Üsküdar,"Selimiye, Üsküdar, İstanbul",41.0057,29.0178,45,low,09:00-18:00,
+Karaköy Sahili,scenic,Beyoğlu,"Karaköy, Beyoğlu, İstanbul",41.0245,28.9770,60,low,00:00-23:59,
+Moda Parkı,nature,Kadıköy,"Moda, Kadıköy, İstanbul",40.9833,29.0244,60,low,00:00-23:59,
+Yoğurtçu Parkı,nature,Kadıköy,"Osmanağa, Kadıköy, İstanbul",40.9892,29.0345,60,low,00:00-23:59,
+Kalamış Marina,scenic,Kadıköy,"Kalamış, Kadıköy, İstanbul",40.9725,29.0440,60,medium,00:00-23:59,
