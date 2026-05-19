@@ -1,39 +1,48 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import ScreenContainer from '@/components/ui/ScreenContainer';
 import SectionTitle from '@/components/ui/SectionTitle';
 import { theme } from '@/constants/theme';
+import { Ionicons } from '@expo/vector-icons';
+import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 function ExploreCard({
   title,
   subtitle,
   tag,
+  imageUrl,
 }: {
   title: string;
   subtitle: string;
   tag: string;
+  imageUrl: string;
 }) {
   return (
     <View style={styles.routeCard}>
-      <View style={styles.routeCardTop}>
-        <Text style={styles.routeTag}>{tag}</Text>
-        <View style={styles.ratingRow}>
-          <Ionicons name="star" size={14} color={theme.colors.accent} />
-          <Text style={styles.ratingText}>4.8</Text>
+      <Image
+        source={{ uri: imageUrl }}
+        style={styles.routeImage}
+        resizeMode="cover"
+      />
+      <View style={styles.routeContent}>
+        <View style={styles.routeCardTop}>
+          <Text style={styles.routeTag}>{tag}</Text>
+          <View style={styles.ratingRow}>
+            <Ionicons name="star" size={14} color={theme.colors.accent} />
+            <Text style={styles.ratingText}>4.8</Text>
+          </View>
         </View>
-      </View>
 
-      <Text style={styles.routeTitle}>{title}</Text>
-      <Text style={styles.routeSubtitle}>{subtitle}</Text>
+        <Text style={styles.routeTitle}>{title}</Text>
+        <Text style={styles.routeSubtitle}>{subtitle}</Text>
 
-      <View style={styles.metaRow}>
-        <View style={styles.metaItem}>
-          <Ionicons name="time-outline" size={14} color={theme.colors.textSecondary} />
-          <Text style={styles.metaText}>6 hours</Text>
-        </View>
-        <View style={styles.metaItem}>
-          <Ionicons name="copy-outline" size={14} color={theme.colors.textSecondary} />
-          <Text style={styles.metaText}>Duplicate</Text>
+        <View style={styles.metaRow}>
+          <View style={styles.metaItem}>
+            <Ionicons name="time-outline" size={14} color={theme.colors.textSecondary} />
+            <Text style={styles.metaText}>6 hours</Text>
+          </View>
+          <View style={styles.metaItem}>
+            <Ionicons name="copy-outline" size={14} color={theme.colors.textSecondary} />
+            <Text style={styles.metaText}>Duplicate</Text>
+          </View>
         </View>
       </View>
     </View>
@@ -58,16 +67,19 @@ export default function ExploreScreen() {
             title="Historic Peninsula in One Day"
             subtitle="Culture-heavy route with iconic stops and manageable travel flow."
             tag="Culture"
+            imageUrl="https://images.unsplash.com/photo-1524231757912-21f4fe3a7200?q=80&w=1200&auto=format&fit=crop"
           />
           <ExploreCard
             title="Kadıköy Food & Coffee Route"
             subtitle="Relaxed day plan focused on local food, cafés, and compact movement."
             tag="Food"
+            imageUrl="https://images.unsplash.com/photo-1541432901042-2d8bd64b4a9b?q=80&w=1200&auto=format&fit=crop"
           />
           <ExploreCard
             title="Rainy-Day Indoor Art Plan"
             subtitle="Museum and gallery route adapted for indoor comfort."
             tag="Indoor"
+            imageUrl="https://images.unsplash.com/photo-1519677100203-a0e668c92439?q=80&w=1200&auto=format&fit=crop"
           />
         </ScrollView>
 
@@ -108,8 +120,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.border,
     borderRadius: theme.radius.xl,
-    padding: theme.spacing.lg,
+    overflow: 'hidden',
     marginRight: 14,
+  },
+  routeImage: {
+    width: '100%',
+    height: 160,
+  },
+  routeContent: {
+    padding: theme.spacing.lg,
   },
   routeCardTop: {
     flexDirection: 'row',

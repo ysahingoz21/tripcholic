@@ -1,5 +1,5 @@
-import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Image, StyleSheet, Text, View } from 'react-native';
 import { theme } from '../../constants/theme';
 
 type Props = {
@@ -7,6 +7,7 @@ type Props = {
   title: string;
   subtitle: string;
   icon?: keyof typeof Ionicons.glyphMap;
+  imageUrl?: string;
 };
 
 export default function TimelineItem({
@@ -14,6 +15,7 @@ export default function TimelineItem({
   title,
   subtitle,
   icon = 'location',
+  imageUrl,
 }: Props) {
   return (
     <View style={styles.row}>
@@ -29,6 +31,14 @@ export default function TimelineItem({
       </View>
 
       <View style={styles.card}>
+        {imageUrl ? (
+          <Image
+            source={{ uri: imageUrl }}
+            style={styles.poiImage}
+            resizeMode="cover"
+          />
+        ) : null}
+
         <Text style={styles.title}>{title}</Text>
         <Text style={styles.subtitle}>{subtitle}</Text>
       </View>
@@ -77,7 +87,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.border,
     borderRadius: theme.radius.lg,
+    overflow: 'hidden',
     padding: theme.spacing.md,
+  },
+  poiImage: {
+    width: '100%',
+    height: 140,
+    borderRadius: theme.radius.md,
+    marginBottom: theme.spacing.md,
   },
   title: {
     fontSize: 16,

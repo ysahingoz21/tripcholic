@@ -152,6 +152,10 @@ export default function ResultsScreen() {
               title={stop.title}
               subtitle={`${stop.poi.category} • ${stop.departureTime} departure • ${stop.estimatedCostTl} TL`}
               icon="location"
+              imageUrl={
+                (stop.poi as { imageUrl?: string; image_url?: string }).imageUrl ??
+                (stop.poi as { imageUrl?: string; image_url?: string }).image_url
+              }
             />
           ))
         ) : (
@@ -161,6 +165,23 @@ export default function ResultsScreen() {
             </Text>
           </View>
         )}
+
+        <SectionTitle
+          title="Stop Details"
+          subtitle="POI metadata returned by the backend for each persisted stop."
+        />
+
+        {stops.map((stop) => (
+          <View key={`detail-${stop.id}`} style={styles.stopDetailCard}>
+            <TimelineItem
+              time=""
+              title={stop.title}
+              subtitle={`${stop.poi.category} • ${stop.poi.address ?? 'Location unavailable'} • ${stop.poi.openingHours?.open ?? '00:00'}-${stop.poi.openingHours?.close ?? '23:59'}`}
+              icon="sparkles"
+              imageUrl={stop.poi.imageUrl ?? undefined}
+            />
+          </View>
+        ))}
 
         <SectionTitle
           title="Trip Settings"
@@ -255,6 +276,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 22,
     color: theme.colors.textSecondary,
+  },
+  stopDetailCard: {
+    marginBottom: theme.spacing.lg,
   },
   buttonGroup: {
     marginBottom: theme.spacing.xl,
