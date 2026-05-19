@@ -1,7 +1,7 @@
-import { StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { theme } from '../../constants/theme';
 import Artwork from '@/components/ui/Artwork';
+import { Ionicons } from '@expo/vector-icons';
+import { StyleSheet, Text, View } from 'react-native';
+import { theme } from '../../constants/theme';
 
 type Props = {
   time: string;
@@ -88,6 +88,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.border,
     borderRadius: theme.radius.lg,
+    overflow: 'hidden',
     padding: theme.spacing.md,
     flexDirection: 'row',
     alignItems: 'center',

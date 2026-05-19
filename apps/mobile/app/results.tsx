@@ -1,3 +1,16 @@
+import { getSortedTripStops } from '@/components/trip/tripMapUtils';
+import Artwork from '@/components/ui/Artwork';
+import { theme } from '@/constants/theme';
+import { font } from '@/constants/typography';
+import { useAuth } from '@/context/AuthContext';
+import { getTrip, type TripDetailResponse } from '@/services/trips';
+import {
+  getIstanbulWeather,
+  type WeatherSummary,
+} from '@/services/weather';
+import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -7,23 +20,10 @@ import {
   Text,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
-import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   SafeAreaView,
   useSafeAreaInsets,
 } from 'react-native-safe-area-context';
-import {
-  getIstanbulWeather,
-  type WeatherSummary,
-} from '@/services/weather';
-import Artwork from '@/components/ui/Artwork';
-import { getSortedTripStops } from '@/components/trip/tripMapUtils';
-import { theme } from '@/constants/theme';
-import { font } from '@/constants/typography';
-import { useAuth } from '@/context/AuthContext';
-import { getTrip, type TripDetailResponse } from '@/services/trips';
 import TripStopsMap from '../components/trip/TripStopsMap';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -531,7 +531,7 @@ export default function ResultsScreen() {
       </Text>
     </View>
   </View>
-) : null}
+  ) : null}
       
         {/* 4 ── Categories ────────────────────────────────────────────────── */}
         {categories.length > 0 && (

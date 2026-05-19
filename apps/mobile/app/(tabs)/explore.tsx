@@ -1,17 +1,3 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import ExploreTripCard from '@/components/discovery/ExploreTripCard';
 import InlineSwipePanel from '@/components/discovery/InlineSwipePanel';
 import {
@@ -20,7 +6,7 @@ import {
   type ExplorePromptId,
 } from '@/constants/explorePrompts';
 import { theme } from '@/constants/theme';
-import { type, font } from '@/constants/typography';
+import { font, type } from '@/constants/typography';
 import { useAuth } from '@/context/AuthContext';
 import {
   getForYouPublicTrips,
@@ -35,6 +21,20 @@ import {
   type ExploreTripsResponse,
   type ExploreWeather,
 } from '@/services/trips';
+import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const H_PAD = 20;
 
