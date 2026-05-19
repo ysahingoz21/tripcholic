@@ -1,5 +1,6 @@
+import Artwork from '@/components/ui/Artwork';
 import { Ionicons } from '@expo/vector-icons';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { theme } from '../../constants/theme';
 
 type Props = {
@@ -7,7 +8,7 @@ type Props = {
   title: string;
   subtitle: string;
   icon?: keyof typeof Ionicons.glyphMap;
-  imageUrl?: string;
+  imageUrl?: string | null;
 };
 
 export default function TimelineItem({
@@ -31,16 +32,16 @@ export default function TimelineItem({
       </View>
 
       <View style={styles.card}>
-        {imageUrl ? (
-          <Image
-            source={{ uri: imageUrl }}
-            style={styles.poiImage}
-            resizeMode="cover"
-          />
-        ) : null}
-
-        <Text style={styles.title}>{title}</Text>
-        <Text style={styles.subtitle}>{subtitle}</Text>
+        <Artwork
+          imageUrl={imageUrl}
+          kind="poi"
+          variant="thumbnail"
+          label={title}
+        />
+        <View style={styles.textContent}>
+          <Text style={styles.title}>{title}</Text>
+          <Text style={styles.subtitle}>{subtitle}</Text>
+        </View>
       </View>
     </View>
   );
@@ -89,12 +90,12 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.lg,
     overflow: 'hidden',
     padding: theme.spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  poiImage: {
-    width: '100%',
-    height: 140,
-    borderRadius: theme.radius.md,
-    marginBottom: theme.spacing.md,
+  textContent: {
+    flex: 1,
+    marginLeft: theme.spacing.md,
   },
   title: {
     fontSize: 16,

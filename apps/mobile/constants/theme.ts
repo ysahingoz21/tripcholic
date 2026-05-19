@@ -24,3 +24,14 @@ export const theme = {
     xl: 24,
   },
 };
+
+export const Colors = {
+  light: {
+    text: theme.colors.text,
+    background: theme.colors.background,
+  },
+  dark: {
+    text: theme.colors.white,
+    background: theme.colors.primaryDark,
+  },
+} as const;

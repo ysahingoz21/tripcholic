@@ -1,15 +1,11 @@
 import { useState } from 'react';
-import {
-  Alert,
-  View,
-  Text,
-  TextInput,
-  Pressable,
-  StyleSheet,
-  ImageBackground,
-} from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
+import AuthScreenLayout from '@/components/ui/AuthScreenLayout';
+import AuthInput from '@/components/ui/AuthInput';
+import { font, type } from '@/constants/typography';
+import { theme } from '@/constants/theme';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -37,136 +33,124 @@ export default function LoginScreen() {
   };
 
   return (
-    <ImageBackground
-      source={require('../assets/images/login-bg.jpg')}
-      style={styles.background}
-      resizeMode="cover"
-    >
-      <View style={styles.overlay}>
-        <View style={styles.card}>
-          <Text style={styles.title}>Login</Text>
-          <Text style={styles.subtitle}>
-            Sign in to continue to Tripcholic
-          </Text>
+    <AuthScreenLayout tagline="Your journey through the soul of Istanbul begins here.">
+      <Text style={styles.title}>Welcome back</Text>
+      <Text style={styles.subtitle}>Sign in to continue to Tripcholic</Text>
 
-          <TextInput
-            style={styles.input}
-            placeholder="Email"
-            placeholderTextColor="#000"
-            value={email}
-            onChangeText={setEmail}
-            autoCapitalize="none"
-            keyboardType="email-address"
-          />
-
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            placeholderTextColor="#000"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-          />
-
-          <Pressable
-            style={[styles.button, isSubmitting && styles.buttonDisabled]}
-            onPress={handleLogin}
-            disabled={isSubmitting}
-          >
-            <Text style={styles.buttonText}>
-              {isSubmitting ? 'Logging In...' : 'Sign In'}
-            </Text>
-          </Pressable>
-
-          <View style={styles.footerRow}>
-            <Text style={styles.footerText}>
-              Don’t have an account?{' '}
-            </Text>
-            <Link href="/register" asChild>
-              <Pressable>
-                <Text style={styles.linkText}>Create Account</Text>
-              </Pressable>
-            </Link>
-          </View>
-        </View>
+      <View style={styles.form}>
+        <AuthInput
+          icon="mail-outline"
+          placeholder="Email"
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          returnKeyType="next"
+        />
+        <AuthInput
+          icon="lock-closed-outline"
+          placeholder="Password"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+          returnKeyType="done"
+          onSubmitEditing={handleLogin}
+        />
       </View>
-    </ImageBackground>
+
+      {/* Forgot password — visual only; no backend support yet */}
+      <Pressable
+        style={styles.forgotRow}
+        onPress={() =>
+          Alert.alert('Coming soon', 'Password reset will be available in a future update.')
+        }
+      >
+        <Text style={styles.forgotText}>Forgot password?</Text>
+      </Pressable>
+
+      <Pressable
+        style={[styles.button, isSubmitting && styles.buttonDisabled]}
+        onPress={handleLogin}
+        disabled={isSubmitting}
+      >
+        <Text style={styles.buttonText}>
+          {isSubmitting ? 'Signing in…' : 'Sign In'}
+        </Text>
+      </Pressable>
+
+      <View style={styles.footerRow}>
+        <Text style={styles.footerText}>Don't have an account? </Text>
+        <Link href="/register" asChild>
+          <Pressable>
+            <Text style={styles.linkText}>Create Account</Text>
+          </Pressable>
+        </Link>
+      </View>
+    </AuthScreenLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  background: {
-    flex: 1,
-  },
-
-  // 🔥 Arka planı hafif karartıyoruz (çok önemli)
-  overlay: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: 24,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-  },
-
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 24,
-  },
-
   title: {
-    fontSize: 28,
-    fontWeight: '800',
-    marginBottom: 8,
-    color: '#111827',
+    ...type.headlineLg,
+    fontSize: 26,
+    color: theme.colors.primaryDark,
+    marginBottom: 4,
+    letterSpacing: -0.3,
   },
-
   subtitle: {
-    fontSize: 14,
-    color: '#6B7280',
+    ...type.bodySm,
+    color: theme.colors.textSecondary,
     marginBottom: 24,
   },
-
-  input: {
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    marginBottom: 12,
-    backgroundColor: '#FFFFFF',
+  form: {
+    marginBottom: 4,
   },
-
+  forgotRow: {
+    alignSelf: 'flex-end',
+    marginBottom: 20,
+    paddingVertical: 2,
+  },
+  forgotText: {
+    fontFamily: font.medium,
+    fontSize: 13,
+    lineHeight: 18,
+    color: theme.colors.primary,
+  },
   button: {
-    backgroundColor: '#111827',
-    paddingVertical: 14,
-    borderRadius: 12,
+    backgroundColor: theme.colors.primary,
+    paddingVertical: 15,
+    borderRadius: theme.radius.lg,
     alignItems: 'center',
-    marginTop: 4,
+    flexDirection: 'row',
+    justifyContent: 'center',
   },
   buttonDisabled: {
     opacity: 0.6,
   },
-
   buttonText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 16,
+    fontFamily: font.semiBold,
+    fontSize: 15,
+    lineHeight: 22,
+    color: theme.colors.surface,
+    letterSpacing: 0.2,
   },
-
   footerRow: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginTop: 18,
+    marginTop: 20,
+    flexWrap: 'wrap',
   },
-
   footerText: {
-    color: '#6B7280',
+    fontFamily: font.regular,
     fontSize: 14,
+    lineHeight: 21,
+    color: theme.colors.textSecondary,
   },
-
   linkText: {
-    color: '#2563EB',
+    fontFamily: font.bold,
     fontSize: 14,
-    fontWeight: '700',
+    lineHeight: 21,
+    color: theme.colors.primary,
   },
 });

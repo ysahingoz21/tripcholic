@@ -1,4 +1,4 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Logger, Post } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBody,
@@ -16,6 +16,8 @@ import { LoginResponseDto, RegisterResponseDto } from './dto/auth-response.dto';
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
+  private readonly logger = new Logger(AuthController.name);
+
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
@@ -32,6 +34,9 @@ export class AuthController {
   @ApiBadRequestResponse({ description: 'Validation failed.' })
   @ApiConflictResponse({ description: 'An account with this email already exists.' })
   register(@Body() body: RegisterDto) {
+    this.logger.log(
+      `[AUTH_DEBUG] register controller entry email=${body.email} passwordLength=${body.password?.length ?? 0}`,
+    );
     return this.authService.register(body);
   }
 
@@ -49,6 +54,9 @@ export class AuthController {
   @ApiBadRequestResponse({ description: 'Validation failed.' })
   @ApiUnauthorizedResponse({ description: 'Invalid credentials.' })
   login(@Body() body: LoginDto) {
+    this.logger.log(
+      `[AUTH_DEBUG] login controller entry email=${body.email} passwordLength=${body.password?.length ?? 0}`,
+    );
     return this.authService.login(body);
   }
 }

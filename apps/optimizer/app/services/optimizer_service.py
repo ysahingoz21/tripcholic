@@ -6,17 +6,53 @@ from app.schemas.optimize import (
     DailyRoute,
     OptimizeRequest,
     OptimizeResponse,
+    OptimizeStatus,
+    RoutingSource,
     ScheduledPOI,
+    SolverStatus,
 )
+from app.schemas.common import POICategory
 from app.schemas.poi import POI
 from app.services.routing_service import build_travel_matrix
 
 ALGORITHM_VERSION = "ortools_cpsat_v1"
 
+# Categories treated as outdoor when POI.is_outdoor is not explicitly set.
+_OUTDOOR_CATEGORIES = {POICategory.SCENIC, POICategory.NATURE}
+
+# Curated overrides for POIs the category heuristic gets wrong.
+# Matched by exact poi.name. Add or remove entries as the dataset evolves.
+_OUTDOOR_NAME_OVERRIDES: set[str] = {
+    "Rumeli Fortress",   # historical → open-air castle ruins
+    "Istiklal Street",   # shopping → pedestrian street
+    "Miniaturk",         # entertainment → open-air miniature park
+    "Balat",             # neighborhood → walking tour
+    "Karakoy",           # neighborhood → walking tour
+    "Moda",              # neighborhood → walking tour
+    "Cihangir",          # neighborhood → walking tour
+    "Bebek",             # neighborhood → walking tour
+}
+_INDOOR_NAME_OVERRIDES: set[str] = set()
+
+
+def _is_outdoor(poi: POI) -> bool:
+    """
+    Authoritative POI.is_outdoor flag if set; otherwise consult curated name
+    overrides; otherwise fall back to a category heuristic.
+    """
+    if poi.is_outdoor is not None:
+        return poi.is_outdoor
+    if poi.name in _OUTDOOR_NAME_OVERRIDES:
+        return True
+    if poi.name in _INDOOR_NAME_OVERRIDES:
+        return False
+    return poi.category in _OUTDOOR_CATEGORIES
+
 # OR-Tools works with integers — we scale minutes to this resolution.
 _TIME_SCALE = 1          # 1 unit = 1 minute (no scaling needed here)
 _COST_SCALE = 100        # 1 unit = 0.01 TL  (keeps integers manageable)
-_SOLVER_TIMEOUT_SEC = 8  # wall-clock limit; falls back to greedy on timeout
+_SOLVER_TIMEOUT_SEC = 3  # wall-clock limit; INFEASIBLE on timeout (no fallback)
+_CATEGORY_COVERAGE_BONUS = 10_000
 
 
 def generate_route(request: OptimizeRequest) -> OptimizeResponse:
@@ -29,30 +65,72 @@ def generate_route(request: OptimizeRequest) -> OptimizeResponse:
       - Objective: maximise a weighted score (preference match + visit value)
         subject to time-window, budget, walking-distance, and max-stop constraints.
 
-    Falls back to the greedy heuristic if the solver does not find a feasible
-    solution within _SOLVER_TIMEOUT_SEC seconds.
+    Returns INFEASIBLE if CP-SAT cannot find a feasible solution within
+    _SOLVER_TIMEOUT_SEC seconds. No greedy fallback — the user is asked to
+    relax constraints rather than receiving a lower-quality route.
     """
     prefs = request.preferences
 
     start_min = _to_minutes(prefs.time_start)
-    end_min   = _to_minutes(prefs.time_end)
+    end_min   = _resolve_end_minute(start_min, prefs.time_end)
     budget_units = int(prefs.budget_tl * _COST_SCALE)
     max_pois  = prefs.max_pois or 6
 
     # ── 1. Use candidate POIs as-is — backend already filtered by DB query ───
     candidates = list(request.candidate_pois)
+    diagnostics: list[str] = []
 
     if not candidates:
-        return _empty_response(request)
+        diagnostics.append("Request contained no candidate POIs.")
+        return _empty_response(
+            request,
+            status=OptimizeStatus.EMPTY_CANDIDATES,
+            solver_status=SolverStatus.NOT_RUN,
+            routing_source=RoutingSource.NONE,
+            diagnostics=diagnostics,
+        )
+
+    # ── 1b. Weather filter — drop outdoor POIs on rainy days ─────────────────
+    if prefs.weather == "rainy":
+        outdoor = [p for p in candidates if _is_outdoor(p)]
+        indoor = [p for p in candidates if not _is_outdoor(p)]
+        if outdoor and indoor:
+            diagnostics.append(
+                f"Weather is rainy — excluded {len(outdoor)} outdoor candidate(s) "
+                f"({', '.join(p.name for p in outdoor)})."
+            )
+            candidates = indoor
+        elif outdoor and not indoor:
+            diagnostics.append(
+                f"Weather is rainy but all {len(outdoor)} candidates are outdoor; "
+                "weather filter bypassed to keep a route possible."
+            )
 
     # ── 2. Travel-time matrix ────────────────────────────────────────────────
-    matrix = build_travel_matrix(candidates)
+    matrix, routing_source_str = build_travel_matrix(candidates)
+    routing_source = RoutingSource(routing_source_str)
+    if routing_source == RoutingSource.HAVERSINE:
+        diagnostics.append(
+            "OSRM unavailable; using Haversine straight-line distance at 5 km/h "
+            "(travel times may be optimistic)."
+        )
 
-    # ── 3. Score each candidate ──────────────────────────────────────────────
-    scores = _compute_scores(candidates, prefs.categories)
+    # ── 3. Pre-flight constraint conflict checks ─────────────────────────────
+    diagnostics.extend(_preflight_diagnostics(
+        candidates=candidates,
+        matrix=matrix,
+        start_min=start_min,
+        end_min=end_min,
+        budget_tl=prefs.budget_tl,
+        walking_tolerance_km=prefs.walking_tolerance_km,
+        preferred_categories=prefs.categories,
+    ))
+
+    # ── 4. Score each candidate ──────────────────────────────────────────────
+    scores = _compute_scores(candidates, prefs.categories, request.destination_anchor)
 
     # ── 4. Solve with OR-Tools CP-SAT ────────────────────────────────────────
-    selected_indices, start_times = _solve_cpsat(
+    selected_indices, start_times, solver_status = _solve_cpsat(
         candidates=candidates,
         matrix=matrix,
         scores=scores,
@@ -61,16 +139,27 @@ def generate_route(request: OptimizeRequest) -> OptimizeResponse:
         budget_units=budget_units,
         max_pois=max_pois,
         walking_tolerance_km=prefs.walking_tolerance_km,
+        preferred_categories=prefs.categories,
     )
 
-    # ── 5. Fallback to greedy if CP-SAT found nothing ────────────────────────
+    # ── 5. No feasible route → return INFEASIBLE (no fallback) ───────────────
     if not selected_indices:
-        return _greedy_fallback(
-            candidates=candidates,
-            matrix=matrix,
-            request=request,
-            start_min=start_min,
-            end_min=end_min,
+        if solver_status == SolverStatus.INFEASIBLE:
+            diagnostics.append(
+                "CP-SAT reported the problem infeasible under the given constraints. "
+                "Try relaxing budget, time window, walking tolerance, or max_pois."
+            )
+        else:
+            diagnostics.append(
+                f"CP-SAT did not return a solution within {_SOLVER_TIMEOUT_SEC}s. "
+                "The problem may be over-constrained — try relaxing constraints."
+            )
+        return _empty_response(
+            request,
+            status=OptimizeStatus.INFEASIBLE,
+            solver_status=solver_status,
+            routing_source=routing_source,
+            diagnostics=diagnostics,
         )
 
     # ── 6. Build response ────────────────────────────────────────────────────
@@ -80,6 +169,9 @@ def generate_route(request: OptimizeRequest) -> OptimizeResponse:
         selected_indices=selected_indices,
         start_times=start_times,
         matrix=matrix,
+        solver_status=solver_status,
+        routing_source=routing_source,
+        diagnostics=diagnostics,
     )
 
 
@@ -94,7 +186,8 @@ def _solve_cpsat(
     budget_units: int,
     max_pois: int,
     walking_tolerance_km: float,
-) -> tuple[list[int], dict[int, int]]:
+    preferred_categories: list,
+) -> tuple[list[int], dict[int, int], SolverStatus]:
     """
     Returns (ordered list of selected indices, {index: arrival_minute}).
 
@@ -118,11 +211,11 @@ def _solve_cpsat(
       C4  Travel time: arrival[j] >= arrival[i] + dur[i] + travel[i][j] if arc[i][j].
       C5  Walking tolerance: arcs exceeding max_travel_min are forced off.
 
-    Objective: maximise sum(score[i] * x[i]).
+    Objective: maximise category coverage first, then sum(score[i] * x[i]).
     """
     n = len(candidates)
     if n == 0:
-        return [], {}
+        return [], {}, SolverStatus.NOT_RUN
 
     model = cp_model.CpModel()
     depot = n
@@ -164,8 +257,12 @@ def _solve_cpsat(
     # ── C3: Time windows ──────────────────────────────────────────────────────
     for i in range(n):
         poi   = candidates[i]
-        open_i  = _to_minutes(poi.opening_hours.open)
-        close_i = _to_minutes(poi.opening_hours.close)
+        open_i, close_i = _opening_window_for_trip(
+            poi.opening_hours.open,
+            poi.opening_hours.close,
+            start_min,
+            end_min,
+        )
         dur_i   = poi.visit_duration_minutes
         not_skip = skip[i].negated()
         model.add(arrival[i] >= max(open_i, start_min)).only_enforce_if(not_skip)
@@ -187,8 +284,33 @@ def _solve_cpsat(
                     arrival[j] >= arrival[i] + dur_i + travel_ij
                 ).only_enforce_if(arc_ij)
 
+    # ── Soft category coverage ────────────────────────────────────────────────
+    # Selected categories are user intent, so covering more of them should beat
+    # picking another same-category POI with a slightly better individual score.
+    # This remains soft: if time/budget/walking constraints make a category
+    # impossible, CP-SAT can still return the best feasible partial route.
+    cover_vars: list[cp_model.IntVar] = []
+    requested_categories = list(dict.fromkeys(preferred_categories or []))
+    for category in requested_categories:
+        category_indices = [
+            i for i, poi in enumerate(candidates) if poi.category == category
+        ]
+        if not category_indices:
+            continue
+
+        category_name = category.value if hasattr(category, "value") else str(category)
+        safe_name = category_name.replace(".", "_").replace("-", "_")
+        covered = model.new_bool_var(f"cover_{safe_name}")
+        selected_in_category = sum(skip[i].negated() for i in category_indices)
+        model.add(selected_in_category >= covered)
+        model.add(selected_in_category <= len(category_indices) * covered)
+        cover_vars.append(covered)
+
     # ── Objective ─────────────────────────────────────────────────────────────
-    model.maximize(sum(scores[i] * skip[i].negated() for i in range(n)))
+    model.maximize(
+        sum(_CATEGORY_COVERAGE_BONUS * covered for covered in cover_vars)
+        + sum(scores[i] * skip[i].negated() for i in range(n))
+    )
 
     # ── Solve ─────────────────────────────────────────────────────────────────
     solver = cp_model.CpSolver()
@@ -196,16 +318,21 @@ def _solve_cpsat(
     solver.parameters.num_workers = 1  # single-threaded avoids parallel overhead
     status = solver.solve(model)
 
+    if status == cp_model.INFEASIBLE:
+        return [], {}, SolverStatus.INFEASIBLE
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        return [], {}
+        # UNKNOWN / MODEL_INVALID — treat as a timeout-style outcome.
+        return [], {}, SolverStatus.TIMEOUT
 
     selected = [i for i in range(n) if solver.boolean_value(skip[i].negated())]
     if not selected:
-        return [], {}
+        # Solver returned a trivial empty cycle; treat as infeasible for our purposes.
+        return [], {}, SolverStatus.INFEASIBLE
 
     ordered = _extract_order(solver, arc, depot, n)
     arrival_minutes = {i: solver.value(arrival[i]) for i in ordered}
-    return ordered, arrival_minutes
+    solver_status = SolverStatus.OPTIMAL if status == cp_model.OPTIMAL else SolverStatus.FEASIBLE
+    return ordered, arrival_minutes, solver_status
 
 
 def _extract_order(
@@ -231,11 +358,111 @@ def _extract_order(
     return order
 
 
+# ── Pre-flight diagnostics ────────────────────────────────────────────────────
+
+def _preflight_diagnostics(
+    candidates: list[POI],
+    matrix: list[list[float]],
+    start_min: int,
+    end_min: int,
+    budget_tl: float,
+    walking_tolerance_km: float,
+    preferred_categories: list,
+) -> list[str]:
+    """
+    Cheap pre-solve sanity checks. Advisory only — never short-circuits CP-SAT.
+
+    Detects common constraint conflicts and emits human-readable diagnostics that
+    the mobile app can surface to explain partial or empty routes.
+    """
+    notes: list[str] = []
+    if not candidates:
+        return notes
+
+    # 1. Budget vs cheapest POI
+    cheapest = min(candidates, key=lambda p: p.budget.min_tl)
+    if cheapest.budget.min_tl > budget_tl:
+        notes.append(
+            f"Budget {budget_tl:.0f} TL is below the cheapest candidate "
+            f"'{cheapest.name}' at {cheapest.budget.min_tl:.0f} TL — "
+            "no POI fits the current budget."
+        )
+
+    # 2. Time window vs shortest visit
+    window_min = end_min - start_min
+    shortest = min(candidates, key=lambda p: p.visit_duration_minutes)
+    if window_min < shortest.visit_duration_minutes:
+        notes.append(
+            f"Time window is {window_min} min but the shortest visit "
+            f"('{shortest.name}', {shortest.visit_duration_minutes} min) "
+            "does not fit — widen time_start/time_end."
+        )
+
+    # 3. Opening-hours overlap with [start, end]
+    overlapping = 0
+    for p in candidates:
+        open_min, close_min = _opening_window_for_trip(
+            p.opening_hours.open,
+            p.opening_hours.close,
+            start_min,
+            end_min,
+        )
+        if open_min < end_min and close_min > start_min:
+            overlapping += 1
+    if overlapping == 0:
+        notes.append(
+            "No candidate POI is open during the requested time window — "
+            "consider shifting time_start/time_end."
+        )
+    elif overlapping < len(candidates) / 2:
+        notes.append(
+            f"Only {overlapping} of {len(candidates)} candidates overlap the "
+            "requested time window — consider widening it for more options."
+        )
+
+    # 4. Walking tolerance vs nearest inter-POI travel time
+    if len(candidates) >= 2:
+        max_travel_min = walking_tolerance_km / _WALK_SPEED_KMH * 60
+        nearest = min(
+            matrix[i][j]
+            for i in range(len(candidates))
+            for j in range(len(candidates))
+            if i != j
+        )
+        if nearest > max_travel_min:
+            nearest_km = nearest / 60 * _WALK_SPEED_KMH
+            notes.append(
+                f"Walking tolerance {walking_tolerance_km:.1f} km is below the "
+                f"closest pair distance ({nearest_km:.1f} km) — solver may be "
+                "forced to a single stop."
+            )
+
+    # 5. Category mismatch
+    if preferred_categories:
+        preferred_set = set(preferred_categories)
+        if not any(p.category in preferred_set for p in candidates):
+            notes.append(
+                "No candidate POI matches the requested categories — scoring will "
+                "treat all candidates equally."
+            )
+
+    return notes
+
+
 # ── Score computation ─────────────────────────────────────────────────────────
 
-def _compute_scores(candidates: list[POI], preferred_categories: list) -> list[int]:
+def _compute_scores(
+    candidates: list[POI],
+    preferred_categories: list,
+    destination_anchor=None,
+) -> list[int]:
     """
-    Score = 100 * (category match bonus) + normalised visit_duration bonus.
+    Score = category match bonus + visit_duration bonus + proximity bonus.
+
+    Proximity bonus rewards POIs geographically close to the user's destination
+    anchor (district centroid). Acts as a tie-breaker between same-category POIs
+    so the route stays anchored to the user's chosen area even when the backend
+    had to pull in nearby out-of-district candidates.
 
     Keeps integers for CP-SAT while still differentiating POIs.
     """
@@ -245,108 +472,66 @@ def _compute_scores(candidates: list[POI], preferred_categories: list) -> list[i
         score = 200 if poi.category in preferred_set else 100
         # Small bonus for longer/richer experiences (max +50)
         duration_bonus = min(50, poi.visit_duration_minutes // 6)
-        scores.append(score + duration_bonus)
+        proximity_bonus = _proximity_bonus(poi, destination_anchor)
+        scores.append(score + duration_bonus + proximity_bonus)
     return scores
 
 
-# ── Greedy fallback ───────────────────────────────────────────────────────────
+def _proximity_bonus(poi: POI, anchor) -> int:
+    """
+    Anchored proximity scoring — dominates category match so the route stays in
+    the user's chosen area even when a different-category POI sits closer than
+    a same-category POI across the city.
 
-_WALK_SPEED_KMH = 5.0
+    Tiers (bonus must beat the +200 category-match bonus at close range):
+      +400  ≤ 1.5 km  — inside the destination
+      +200  ≤ 3 km    — adjacent area
+      +80   ≤ 6 km    — short transit, still nearby
+      0     beyond    — across the city, no bonus
 
-
-def _greedy_fallback(
-    candidates: list[POI],
-    matrix: list[list[float]],
-    request: OptimizeRequest,
-    start_min: int,
-    end_min: int,
-) -> OptimizeResponse:
-    """Original nearest-feasible greedy, used when CP-SAT times out."""
-    prefs = request.preferences
-    max_pois = prefs.max_pois or 6
-
-    stops: list[ScheduledPOI] = []
-    total_cost = 0.0
-    current_minutes = start_min
-    remaining_budget = prefs.budget_tl
-    visited: set[int] = set()
-    current_idx: int | None = None
-
-    while len(stops) < max_pois:
-        best_idx = _pick_next_greedy(
-            candidates=candidates,
-            matrix=matrix,
-            current_idx=current_idx,
-            visited=visited,
-            current_minutes=current_minutes,
-            end_minutes=end_min,
-            remaining_budget=remaining_budget,
-            walking_tolerance_km=prefs.walking_tolerance_km,
-        )
-        if best_idx is None:
-            break
-
-        poi = candidates[best_idx]
-        travel_min = 0.0 if current_idx is None else matrix[current_idx][best_idx]
-        earliest_arrival = current_minutes + (0 if current_idx is None else int(travel_min))
-        open_min = _to_minutes(poi.opening_hours.open)
-        arrival_min = max(earliest_arrival, open_min)
-        departure_min = arrival_min + poi.visit_duration_minutes
-        cost = poi.budget.min_tl
-
-        stops.append(ScheduledPOI(
-            poi_id=poi.poi_id,
-            name=poi.name,
-            arrival_time=_fmt(arrival_min),
-            departure_time=_fmt(departure_min),
-            travel_time_to_next_minutes=None,
-            estimated_cost_tl=cost,
-        ))
-
-        total_cost += cost
-        remaining_budget -= cost
-        current_minutes = departure_min
-        visited.add(best_idx)
-        current_idx = best_idx
-
-    _backfill_travel(stops, candidates, matrix)
-
-    if not stops:
-        return _empty_response(request)
-
-    return _finalise_response(request, stops, total_cost, start_min, algorithm="greedy_v1_fallback")
+    No anchor → 0 (no bias applied).
+    """
+    if anchor is None:
+        return 0
+    distance_km = _haversine_km(
+        anchor.lat, anchor.lng, poi.location.lat, poi.location.lng
+    )
+    if distance_km <= 1.5:
+        return 400
+    if distance_km <= 3:
+        return 200
+    if distance_km <= 6:
+        return 80
+    return 0
 
 
-def _pick_next_greedy(
-    candidates, matrix, current_idx, visited, current_minutes, end_minutes,
-    remaining_budget, walking_tolerance_km,
-) -> int | None:
-    best_idx = None
-    best_travel = float("inf")
-    for idx, poi in enumerate(candidates):
-        if idx in visited:
-            continue
-        travel_min = 0.0 if current_idx is None else matrix[current_idx][idx]
-        travel_km = travel_min / 60.0 * _WALK_SPEED_KMH
-        if travel_km > walking_tolerance_km:
-            continue
-        if poi.budget.min_tl > remaining_budget:
-            continue
-        arrival = current_minutes + int(travel_min)
-        departure = arrival + poi.visit_duration_minutes
-        open_min = _to_minutes(poi.opening_hours.open)
-        close_min = _to_minutes(poi.opening_hours.close)
-        if arrival < open_min or arrival >= close_min:
-            continue
-        if departure > end_minutes:
-            continue
-        if travel_min < best_travel:
-            best_travel = travel_min
-            best_idx = idx
-    return best_idx
+def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    import math
+
+    r = 6371.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp = math.radians(lat2 - lat1)
+    dl = math.radians(lng2 - lng1)
+    h = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * r * math.asin(math.sqrt(h))
+
+
+def _format_categories(categories: list) -> str:
+    labels = [
+        category.value if hasattr(category, "value") else str(category)
+        for category in categories
+    ]
+    if len(labels) <= 1:
+        return labels[0] if labels else ""
+    if len(labels) == 2:
+        return f"{labels[0]} and {labels[1]}"
+    return f"{', '.join(labels[:-1])}, and {labels[-1]}"
 
 
 # ── Response builders ─────────────────────────────────────────────────────────
+
+_WALK_SPEED_KMH = 5.0
+
 
 def _build_response(
     request: OptimizeRequest,
@@ -354,6 +539,9 @@ def _build_response(
     selected_indices: list[int],
     start_times: dict[int, int],
     matrix: list[list[float]],
+    solver_status: SolverStatus,
+    routing_source: RoutingSource,
+    diagnostics: list[str],
 ) -> OptimizeResponse:
     stops: list[ScheduledPOI] = []
     total_cost = 0.0
@@ -375,8 +563,57 @@ def _build_response(
 
     _backfill_travel(stops, candidates, matrix)
 
+    requested_max = request.preferences.max_pois or 6
+    status = OptimizeStatus.OK if len(stops) >= requested_max else OptimizeStatus.PARTIAL
+    if status == OptimizeStatus.PARTIAL:
+        diagnostics.append(
+            f"Solver returned {len(stops)} of {requested_max} requested stops — "
+            "no further POI improved the objective without violating a constraint."
+        )
+
+    requested_categories = list(dict.fromkeys(request.preferences.categories or []))
+    candidate_categories = {poi.category for poi in candidates}
+    selected_categories = {candidates[idx].category for idx in selected_indices}
+
+    if len(requested_categories) > requested_max:
+        diagnostics.append(
+            f"User selected {len(requested_categories)} category type(s), but max_pois "
+            f"allows only {requested_max} stop(s); optimizer covered the best feasible subset."
+        )
+
+    unavailable_categories = [
+        category for category in requested_categories if category not in candidate_categories
+    ]
+    if unavailable_categories:
+        diagnostics.append(
+            "No candidate POIs were available for selected category type(s): "
+            f"{_format_categories(unavailable_categories)}."
+        )
+
+    omitted_categories = [
+        category
+        for category in requested_categories
+        if category in candidate_categories and category not in selected_categories
+    ]
+    if omitted_categories:
+        diagnostics.append(
+            "Could not fit selected category type(s) into the final route under "
+            "the current time, budget, walking, and opening-hour constraints: "
+            f"{_format_categories(omitted_categories)}."
+        )
+
     start_min = _to_minutes(request.preferences.time_start)
-    return _finalise_response(request, stops, total_cost, start_min, algorithm=ALGORITHM_VERSION)
+    return _finalise_response(
+        request,
+        stops,
+        total_cost,
+        start_min,
+        algorithm=ALGORITHM_VERSION,
+        status=status,
+        solver_status=solver_status,
+        routing_source=routing_source,
+        diagnostics=diagnostics,
+    )
 
 
 def _backfill_travel(
@@ -404,9 +641,15 @@ def _finalise_response(
     total_cost: float,
     start_min: int,
     algorithm: str,
+    status: OptimizeStatus,
+    solver_status: SolverStatus,
+    routing_source: RoutingSource,
+    diagnostics: list[str],
 ) -> OptimizeResponse:
-    last_dep_h, last_dep_m = map(int, stops[-1].departure_time.split(":"))
-    total_duration = (last_dep_h * 60 + last_dep_m) - start_min
+    last_dep_min = _to_minutes(stops[-1].departure_time)
+    if last_dep_min <= start_min:
+        last_dep_min += 24 * 60
+    total_duration = last_dep_min - start_min
 
     total_travel_min = sum(
         s.travel_time_to_next_minutes for s in stops if s.travel_time_to_next_minutes
@@ -425,6 +668,10 @@ def _finalise_response(
         date=request.date,
         route=route,
         algorithm_used=algorithm,
+        status=status,
+        solver_status=solver_status,
+        routing_source=routing_source,
+        diagnostics=diagnostics,
         generated_at=datetime.now(timezone.utc).isoformat(),
     )
 
@@ -436,13 +683,47 @@ def _to_minutes(hhmm: str) -> int:
     return h * 60 + m
 
 
+def _resolve_end_minute(start_min: int, end_hhmm: str) -> int:
+    end_min = _to_minutes(end_hhmm)
+    if end_min <= start_min:
+        end_min += 24 * 60
+    return end_min
+
+
+def _opening_window_for_trip(
+    open_hhmm: str,
+    close_hhmm: str,
+    trip_start_min: int,
+    trip_end_min: int,
+) -> tuple[int, int]:
+    open_min = _to_minutes(open_hhmm)
+    close_min = _to_minutes(close_hhmm)
+
+    if close_min <= open_min:
+        close_min += 24 * 60
+
+    # If the trip itself crosses midnight, POIs with same-day opening hours may
+    # need to be considered on the next calendar day as well.
+    if trip_end_min > 24 * 60 and close_min <= trip_start_min:
+        open_min += 24 * 60
+        close_min += 24 * 60
+
+    return open_min, close_min
+
+
 def _fmt(total_minutes: int) -> str:
     h = (total_minutes % (24 * 60)) // 60
     m = total_minutes % 60
     return f"{h:02d}:{m:02d}"
 
 
-def _empty_response(request: OptimizeRequest) -> OptimizeResponse:
+def _empty_response(
+    request: OptimizeRequest,
+    status: OptimizeStatus,
+    solver_status: SolverStatus,
+    routing_source: RoutingSource,
+    diagnostics: list[str],
+) -> OptimizeResponse:
     route = DailyRoute(
         route_name=f"Istanbul Day Trip — {request.date}",
         total_distance_km=0.0,
@@ -455,5 +736,9 @@ def _empty_response(request: OptimizeRequest) -> OptimizeResponse:
         date=request.date,
         route=route,
         algorithm_used=ALGORITHM_VERSION,
+        status=status,
+        solver_status=solver_status,
+        routing_source=routing_source,
+        diagnostics=diagnostics,
         generated_at=datetime.now(timezone.utc).isoformat(),
     )

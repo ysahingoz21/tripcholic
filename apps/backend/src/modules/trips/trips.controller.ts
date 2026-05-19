@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -20,6 +21,7 @@ import { type Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { type AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { CreateTripDto } from './dto/create-trip.dto';
+import { ExploreTripsQueryDto } from './dto/explore-trips-query.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
 import { TripsService } from './trips.service';
 
@@ -29,12 +31,19 @@ type AuthenticatedRequest = Request & {
 
 @ApiTags('trips')
 @Controller('trips')
-@UseGuards(JwtAuthGuard)
-@ApiBearerAuth('bearer')
 export class TripsController {
   constructor(private readonly tripsService: TripsService) {}
 
+  @Get('explore')
+  @ApiOperation({ summary: 'List discoverable public trips for Explore' })
+  @ApiOkResponse({ description: 'Explore trip list returned successfully.' })
+  findExplore(@Query() query: ExploreTripsQueryDto) {
+    return this.tripsService.findExploreTrips(query);
+  }
+
   @Post()
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Create a trip' })
   @ApiBody({ type: CreateTripDto })
   @ApiOkResponse({ description: 'Trip created successfully.' })
@@ -43,6 +52,8 @@ export class TripsController {
   }
 
   @Get()
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'List trips' })
   @ApiOkResponse({ description: 'Trip list returned successfully.' })
   findAll(@Req() req: AuthenticatedRequest) {
@@ -50,6 +61,8 @@ export class TripsController {
   }
 
   @Get(':id')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Get a single trip' })
   @ApiOkResponse({ description: 'Trip detail returned successfully.' })
   findOne(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
@@ -57,6 +70,8 @@ export class TripsController {
   }
 
   @Patch(':id')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Update a trip' })
   @ApiBody({ type: UpdateTripDto })
   @ApiOkResponse({ description: 'Trip updated successfully.' })
@@ -69,6 +84,8 @@ export class TripsController {
   }
 
   @Delete(':id')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Delete a trip' })
   @ApiOkResponse({ description: 'Trip deleted successfully.' })
   remove(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
@@ -76,6 +93,8 @@ export class TripsController {
   }
 
   @Post(':id/optimize')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
   @ApiOperation({
     summary: 'Optimize a trip',
     description:

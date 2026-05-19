@@ -28,7 +28,7 @@ const OPTIMIZER_CATEGORY_MAP: Record<string, string[]> = {
   culture: ['historical', 'entertainment', 'neighborhood'],
   history: ['historical'],
   museums: ['entertainment', 'historical'],
-  coffee: ['food', 'neighborhood'],
+  coffee: ['food'],
   nightlife: ['entertainment', 'food'],
 };
 
@@ -71,7 +71,9 @@ export class OptimizerService {
     };
   }
 
-  async callOptimize(request: OptimizerOptimizeRequest): Promise<OptimizerOptimizeResponse> {
+  async callOptimize(
+    request: OptimizerOptimizeRequest,
+  ): Promise<OptimizerOptimizeResponse> {
     return this.request<OptimizerOptimizeResponse>({
       method: 'POST',
       url: `${this.optimizerUrl}/optimize`,
@@ -144,14 +146,22 @@ export class OptimizerService {
   }
 
   private expandCategories(categories: string[]): string[] {
-    return [...new Set(categories.flatMap((category) => OPTIMIZER_CATEGORY_MAP[category] ?? ['historical']))];
+    return [
+      ...new Set(
+        categories.flatMap(
+          (category) => OPTIMIZER_CATEGORY_MAP[category] ?? ['historical'],
+        ),
+      ),
+    ];
   }
 
   private mapSingleCategory(category: string): string {
     return this.expandCategories([category])[0];
   }
 
-  private resolveBudgetTl(preferences: PreviewPreferencesDto): number | undefined {
+  private resolveBudgetTl(
+    preferences: PreviewPreferencesDto,
+  ): number | undefined {
     if (preferences.maxBudgetTl !== undefined) {
       return preferences.maxBudgetTl;
     }
@@ -163,9 +173,10 @@ export class OptimizerService {
     return undefined;
   }
 
-  private resolveBudgetRange(
-    place: PreviewCandidatePlaceDto,
-  ): { min_tl: number; max_tl: number } {
+  private resolveBudgetRange(place: PreviewCandidatePlaceDto): {
+    min_tl: number;
+    max_tl: number;
+  } {
     if (
       place.pricing.minTl !== undefined &&
       place.pricing.maxTl !== undefined
@@ -211,13 +222,17 @@ export class OptimizerService {
 
   private rethrowOptimizerError(error: AxiosError): never {
     if (error.response) {
+      console.error(
+        'OPTIMIZER ERROR DATA:',
+        JSON.stringify(error.response.data, null, 2),
+      );
+
       throw new BadGatewayException({
         message: 'Optimizer service returned an error',
         optimizerStatus: error.response.status,
         optimizerData: error.response.data,
       });
     }
-
     throw new ServiceUnavailableException('Optimizer service is unavailable');
   }
 }

@@ -54,9 +54,9 @@ class UserPreferences(BaseModel):
         le=20,
         description="Maximum number of stops in the itinerary. Defaults to 6.",
     )
-    weather: Literal["clear", "cloudy", "rainy"] | None = Field(
+    weather: str | None = Field(
         default=None,
-        description="Current weather context. 'rainy' excludes outdoor-only POIs.",
+        description="Current weather context. Can be used to adjust route recommendations.",
     )
 
     @field_validator("time_start", "time_end", mode="before")
@@ -83,11 +83,5 @@ class UserPreferences(BaseModel):
         # Fill categories with all available categories if not provided
         if not self.categories:
             self.categories = list(POICategory)
-
-        # Ensure end is after start
-        start_h, start_m = map(int, self.time_start.split(":"))
-        end_h, end_m = map(int, self.time_end.split(":"))
-        if (end_h * 60 + end_m) <= (start_h * 60 + start_m):
-            raise ValueError("time_end must be later than time_start")
 
         return self

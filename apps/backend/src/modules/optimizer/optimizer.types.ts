@@ -16,6 +16,10 @@ export type OptimizerOptimizeRequest = {
     max_pois?: number;
     weather?: 'clear' | 'cloudy' | 'rainy';
   };
+  destination_anchor?: {
+    lat: number;
+    lng: number;
+  };
   candidate_pois: Array<{
     poi_id: string;
     name: string;

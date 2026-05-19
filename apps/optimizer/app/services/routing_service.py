@@ -24,23 +24,23 @@ def _haversine_minutes(lat1: float, lng1: float, lat2: float, lng2: float) -> fl
     return (dist_km / _WALK_SPEED_KMH) * 60
 
 
-def build_travel_matrix(pois: list[POI]) -> list[list[float]]:
+def build_travel_matrix(pois: list[POI]) -> tuple[list[list[float]], str]:
     """
-    Returns an NxN matrix where matrix[i][j] is the walking travel time in minutes
-    from pois[i] to pois[j].
+    Returns (matrix, source) where matrix[i][j] is the walking travel time in
+    minutes from pois[i] to pois[j], and source is "osrm" | "haversine" | "none".
 
     Tries OSRM Table API first (free, no key, real road network).
     Falls back to Haversine on any network error or timeout.
     """
     n = len(pois)
     if n == 0:
-        return []
+        return [], "none"
 
     matrix = _fetch_osrm_matrix(pois)
     if matrix is not None:
-        return matrix
+        return matrix, "osrm"
 
-    return _haversine_matrix(pois)
+    return _haversine_matrix(pois), "haversine"
 
 
 def _fetch_osrm_matrix(pois: list[POI]) -> list[list[float]] | None:

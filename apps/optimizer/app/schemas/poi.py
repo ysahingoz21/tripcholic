@@ -17,3 +17,12 @@ class POI(BaseModel):
         le=480,
         description="Estimated visit duration in minutes (max 8 hours)",
     )
+    is_outdoor: bool | None = Field(
+        default=None,
+        description=(
+            "Whether the POI is primarily outdoor (parks, viewpoints, walking routes). "
+            "Used by the optimizer to filter weather-sensitive candidates when "
+            "preferences.weather is 'rainy'. If None, the optimizer falls back to a "
+            "category-based heuristic (SCENIC and NATURE treated as outdoor)."
+        ),
+    )

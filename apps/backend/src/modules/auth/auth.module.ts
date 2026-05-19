@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Logger, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
@@ -8,6 +8,8 @@ import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { type AppConfig } from '../config/app.config';
 import { JwtStrategy } from './strategies/jwt.strategy';
+
+const authModuleLogger = new Logger('AuthModule');
 
 @Module({
   imports: [
@@ -21,11 +23,15 @@ import { JwtStrategy } from './strategies/jwt.strategy';
           infer: true,
         });
 
+        authModuleLogger.log(
+          `[AUTH_DEBUG] JwtModule config resolved jwtSecretPresent=${Boolean(config.JWT_SECRET)} jwtSecretLength=${config.JWT_SECRET.length}`,
+        );
+
         return {
-        secret: config.JWT_SECRET,
-        signOptions: {
-          expiresIn: '1h',
-        },
+          secret: config.JWT_SECRET,
+          signOptions: {
+            expiresIn: '1h',
+          },
         };
       },
     }),
