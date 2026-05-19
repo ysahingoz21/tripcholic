@@ -177,6 +177,9 @@ def scenario_first_time_tourist():
         _expect("route has at least one historical POI",
                 any(any(p.poi_id == s.poi_id and p.category == POICategory.HISTORICAL
                         for p in candidates) for s in resp.route.stops)),
+        _expect("route has at least one food POI when feasible",
+                any(any(p.poi_id == s.poi_id and p.category == POICategory.FOOD
+                        for p in candidates) for s in resp.route.stops)),
     ]
     return all(ok)
 
@@ -451,9 +454,8 @@ def scenario_full_day_marathon():
 
 def scenario_picky_walker():
     """
-    User has a foot injury — 500 m walking tolerance. Most POIs will be
-    unreachable from each other; pre-flight should warn and the solver
-    is likely forced to a single stop.
+    User has a foot injury — 500 m walking tolerance. Solver may still find
+    a compact cluster, but each leg must stay within the walking limit.
     """
     cats = [POICategory.HISTORICAL, POICategory.FOOD]
     candidates = candidates_for(cats, budget_tl=3000)
@@ -476,11 +478,16 @@ def scenario_picky_walker():
     _print_response(time.perf_counter() - t0, resp, candidates)
     print()
     print("  CHECKS:")
+    max_leg_min = int(0.5 / 5.0 * 60)
     ok = [
         _expect("status is ok or partial", resp.status in {OptimizeStatus.OK, OptimizeStatus.PARTIAL}),
-        _expect("pre-flight commented on walking tolerance OR route is short",
-                any("Walking tolerance" in d for d in resp.diagnostics)
-                or len(resp.route.stops) <= 2),
+        _expect("max_pois respected", len(resp.route.stops) <= 4),
+        _expect("each walking leg respects 500 m tolerance",
+                all(
+                    (s.travel_time_to_next_minutes or 0) <= max_leg_min
+                    for s in resp.route.stops
+                ),
+                f"limit {max_leg_min} min at 5 km/h"),
     ]
     return all(ok)
 

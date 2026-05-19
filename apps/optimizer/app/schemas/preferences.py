@@ -84,10 +84,4 @@ class UserPreferences(BaseModel):
         if not self.categories:
             self.categories = list(POICategory)
 
-        # Ensure end is after start
-        start_h, start_m = map(int, self.time_start.split(":"))
-        end_h, end_m = map(int, self.time_end.split(":"))
-        if (end_h * 60 + end_m) <= (start_h * 60 + start_m):
-            raise ValueError("time_end must be later than time_start")
-
         return self

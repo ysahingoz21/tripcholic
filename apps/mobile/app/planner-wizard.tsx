@@ -91,6 +91,7 @@ export default function PlannerWizardScreen() {
   const [step, setStep] = useState<1 | 2 | 3>(1);
 
   // Step 1 — When
+  const [title, setTitle] = useState('');
   const [destination, setDestination] = useState('');
   const [date, setDate] = useState('');
   const [availableTime, setAvailableTime] = useState('');
@@ -198,6 +199,7 @@ export default function PlannerWizardScreen() {
   const handleContinue = () => {
     if (step === 1) {
       const missing: string[] = [];
+      if (!title.trim()) missing.push('Trip title');
       if (!destination.trim()) missing.push('Destination');
       if (!date.trim()) missing.push('Date');
 
@@ -231,10 +233,10 @@ export default function PlannerWizardScreen() {
       return;
     }
 
-    if (!destination.trim() || !date.trim()) {
+    if (!title.trim() || !destination.trim() || !date.trim()) {
       Alert.alert(
         'Missing required fields',
-        'Destination and date are required.'
+        'Trip title, destination and date are required.'
       );
       return;
     }
@@ -253,9 +255,10 @@ export default function PlannerWizardScreen() {
     const parsedBudgetTl  = parseBudgetTl(budgetStyle);
 
     const payload: CreateTripPayload = {
-      title:      destination.trim(),
-      date:       date.trim(),
-      categories: selectedCategories,
+      title:       title.trim(),
+      destination: destination.trim(),
+      date:        date.trim(),
+      categories:  selectedCategories,
       ...(parsedBudgetTl !== undefined && { budgetTl: parsedBudgetTl }),
       ...parsedTimeRange,
     };
@@ -289,11 +292,27 @@ export default function PlannerWizardScreen() {
 
   const renderStep1 = () => (
     <View style={styles.stepContent}>
-      <Text style={styles.stepEyebrow}>Step 1 — When</Text>
-      <Text style={styles.stepTitle}>{'When are you\nexploring?'}</Text>
+      <Text style={styles.stepEyebrow}>Step 1 — Where & when</Text>
+      <Text style={styles.stepTitle}>{'Where are you\nheading?'}</Text>
       <Text style={styles.stepSubtitle}>
-        Pick your day and available time window so we can curate the right
-        itinerary for your pace.
+        Name your trip, pick the area you'll explore, and tell us your day —
+        we'll build the route from there.
+      </Text>
+
+      {/* Trip title */}
+      <Text style={styles.fieldLabel}>Trip title *</Text>
+      <TextInput
+        style={styles.textInput}
+        placeholder="e.g. Weekend in Old Istanbul"
+        placeholderTextColor="#A0ADB4"
+        value={title}
+        onChangeText={setTitle}
+        returnKeyType="done"
+        autoCorrect={false}
+        maxLength={120}
+      />
+      <Text style={styles.fieldHint}>
+        Give your trip a name — you'll see it in your saved trips list.
       </Text>
 
       {/* Destination */}
@@ -308,6 +327,7 @@ export default function PlannerWizardScreen() {
         autoCorrect={false}
       />
       <Text style={styles.fieldHint}>
+        We'll recommend places within ~10 km of your destination.
         Popular: Kadıköy · Beşiktaş · Taksim · Sultanahmet · Balat
       </Text>
 

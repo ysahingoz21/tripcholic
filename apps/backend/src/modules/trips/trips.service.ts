@@ -14,18 +14,18 @@ import { UpdateTripDto } from './dto/update-trip.dto';
 // Maps the backend's broader interest labels to the optimizer's POICategory enum.
 // Mirrors the same map in optimizer.service.ts so both sides stay consistent.
 const CATEGORY_MAP: Record<string, string[]> = {
-  historical:    ['historical'],
-  scenic:        ['scenic'],
-  food:          ['food'],
-  shopping:      ['shopping'],
-  nature:        ['nature'],
-  neighborhood:  ['neighborhood'],
+  historical: ['historical'],
+  scenic: ['scenic'],
+  food: ['food'],
+  shopping: ['shopping'],
+  nature: ['nature'],
+  neighborhood: ['neighborhood'],
   entertainment: ['entertainment'],
-  culture:       ['historical', 'entertainment', 'neighborhood'],
-  history:       ['historical'],
-  museums:       ['entertainment', 'historical'],
-  coffee:        ['food', 'neighborhood'],
-  nightlife:     ['entertainment', 'food'],
+  culture: ['historical','neighborhood'],
+  history: ['historical'],
+  museums: ['historical'],
+  coffee: ['food'],
+  nightlife: ['food', 'entertainment'],
 };
 
 const BUDGET_LEVEL_TO_TL: Record<string, number> = {
@@ -37,9 +37,226 @@ const BUDGET_LEVEL_TO_TL: Record<string, number> = {
 const DEFAULT_OPTIMIZER_TIME_START = '09:00';
 const DEFAULT_OPTIMIZER_TIME_END = '21:00';
 const DEFAULT_OPTIMIZER_WALKING_TOLERANCE_KM = 3.0;
-const DEFAULT_OPTIMIZER_MAX_POIS = 6;
 const DEFAULT_OPTIMIZER_BUDGET_TL = 6000;
 const MAX_CANDIDATE_POIS = 20;
+// When the destination doesn't match any known district (typo, freeform input,
+// etc.) we fall back to a geographic radius around the city centre so the user
+// still gets a route. Anchor is Sultanahmet (Istanbul historic centre).
+const FALLBACK_RADIUS_KM = 15;
+const ISTANBUL_CENTER = { lat: 41.0082, lng: 28.9784 };
+// Rough budget per POI when sizing the candidate pool against the user's time
+// window: 60 min visit + 30 min transit/buffer. Used only to set how many
+// candidates the optimizer has to choose from — the optimizer still makes the
+// final pick based on real time/budget/walking constraints.
+const MINUTES_PER_POI_BUDGET = 90;
+const AREA_RADIUS_EXPANSION_TIERS_KM = [1.5, 3];
+const DISTRICT_RADIUS_EXPANSION_TIERS_KM = [3, 5];
+const EMPTY_RESULT_RADIUS_EXPANSION_TIERS_KM = [5, 8, 12];
+const KNOWN_DESTINATION_FALLBACK_RADIUS_TIERS_KM = [5, 8];
+const DEFAULT_MAX_STOPS = 4;
+const MAX_DEFAULT_STOPS = 6;
+
+const DISTRICT_FALLBACK_GROUPS: Record<string, string[]> = {
+  Şişli: ['Şişli', 'Beyoğlu', 'Beşiktaş'],
+  Beyoğlu: ['Beyoğlu', 'Şişli', 'Beşiktaş', 'Fatih'],
+  Beşiktaş: ['Beşiktaş', 'Şişli', 'Beyoğlu', 'Sarıyer'],
+  Fatih: ['Fatih', 'Beyoğlu', 'Eyüpsultan', 'Zeytinburnu'],
+  Kadıköy: ['Kadıköy'],
+  Üsküdar: ['Üsküdar', 'Kadıköy'],
+  Beykoz: ['Beykoz', 'Üsküdar'],
+  Sarıyer: ['Sarıyer', 'Beşiktaş'],
+  Eyüpsultan: ['Eyüpsultan', 'Fatih', 'Beyoğlu'],
+  Zeytinburnu: ['Zeytinburnu', 'Fatih'],
+  Bakırköy: ['Bakırköy', 'Zeytinburnu'],
+  Ataşehir: ['Ataşehir', 'Kadıköy', 'Üsküdar'],
+  Adalar: ['Adalar'],
+  Şile: ['Şile'],
+  Kartal: ['Kartal', 'Kadıköy'],
+  Küçükçekmece: ['Küçükçekmece', 'Bakırköy'],
+};
+
+type DestinationAlias = {
+  label: string;
+  aliases: string[];
+  district: string;
+  anchor: { lat: number; lng: number };
+  radiusTiersKm: number[];
+  fallbackDistricts?: string[];
+  fallbackRadiusTiersKm?: number[];
+};
+
+const DESTINATION_ALIASES: DestinationAlias[] = [
+  {
+    label: 'Nişantaşı',
+    aliases: [
+      'nişantaşı',
+      'nisantasi',
+      'nishantashi',
+      'teşvikiye',
+      'tesvikiye',
+    ],
+    district: 'Şişli',
+    anchor: { lat: 41.049464, lng: 28.992018 },
+    radiusTiersKm: AREA_RADIUS_EXPANSION_TIERS_KM,
+    fallbackDistricts: ['Şişli', 'Beyoğlu', 'Beşiktaş'],
+  },
+  {
+    label: 'Sultanahmet',
+    aliases: ['sultanahmet', 'old city', 'ayasofya', 'blue mosque'],
+    district: 'Fatih',
+    anchor: { lat: 41.006329, lng: 28.975705 },
+    radiusTiersKm: AREA_RADIUS_EXPANSION_TIERS_KM,
+    fallbackDistricts: ['Fatih', 'Beyoğlu'],
+  },
+  {
+    label: 'Beyazıt',
+    aliases: [
+      'beyazıt',
+      'beyazit',
+      'grand bazaar',
+      'kapalı çarşı',
+      'kapali carsi',
+    ],
+    district: 'Fatih',
+    anchor: { lat: 41.010685, lng: 28.968068 },
+    radiusTiersKm: AREA_RADIUS_EXPANSION_TIERS_KM,
+    fallbackDistricts: ['Fatih', 'Beyoğlu'],
+  },
+  {
+    label: 'Eminönü',
+    aliases: [
+      'eminönü',
+      'eminonu',
+      'spice bazaar',
+      'mısır çarşısı',
+      'misir carsisi',
+    ],
+    district: 'Fatih',
+    anchor: { lat: 41.014936, lng: 28.965977 },
+    radiusTiersKm: AREA_RADIUS_EXPANSION_TIERS_KM,
+    fallbackDistricts: ['Fatih', 'Beyoğlu'],
+  },
+  {
+    label: 'Balat',
+    aliases: ['balat', 'fener'],
+    district: 'Fatih',
+    anchor: { lat: 41.029211, lng: 28.948498 },
+    radiusTiersKm: AREA_RADIUS_EXPANSION_TIERS_KM,
+    fallbackDistricts: ['Fatih', 'Beyoğlu', 'Eyüpsultan'],
+  },
+  {
+    label: 'Karaköy',
+    aliases: ['karaköy', 'karakoy', 'galataport'],
+    district: 'Beyoğlu',
+    anchor: { lat: 41.027352, lng: 28.985484 },
+    radiusTiersKm: AREA_RADIUS_EXPANSION_TIERS_KM,
+    fallbackDistricts: ['Beyoğlu', 'Şişli', 'Beşiktaş', 'Fatih'],
+  },
+  {
+    label: 'Galata',
+    aliases: ['galata', 'galata tower', 'galata kulesi'],
+    district: 'Beyoğlu',
+    anchor: { lat: 41.025569, lng: 28.974129 },
+    radiusTiersKm: AREA_RADIUS_EXPANSION_TIERS_KM,
+    fallbackDistricts: ['Beyoğlu', 'Şişli', 'Beşiktaş', 'Fatih'],
+  },
+  {
+    label: 'Taksim',
+    aliases: ['taksim', 'istiklal', 'beyoğlu center', 'beyoglu center'],
+    district: 'Beyoğlu',
+    anchor: { lat: 41.037002, lng: 28.985092 },
+    radiusTiersKm: AREA_RADIUS_EXPANSION_TIERS_KM,
+    fallbackDistricts: ['Beyoğlu', 'Şişli', 'Beşiktaş'],
+  },
+  {
+    label: 'Asmalımescit',
+    aliases: ['asmalımescit', 'asmalimescit', 'pera'],
+    district: 'Beyoğlu',
+    anchor: { lat: 41.030909, lng: 28.97506 },
+    radiusTiersKm: AREA_RADIUS_EXPANSION_TIERS_KM,
+    fallbackDistricts: ['Beyoğlu', 'Şişli', 'Beşiktaş', 'Fatih'],
+  },
+  {
+    label: 'Beşiktaş',
+    aliases: ['beşiktaş', 'besiktas', 'beşiktaş iskelesi', 'besiktas iskelesi'],
+    district: 'Beşiktaş',
+    anchor: { lat: 41.041212, lng: 29.007308 },
+    radiusTiersKm: DISTRICT_RADIUS_EXPANSION_TIERS_KM,
+    fallbackDistricts: ['Beşiktaş', 'Şişli', 'Beyoğlu'],
+  },
+  {
+    label: 'Ortaköy',
+    aliases: ['ortaköy', 'ortakoy'],
+    district: 'Beşiktaş',
+    anchor: { lat: 41.047215, lng: 29.026948 },
+    radiusTiersKm: AREA_RADIUS_EXPANSION_TIERS_KM,
+    fallbackDistricts: ['Beşiktaş', 'Şişli', 'Beyoğlu'],
+  },
+  {
+    label: 'Bebek',
+    aliases: ['bebek'],
+    district: 'Beşiktaş',
+    anchor: { lat: 41.077744, lng: 29.041629 },
+    radiusTiersKm: AREA_RADIUS_EXPANSION_TIERS_KM,
+    fallbackDistricts: ['Beşiktaş', 'Sarıyer'],
+  },
+  {
+    label: 'Kadıköy',
+    aliases: ['kadıköy', 'kadikoy', 'kadıköy çarşı', 'kadikoy carsi'],
+    district: 'Kadıköy',
+    anchor: { lat: 40.990468, lng: 29.029171 },
+    radiusTiersKm: DISTRICT_RADIUS_EXPANSION_TIERS_KM,
+    fallbackDistricts: ['Kadıköy'],
+  },
+  {
+    label: 'Moda',
+    aliases: ['moda', 'moda sahili'],
+    district: 'Kadıköy',
+    anchor: { lat: 40.980008, lng: 29.022831 },
+    radiusTiersKm: AREA_RADIUS_EXPANSION_TIERS_KM,
+    fallbackDistricts: ['Kadıköy'],
+  },
+  {
+    label: 'Bağdat Caddesi',
+    aliases: ['bağdat caddesi', 'bagdat caddesi', 'bagdat street'],
+    district: 'Kadıköy',
+    anchor: { lat: 40.95884, lng: 29.083769 },
+    radiusTiersKm: AREA_RADIUS_EXPANSION_TIERS_KM,
+    fallbackDistricts: ['Kadıköy', 'Ataşehir'],
+  },
+  {
+    label: 'Kuzguncuk',
+    aliases: ['kuzguncuk'],
+    district: 'Üsküdar',
+    anchor: { lat: 41.036122, lng: 29.037264 },
+    radiusTiersKm: AREA_RADIUS_EXPANSION_TIERS_KM,
+    fallbackDistricts: ['Üsküdar', 'Kadıköy'],
+  },
+  {
+    label: 'Kanlıca',
+    aliases: ['kanlıca', 'kanlica'],
+    district: 'Beykoz',
+    anchor: { lat: 41.099008, lng: 29.073629 },
+    radiusTiersKm: AREA_RADIUS_EXPANSION_TIERS_KM,
+    fallbackDistricts: ['Beykoz', 'Üsküdar'],
+  },
+  {
+    label: 'Bomonti',
+    aliases: ['bomonti', 'bomontiada'],
+    district: 'Şişli',
+    anchor: { lat: 41.0544, lng: 28.9847 },
+    radiusTiersKm: AREA_RADIUS_EXPANSION_TIERS_KM,
+    fallbackDistricts: ['Şişli', 'Beyoğlu', 'Beşiktaş'],
+  },
+  {
+    label: 'Eyüp',
+    aliases: ['eyüp', 'eyup', 'pierre loti'],
+    district: 'Eyüpsultan',
+    anchor: { lat: 41.047849, lng: 28.933759 },
+    radiusTiersKm: AREA_RADIUS_EXPANSION_TIERS_KM,
+    fallbackDistricts: ['Eyüpsultan', 'Fatih', 'Beyoğlu'],
+  },
+];
 
 type TripDetailRecord = Prisma.TripGetPayload<{
   include: {
@@ -110,17 +327,18 @@ export class TripsService {
     const trip = await client.trip.create({
       data: {
         userId,
-        title:             payload.title,
-        description:       payload.description ?? null,
-        date:              new Date(payload.date),
-        timeStart:         payload.startTime ?? null,
-        timeEnd:           payload.endTime ?? null,
-        budgetTl:          payload.budgetTl ?? null,
-        categories:        payload.categories ?? [],
-        weather:           payload.weather ?? null,
+        title: payload.title,
+        destination: payload.destination,
+        description: payload.description ?? null,
+        date: new Date(payload.date),
+        timeStart: payload.startTime ?? null,
+        timeEnd: payload.endTime ?? null,
+        budgetTl: payload.budgetTl ?? null,
+        categories: payload.categories ?? [],
+        weather: payload.weather ?? null,
         walkingToleranceKm: payload.maxWalkingDistanceKm ?? null,
-        maxPois:           payload.maxStops ?? null,
-        visibility:        payload.visibility ?? 'PRIVATE',
+        maxPois: payload.maxStops ?? null,
+        visibility: payload.visibility ?? 'PRIVATE',
       },
     });
 
@@ -180,7 +398,8 @@ export class TripsService {
       }),
       ...(normalizedCategory && { categories: { has: normalizedCategory } }),
       ...(normalizedWeather && { weather: normalizedWeather }),
-      ...((query.budgetMinTl !== undefined || query.budgetMaxTl !== undefined) && {
+      ...((query.budgetMinTl !== undefined ||
+        query.budgetMaxTl !== undefined) && {
         routeTotalCostTl: {
           ...(query.budgetMinTl !== undefined && { gte: query.budgetMinTl }),
           ...(query.budgetMaxTl !== undefined && { lte: query.budgetMaxTl }),
@@ -227,15 +446,19 @@ export class TripsService {
       }),
     ]);
 
-    const availableCategories = [...new Set(
-      categoryRows
-        .flatMap((trip) => trip.categories)
-        .map((category) => category.trim().toLowerCase())
-        .filter(Boolean),
-    )].sort((left, right) => left.localeCompare(right));
+    const availableCategories = [
+      ...new Set(
+        categoryRows
+          .flatMap((trip) => trip.categories)
+          .map((category) => category.trim().toLowerCase())
+          .filter(Boolean),
+      ),
+    ].sort((left, right) => left.localeCompare(right));
 
     return {
-      items: trips.map((trip) => this.toExploreTripItem(trip as ExploreTripRecord)),
+      items: trips.map((trip) =>
+        this.toExploreTripItem(trip as ExploreTripRecord),
+      ),
       meta: {
         total,
         availableCategories,
@@ -271,17 +494,30 @@ export class TripsService {
     await client.trip.update({
       where: { id },
       data: {
-        ...(payload.title !== undefined           && { title: payload.title }),
-        ...(payload.description !== undefined     && { description: payload.description }),
-        ...(payload.date !== undefined            && { date: new Date(payload.date) }),
-        ...(payload.startTime !== undefined       && { timeStart: payload.startTime }),
-        ...(payload.endTime !== undefined         && { timeEnd: payload.endTime }),
-        ...(payload.budgetTl !== undefined        && { budgetTl: payload.budgetTl }),
-        ...(payload.categories !== undefined      && { categories: payload.categories }),
-        ...(payload.weather !== undefined         && { weather: payload.weather }),
-        ...(payload.maxWalkingDistanceKm !== undefined && { walkingToleranceKm: payload.maxWalkingDistanceKm }),
-        ...(payload.maxStops !== undefined        && { maxPois: payload.maxStops }),
-        ...(payload.visibility !== undefined      && { visibility: payload.visibility }),
+        ...(payload.title !== undefined && { title: payload.title }),
+        ...(payload.destination !== undefined && {
+          destination: payload.destination,
+        }),
+        ...(payload.description !== undefined && {
+          description: payload.description,
+        }),
+        ...(payload.date !== undefined && { date: new Date(payload.date) }),
+        ...(payload.startTime !== undefined && {
+          timeStart: payload.startTime,
+        }),
+        ...(payload.endTime !== undefined && { timeEnd: payload.endTime }),
+        ...(payload.budgetTl !== undefined && { budgetTl: payload.budgetTl }),
+        ...(payload.categories !== undefined && {
+          categories: payload.categories,
+        }),
+        ...(payload.weather !== undefined && { weather: payload.weather }),
+        ...(payload.maxWalkingDistanceKm !== undefined && {
+          walkingToleranceKm: payload.maxWalkingDistanceKm,
+        }),
+        ...(payload.maxStops !== undefined && { maxPois: payload.maxStops }),
+        ...(payload.visibility !== undefined && {
+          visibility: payload.visibility,
+        }),
       },
     });
 
@@ -317,17 +553,61 @@ export class TripsService {
       : ['LOW', 'MEDIUM', 'HIGH'];
 
     const poiWhere: Prisma.PointOfInterestWhereInput = {
-      ...(dbCategories.length > 0 && { category: { in: dbCategories as never[] } }),
+      ...(dbCategories.length > 0 && {
+        category: { in: dbCategories as never[] },
+      }),
       budgetLevel: { in: affordableLevels as never[] },
     };
 
-    const pois = await client.pointOfInterest.findMany({
+    const candidatePoiPool = await client.pointOfInterest.findMany({
       where: poiWhere,
-      orderBy: [{ category: 'asc' }, { avgDurationMin: 'asc' }, { name: 'asc' }],
-      take: MAX_CANDIDATE_POIS,
+      orderBy: [
+        { category: 'asc' },
+        { avgDurationMin: 'asc' },
+        { name: 'asc' },
+      ],
+    });
+    const destinationAnchorPool = await client.pointOfInterest.findMany({
+      orderBy: [
+        { category: 'asc' },
+        { avgDurationMin: 'asc' },
+        { name: 'asc' },
+      ],
     });
 
-    const candidatePois = pois.map((poi) => this.mapPoiToOptimizerCandidate(poi));
+    const effectiveMaxPois = this.resolveMaxPois(
+      trip.maxPois,
+      trip.categories,
+      trip.timeStart,
+      trip.timeEnd,
+    );
+    const targetCandidateCount = Math.max(
+      effectiveMaxPois,
+      this.targetCandidateCountForTimeWindow(
+        trip.timeStart ?? DEFAULT_OPTIMIZER_TIME_START,
+        trip.timeEnd ?? DEFAULT_OPTIMIZER_TIME_END,
+      ),
+    );
+    const destinationCandidates = await this.selectCandidatesForDestination(
+      candidatePoiPool,
+      trip.destination,
+      targetCandidateCount,
+      destinationAnchorPool,
+    );
+    const pois = this.balanceCandidatesByCategory(
+      destinationCandidates,
+      optimizerCategories,
+      MAX_CANDIDATE_POIS,
+    );
+
+    const destinationAnchor = this.resolveDestinationAnchorFromPool(
+      destinationAnchorPool,
+      trip.destination,
+    );
+
+    const candidatePois = pois.map((poi) =>
+      this.mapPoiToOptimizerCandidate(poi),
+    );
     const effectiveBudgetTl = this.resolveOptimizerBudgetTl(
       trip.budgetTl,
       affordableLevels,
@@ -342,16 +622,20 @@ export class TripsService {
         budget_tl: effectiveBudgetTl,
         walking_tolerance_km:
           trip.walkingToleranceKm ?? DEFAULT_OPTIMIZER_WALKING_TOLERANCE_KM,
-        max_pois: trip.maxPois ?? DEFAULT_OPTIMIZER_MAX_POIS,
+        max_pois: effectiveMaxPois,
         weather: this.normalizeWeather(trip.weather),
       },
+      ...(destinationAnchor && { destination_anchor: destinationAnchor }),
       candidate_pois: candidatePois,
     };
 
     const optimizerResult =
       candidatePois.length > 0
         ? await this.optimizerService.callOptimize(optimizerRequest)
-        : this.buildNoFeasibleRouteResult(optimizerRequest, 'backend_no_candidates');
+        : this.buildNoFeasibleRouteResult(
+            optimizerRequest,
+            'backend_no_candidates',
+          );
     const routeExplanation = this.buildRouteExplanation(
       trip,
       optimizerResult,
@@ -381,7 +665,8 @@ export class TripsService {
       await tx.trip.update({
         where: { id: trip.id },
         data: {
-          status: optimizerResult.route.stops.length > 0 ? 'OPTIMIZED' : 'FAILED',
+          status:
+            optimizerResult.route.stops.length > 0 ? 'OPTIMIZED' : 'FAILED',
           optimizedAt: new Date(optimizerResult.generated_at),
           routeName: optimizerResult.route.route_name,
           routeTotalDistanceKm: optimizerResult.route.total_distance_km,
@@ -429,6 +714,86 @@ export class TripsService {
     return categories.map((category) => category.toUpperCase());
   }
 
+  private balanceCandidatesByCategory(
+    candidates: PointOfInterest[],
+    preferredCategories: string[],
+    limit: number,
+  ): PointOfInterest[] {
+    if (candidates.length <= limit) {
+      return candidates;
+    }
+
+    const orderedCategories = [
+      ...new Set(
+        preferredCategories.map((category) => category.trim().toUpperCase()),
+      ),
+    ].filter(Boolean);
+
+    if (orderedCategories.length === 0) {
+      return candidates.slice(0, limit);
+    }
+
+    const buckets = new Map<string, PointOfInterest[]>();
+    for (const category of orderedCategories) {
+      buckets.set(
+        category,
+        candidates.filter((poi) => String(poi.category) === category),
+      );
+    }
+
+    const selected: PointOfInterest[] = [];
+    const selectedIds = new Set<string>();
+    const bucketOffsets = new Map<string, number>();
+
+    const addCandidate = (poi: PointOfInterest | undefined) => {
+      if (!poi || selectedIds.has(poi.id) || selected.length >= limit) {
+        return;
+      }
+      selected.push(poi);
+      selectedIds.add(poi.id);
+    };
+
+    // First guarantee each requested category gets represented when a matching
+    // POI exists. This prevents dense categories like Fatih historical sights
+    // from pushing scarce categories like food out of the 20-candidate cap.
+    for (const category of orderedCategories) {
+      const firstMatch = buckets.get(category)?.[0];
+      addCandidate(firstMatch);
+      if (firstMatch) {
+        bucketOffsets.set(category, 1);
+      }
+    }
+
+    // Then fill remaining slots round-robin across the requested categories so
+    // the optimizer receives a diverse pool while keeping the DB ordering inside
+    // each category.
+    let addedInPass = true;
+    while (selected.length < limit && addedInPass) {
+      addedInPass = false;
+      for (const category of orderedCategories) {
+        const bucket = buckets.get(category) ?? [];
+        const offset = bucketOffsets.get(category) ?? 0;
+        const next = bucket[offset];
+        if (next) {
+          addCandidate(next);
+          bucketOffsets.set(category, offset + 1);
+          addedInPass = true;
+        }
+        if (selected.length >= limit) {
+          break;
+        }
+      }
+    }
+
+    // If some slots remain because selected categories were sparse, preserve
+    // the original candidate ordering for the rest.
+    for (const candidate of candidates) {
+      addCandidate(candidate);
+    }
+
+    return selected;
+  }
+
   private resolveOptimizerBudgetTl(
     tripBudgetTl: number | null,
     affordableLevels: string[],
@@ -437,7 +802,8 @@ export class TripsService {
       return tripBudgetTl;
     }
 
-    const highestAffordableLevel = affordableLevels[affordableLevels.length - 1];
+    const highestAffordableLevel =
+      affordableLevels[affordableLevels.length - 1];
     if (highestAffordableLevel) {
       return (
         BUDGET_LEVEL_TO_TL[
@@ -447,6 +813,423 @@ export class TripsService {
     }
 
     return DEFAULT_OPTIMIZER_BUDGET_TL;
+  }
+
+  private resolveMaxPois(
+    explicitMaxPois: number | null,
+    selectedCategories: string[],
+    timeStart: string | null,
+    timeEnd: string | null,
+  ): number {
+    if (explicitMaxPois !== null) {
+      return explicitMaxPois;
+    }
+
+    const selectedCategoryCount = new Set(
+      selectedCategories
+        .map((category) => category.trim().toLowerCase())
+        .filter(Boolean),
+    ).size;
+    const categoryDrivenMax =
+      selectedCategoryCount > 0
+        ? Math.min(MAX_DEFAULT_STOPS, Math.max(3, selectedCategoryCount + 1))
+        : DEFAULT_MAX_STOPS;
+    const timeDrivenMax = this.targetCandidateCountForTimeWindow(
+      timeStart ?? DEFAULT_OPTIMIZER_TIME_START,
+      timeEnd ?? DEFAULT_OPTIMIZER_TIME_END,
+    );
+
+    return Math.max(
+      1,
+      Math.min(MAX_DEFAULT_STOPS, Math.max(categoryDrivenMax, timeDrivenMax)),
+    );
+  }
+
+  private targetCandidateCountForTimeWindow(
+    timeStart: string | null,
+    timeEnd: string | null,
+  ): number {
+    if (!timeStart || !timeEnd) {
+      return 0;
+    }
+    const toMin = (hhmm: string) => {
+      const [h, m] = hhmm.split(':').map(Number);
+      return h * 60 + m;
+    };
+    const startMin = toMin(timeStart);
+    let endMin = toMin(timeEnd);
+    if (endMin <= startMin) {
+      endMin += 24 * 60;
+    }
+    const windowMin = Math.max(0, endMin - startMin);
+    return Math.ceil(windowMin / MINUTES_PER_POI_BUDGET);
+  }
+
+  private async selectCandidatesForDestination(
+    pool: PointOfInterest[],
+    destination: string | null,
+    targetCount: number,
+    destinationAnchorPool: PointOfInterest[] = pool,
+  ): Promise<PointOfInterest[]> {
+    const needle = this.normalizeSearchText(destination);
+
+    if (needle) {
+      const knownDestination = this.resolveKnownDestination(needle);
+      if (knownDestination) {
+        const aliasMatches = pool.filter((poi) =>
+          this.poiMatchesKnownDestination(poi, knownDestination),
+        );
+        const fallbackDistricts = knownDestination.fallbackDistricts ?? [
+          knownDestination.district,
+        ];
+
+        return this.expandCandidatesAroundPoint(
+          pool,
+          knownDestination.anchor,
+          aliasMatches,
+          targetCount,
+          knownDestination.radiusTiersKm,
+          knownDestination.fallbackRadiusTiersKm ??
+            KNOWN_DESTINATION_FALLBACK_RADIUS_TIERS_KM,
+          this.filterCandidatesByDistricts(pool, fallbackDistricts),
+          true,
+        );
+      }
+
+      const districtMatches = pool.filter((poi) =>
+        this.poiMatchesDestinationDistrict(poi, needle),
+      );
+
+      if (districtMatches.length > 0 && districtMatches.length >= targetCount) {
+        return districtMatches;
+      }
+
+      if (districtMatches.length > 0) {
+        return this.expandCandidatesAroundAnchor(
+          pool,
+          districtMatches,
+          targetCount,
+          DISTRICT_RADIUS_EXPANSION_TIERS_KM,
+          KNOWN_DESTINATION_FALLBACK_RADIUS_TIERS_KM,
+          this.filterCandidatesByDistricts(
+            pool,
+            this.fallbackDistrictsForAnchorPois(districtMatches),
+          ),
+          true,
+        );
+      }
+
+      const areaMatches = pool.filter((poi) =>
+        this.poiMatchesDestinationArea(poi, needle),
+      );
+
+      // Destination can be a neighborhood/POI name ("Nişantaşı") or a free-form
+      // area in the address. Keep those much tighter than whole-district plans.
+      if (areaMatches.length > 0) {
+        return this.expandCandidatesAroundAnchor(
+          pool,
+          areaMatches,
+          targetCount,
+          AREA_RADIUS_EXPANSION_TIERS_KM,
+          KNOWN_DESTINATION_FALLBACK_RADIUS_TIERS_KM,
+          this.filterCandidatesByDistricts(
+            pool,
+            this.fallbackDistrictsForAnchorPois(areaMatches),
+          ),
+          true,
+        );
+      }
+
+      const anchorOnlyMatches = destinationAnchorPool.filter(
+        (poi) =>
+          this.poiMatchesDestinationDistrict(poi, needle) ||
+          this.poiMatchesDestinationArea(poi, needle),
+      );
+
+      if (anchorOnlyMatches.length > 0) {
+        return this.expandCandidatesAroundAnchor(
+          pool,
+          anchorOnlyMatches,
+          targetCount,
+          AREA_RADIUS_EXPANSION_TIERS_KM,
+          KNOWN_DESTINATION_FALLBACK_RADIUS_TIERS_KM,
+          this.filterCandidatesByDistricts(
+            pool,
+            this.fallbackDistrictsForAnchorPois(anchorOnlyMatches),
+          ),
+          true,
+        );
+      }
+    }
+
+    // Destination didn't match any district (typo, freeform input, empty).
+    // Fall back to a geographic radius around the city centre.
+    return pool.filter(
+      (poi) =>
+        haversineKm(ISTANBUL_CENTER, { lat: poi.lat, lng: poi.lng }) <=
+        FALLBACK_RADIUS_KM,
+    );
+  }
+
+  private expandCandidatesAroundAnchor(
+    pool: PointOfInterest[],
+    anchorPois: PointOfInterest[],
+    targetCount: number,
+    radiusTiersKm: number[],
+    emptyResultRadiusTiersKm: number[] = [],
+    emptyResultPool: PointOfInterest[] = pool,
+    expandWhenSparse = false,
+  ): PointOfInterest[] {
+    return this.expandCandidatesAroundPoint(
+      pool,
+      this.centroidOf(anchorPois),
+      anchorPois,
+      targetCount,
+      radiusTiersKm,
+      emptyResultRadiusTiersKm,
+      emptyResultPool,
+      expandWhenSparse,
+    );
+  }
+
+  private expandCandidatesAroundPoint(
+    pool: PointOfInterest[],
+    anchor: { lat: number; lng: number },
+    anchorPois: PointOfInterest[],
+    targetCount: number,
+    radiusTiersKm: number[],
+    emptyResultRadiusTiersKm: number[] = [],
+    emptyResultPool: PointOfInterest[] = pool,
+    expandWhenSparse = false,
+  ): PointOfInterest[] {
+    const poolIds = new Set(pool.map((poi) => poi.id));
+    const eligibleAnchorPois = anchorPois.filter((poi) => poolIds.has(poi.id));
+    const anchorIds = new Set(eligibleAnchorPois.map((poi) => poi.id));
+    const neighbors = pool
+      .filter((poi) => !anchorIds.has(poi.id))
+      .map((poi) => ({
+        poi,
+        distanceKm: haversineKm(anchor, { lat: poi.lat, lng: poi.lng }),
+      }))
+      .sort(
+        (left, right) =>
+          left.distanceKm - right.distanceKm ||
+          left.poi.name.localeCompare(right.poi.name),
+      );
+
+    for (const radiusKm of radiusTiersKm) {
+      const merged = [
+        ...eligibleAnchorPois,
+        ...neighbors
+          .filter((entry) => entry.distanceKm <= radiusKm)
+          .map((entry) => entry.poi),
+      ];
+      if (merged.length >= targetCount) {
+        return merged;
+      }
+    }
+
+    const widest =
+      radiusTiersKm[radiusTiersKm.length - 1] ?? FALLBACK_RADIUS_KM;
+    const widestResult = [
+      ...eligibleAnchorPois,
+      ...neighbors
+        .filter((entry) => entry.distanceKm <= widest)
+        .map((entry) => entry.poi),
+    ];
+
+    if (
+      widestResult.length >= targetCount ||
+      emptyResultRadiusTiersKm.length === 0
+    ) {
+      return widestResult;
+    }
+
+    if (widestResult.length > 0 && !expandWhenSparse) {
+      return widestResult;
+    }
+
+    const emptyResultPoolIds = new Set(emptyResultPool.map((poi) => poi.id));
+    let expandedFallback: PointOfInterest[] = [];
+    for (const radiusKm of emptyResultRadiusTiersKm) {
+      const selectedIds = new Set<string>();
+      expandedFallback = [];
+
+      for (const poi of widestResult) {
+        if (!selectedIds.has(poi.id)) {
+          expandedFallback.push(poi);
+          selectedIds.add(poi.id);
+        }
+      }
+
+      for (const entry of neighbors) {
+        if (
+          emptyResultPoolIds.has(entry.poi.id) &&
+          entry.distanceKm <= radiusKm &&
+          !selectedIds.has(entry.poi.id)
+        ) {
+          expandedFallback.push(entry.poi);
+          selectedIds.add(entry.poi.id);
+        }
+      }
+
+      if (expandedFallback.length >= targetCount) {
+        return expandedFallback;
+      }
+    }
+
+    return expandedFallback;
+  }
+
+  private filterCandidatesByDistricts(
+    pool: PointOfInterest[],
+    districts: string[],
+  ): PointOfInterest[] {
+    const allowedDistricts = new Set(
+      districts.map((district) => this.normalizeSearchText(district)),
+    );
+
+    return pool.filter((poi) =>
+      allowedDistricts.has(this.normalizeSearchText(poi.district)),
+    );
+  }
+
+  private fallbackDistrictsForAnchorPois(
+    anchorPois: PointOfInterest[],
+  ): string[] {
+    const fallbackDistricts = new Set<string>();
+
+    for (const poi of anchorPois) {
+      for (const district of this.fallbackDistrictsForDistrict(poi.district)) {
+        fallbackDistricts.add(district);
+      }
+    }
+
+    return [...fallbackDistricts];
+  }
+
+  private fallbackDistrictsForDistrict(
+    district: string | null | undefined,
+  ): string[] {
+    const normalizedDistrict = this.normalizeSearchText(district);
+    if (!normalizedDistrict) {
+      return [];
+    }
+
+    const configuredDistricts = Object.entries(DISTRICT_FALLBACK_GROUPS).find(
+      ([key]) => this.normalizeSearchText(key) === normalizedDistrict,
+    )?.[1];
+
+    return configuredDistricts ?? [district as string];
+  }
+
+  private resolveDestinationAnchorFromPool(
+    pool: PointOfInterest[],
+    destination: string | null,
+  ): { lat: number; lng: number } | null {
+    const needle = this.normalizeSearchText(destination);
+    if (!needle) {
+      return null;
+    }
+    const knownDestination = this.resolveKnownDestination(needle);
+    if (knownDestination) {
+      return knownDestination.anchor;
+    }
+
+    const destinationMatches = pool.filter(
+      (poi) =>
+        this.poiMatchesDestinationDistrict(poi, needle) ||
+        this.poiMatchesDestinationArea(poi, needle),
+    );
+    if (destinationMatches.length === 0) {
+      return null;
+    }
+    return this.centroidOf(destinationMatches);
+  }
+
+  private resolveKnownDestination(
+    normalizedNeedle: string,
+  ): DestinationAlias | null {
+    return (
+      DESTINATION_ALIASES.find((destination) => {
+        const terms = [destination.label, ...destination.aliases]
+          .map((term) => this.normalizeSearchText(term))
+          .filter(Boolean);
+
+        return terms.some(
+          (term) =>
+            term === normalizedNeedle ||
+            normalizedNeedle.includes(term) ||
+            (normalizedNeedle.length >= 5 && term.includes(normalizedNeedle)),
+        );
+      }) ?? null
+    );
+  }
+
+  private poiMatchesKnownDestination(
+    poi: PointOfInterest,
+    destination: DestinationAlias,
+  ): boolean {
+    const terms = [destination.label, ...destination.aliases]
+      .map((term) => this.normalizeSearchText(term))
+      .filter(Boolean);
+    const fields = [poi.name, poi.address]
+      .map((value) => this.normalizeSearchText(value))
+      .filter(Boolean);
+
+    return fields.some((field) =>
+      terms.some(
+        (term) =>
+          field === term || field.includes(term) || term.includes(field),
+      ),
+    );
+  }
+
+  private poiMatchesDestinationDistrict(
+    poi: PointOfInterest,
+    normalizedNeedle: string,
+  ): boolean {
+    const district = this.normalizeSearchText(poi.district);
+    return (
+      Boolean(district) &&
+      (district === normalizedNeedle || normalizedNeedle.includes(district))
+    );
+  }
+
+  private poiMatchesDestinationArea(
+    poi: PointOfInterest,
+    normalizedNeedle: string,
+  ): boolean {
+    const fields = [poi.name, poi.address]
+      .map((value) => this.normalizeSearchText(value))
+      .filter(Boolean);
+
+    return fields.some(
+      (field) =>
+        field === normalizedNeedle ||
+        field.includes(normalizedNeedle) ||
+        normalizedNeedle.includes(field),
+    );
+  }
+
+  private normalizeSearchText(value: string | null | undefined): string {
+    return (value ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/[ıİ]/g, 'i')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+  }
+
+  private centroidOf(pois: { lat: number; lng: number }[]): {
+    lat: number;
+    lng: number;
+  } {
+    const sum = pois.reduce(
+      (acc, p) => ({ lat: acc.lat + p.lat, lng: acc.lng + p.lng }),
+      { lat: 0, lng: 0 },
+    );
+    return { lat: sum.lat / pois.length, lng: sum.lng / pois.length };
   }
 
   private mapPoiToOptimizerCandidate(poi: PointOfInterest) {
@@ -528,7 +1311,10 @@ export class TripsService {
       );
     }
 
-    const categoryFocus = this.describeCategoryFocus(selectedStops, candidatePois);
+    const categoryFocus = this.describeCategoryFocus(
+      selectedStops,
+      candidatePois,
+    );
     if (categoryFocus) {
       sentences.push(
         `The selected stops lean toward ${categoryFocus} based on the places that fit your current preferences.`,
@@ -628,6 +1414,7 @@ export class TripsService {
       id: trip.id,
       userId: trip.userId,
       title: trip.title,
+      destination: trip.destination,
       description: trip.description,
       date: trip.date,
       timeStart: trip.timeStart,
@@ -742,6 +1529,7 @@ export class TripsService {
       trip: {
         id: trip.id,
         title: trip.title,
+        destination: trip.destination,
         description: trip.description,
         date: trip.date,
         timeStart: trip.timeStart,
@@ -771,4 +1559,20 @@ export class TripsService {
       stops,
     };
   }
+}
+
+function haversineKm(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number },
+): number {
+  const R = 6371;
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
 }

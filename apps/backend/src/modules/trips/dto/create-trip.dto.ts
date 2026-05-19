@@ -39,6 +39,12 @@ export class CreateTripDto {
   @MaxLength(120)
   title!: string;
 
+  @ApiProperty({ example: 'Sultanahmet' })
+  @IsString()
+  @MinLength(2)
+  @MaxLength(120)
+  destination!: string;
+
   @ApiPropertyOptional({ example: 'A culture-heavy single-day route.' })
   @IsOptional()
   @IsString()
