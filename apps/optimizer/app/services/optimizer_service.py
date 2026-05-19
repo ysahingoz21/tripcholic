@@ -478,16 +478,30 @@ def _compute_scores(
 
 
 def _proximity_bonus(poi: POI, anchor) -> int:
-    """+60 within 5 km, +30 within 15 km, 0 beyond. No anchor → 0."""
+    """
+    Anchored proximity scoring — dominates category match so the route stays in
+    the user's chosen area even when a different-category POI sits closer than
+    a same-category POI across the city.
+
+    Tiers (bonus must beat the +200 category-match bonus at close range):
+      +400  ≤ 1.5 km  — inside the destination
+      +200  ≤ 3 km    — adjacent area
+      +80   ≤ 6 km    — short transit, still nearby
+      0     beyond    — across the city, no bonus
+
+    No anchor → 0 (no bias applied).
+    """
     if anchor is None:
         return 0
     distance_km = _haversine_km(
         anchor.lat, anchor.lng, poi.location.lat, poi.location.lng
     )
-    if distance_km <= 5:
-        return 60
-    if distance_km <= 15:
-        return 30
+    if distance_km <= 1.5:
+        return 400
+    if distance_km <= 3:
+        return 200
+    if distance_km <= 6:
+        return 80
     return 0
 
 

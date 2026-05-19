@@ -21,11 +21,11 @@ const CATEGORY_MAP: Record<string, string[]> = {
   nature: ['nature'],
   neighborhood: ['neighborhood'],
   entertainment: ['entertainment'],
-  culture: ['historical', 'entertainment', 'neighborhood'],
+  culture: ['historical','neighborhood'],
   history: ['historical'],
-  museums: ['entertainment', 'historical'],
+  museums: ['historical'],
   coffee: ['food'],
-  nightlife: ['entertainment', 'food'],
+  nightlife: ['food', 'entertainment'],
 };
 
 const BUDGET_LEVEL_TO_TL: Record<string, number> = {
