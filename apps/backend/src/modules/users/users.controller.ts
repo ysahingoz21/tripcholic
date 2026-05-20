@@ -17,6 +17,7 @@ import {
 } from '@nestjs/swagger';
 import { type Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
 import { type AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { CreatorFollowResponseDto } from './dto/creator-follow-response.dto';
 import { CurrentUserResponseDto } from './dto/current-user-response.dto';
@@ -24,6 +25,10 @@ import { UsersService } from './users.service';
 
 type AuthenticatedRequest = Request & {
   user: AuthenticatedUser;
+};
+
+type MaybeAuthenticatedRequest = Request & {
+  user?: AuthenticatedUser | null;
 };
 
 @ApiTags('users')
@@ -46,6 +51,21 @@ export class UsersController {
   @ApiNotFoundResponse({ description: 'Authenticated user no longer exists.' })
   async getMe(@Req() req: AuthenticatedRequest) {
     return this.usersService.getCurrentUser(req.user.id);
+  }
+
+  @Get(':id')
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiOperation({
+    summary: 'Get public user profile',
+    description: 'Returns a public user profile. isFollowedByMe requires a valid Bearer token.',
+  })
+  @ApiOkResponse({ description: 'Public user profile.' })
+  @ApiNotFoundResponse({ description: 'User not found.' })
+  async getPublicUser(
+    @Req() req: MaybeAuthenticatedRequest,
+    @Param('id') id: string,
+  ) {
+    return this.usersService.getPublicUser(req.user?.id ?? null, id);
   }
 
   @Post(':id/follow')

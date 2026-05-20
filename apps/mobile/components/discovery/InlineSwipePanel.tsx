@@ -19,6 +19,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
+import { useRouter } from "expo-router";
 import Artwork from "@/components/ui/Artwork";
 import { theme } from "@/constants/theme";
 import { font } from "@/constants/typography";
@@ -84,6 +85,7 @@ type Props = {
 };
 
 export default function InlineSwipePanel({ token, isAuthLoading }: Props) {
+  const router = useRouter();
   const { width } = useWindowDimensions();
   const swipeThreshold = Math.max(width * 0.24, 90);
 
@@ -479,6 +481,7 @@ export default function InlineSwipePanel({ token, isAuthLoading }: Props) {
             token={token}
             isExpanded={isExpanded}
             onExpand={() => setIsExpanded(true)}
+            onCreatorPress={currentTrip.creator.id ? () => router.push(`/profile/${currentTrip.creator.id}` as any) : undefined}
           />
         </Animated.View>
       </View>
@@ -529,9 +532,10 @@ type SwipeCardProps = {
   token: string | null;
   isExpanded: boolean;
   onExpand: () => void;
+  onCreatorPress?: () => void;
 };
 
-function SwipeCard({ trip, token, isExpanded, onExpand }: SwipeCardProps) {
+function SwipeCard({ trip, token, isExpanded, onExpand, onCreatorPress }: SwipeCardProps) {
   const imageUrl = trip.preview.imageUrl?.trim() || null;
 
   const [stops, setStops] = useState<StopDetail[]>([]);
@@ -599,7 +603,12 @@ function SwipeCard({ trip, token, isExpanded, onExpand }: SwipeCardProps) {
           <View style={cardStyles.heroScrim} />
 
           <View style={cardStyles.heroTopRow}>
-            <View style={cardStyles.creatorBlock}>
+            <Pressable
+              style={cardStyles.creatorBlock}
+              onPress={onCreatorPress}
+              disabled={!onCreatorPress}
+              hitSlop={4}
+            >
               <View style={cardStyles.creatorAvatar}>
                 <Text style={cardStyles.creatorAvatarText}>
                   {getInitials(trip.creator.displayName)}
@@ -608,7 +617,7 @@ function SwipeCard({ trip, token, isExpanded, onExpand }: SwipeCardProps) {
               <Text style={cardStyles.creatorName} numberOfLines={1}>
                 {formatCreator(trip.creator.displayName)}
               </Text>
-            </View>
+            </Pressable>
             <View style={cardStyles.menuButton}>
               <Ionicons
                 name="ellipsis-horizontal"

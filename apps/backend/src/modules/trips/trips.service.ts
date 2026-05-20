@@ -295,6 +295,7 @@ type ExploreTripRecord = Prisma.TripGetPayload<{
   include: {
     user: {
       select: {
+        id: true;
         displayName: true;
       };
     };
@@ -370,10 +371,24 @@ export class TripsService {
       },
     });
 
-    return trips.map((trip) => this.toTripListItem(trip as TripListRecord));
+    const tripIds = trips.map((trip) => trip.id);
+    const engagementByTripId = await this.getBatchEngagement(client, tripIds, userId);
+
+    return trips.map((trip) => ({
+      ...this.toTripListItem(trip as TripListRecord),
+      engagement: engagementByTripId.get(trip.id) ?? {
+        likeCount: 0,
+        commentCount: 0,
+        saveCount: 0,
+        completionCount: 0,
+        likedByMe: false,
+        savedByMe: false,
+        completedByMe: false,
+      },
+    }));
   }
 
-  async findExploreTrips(query: ExploreTripsQueryDto) {
+  async findExploreTrips(query: ExploreTripsQueryDto, userId: string | null = null) {
     const client = await this.prisma.getClient();
     const trimmedQuery = query.q?.trim();
     const normalizedQuery = trimmedQuery ? trimmedQuery : null;
@@ -384,6 +399,7 @@ export class TripsService {
     const where: Prisma.TripWhereInput = {
       visibility: 'PUBLIC',
       status: 'OPTIMIZED',
+      ...(query.creatorId && { userId: query.creatorId }),
       ...(normalizedQuery && {
         OR: [
           { title: { contains: normalizedQuery, mode: 'insensitive' } },
@@ -415,6 +431,7 @@ export class TripsService {
         include: {
           user: {
             select: {
+              id: true,
               displayName: true,
             },
           },
@@ -455,10 +472,22 @@ export class TripsService {
       ),
     ].sort((left, right) => left.localeCompare(right));
 
+    const tripIds = trips.map((trip) => trip.id);
+    const engagementByTripId = await this.getBatchEngagement(client, tripIds, userId);
+
     return {
-      items: trips.map((trip) =>
-        this.toExploreTripItem(trip as ExploreTripRecord),
-      ),
+      items: trips.map((trip) => ({
+        ...this.toExploreTripItem(trip as ExploreTripRecord),
+        engagement: engagementByTripId.get(trip.id) ?? {
+          likeCount: 0,
+          commentCount: 0,
+          saveCount: 0,
+          completionCount: 0,
+          likedByMe: false,
+          savedByMe: false,
+          completedByMe: false,
+        },
+      })),
       meta: {
         total,
         availableCategories,
@@ -471,6 +500,57 @@ export class TripsService {
         },
       },
     };
+  }
+
+  private async getBatchEngagement(
+    client: any,
+    tripIds: string[],
+    userId: string | null,
+  ) {
+    if (tripIds.length === 0) {
+      return new Map<string, { likeCount: number; commentCount: number; saveCount: number; completionCount: number; likedByMe: boolean; savedByMe: boolean; completedByMe: boolean }>();
+    }
+
+    const [likes, comments, saves, completions, myLikes, mySaves, myCompletions] = await Promise.all([
+      client.tripLike.findMany({ where: { tripId: { in: tripIds } }, select: { tripId: true } }),
+      client.tripComment.findMany({ where: { tripId: { in: tripIds } }, select: { tripId: true } }),
+      client.savedTrip.findMany({ where: { tripId: { in: tripIds } }, select: { tripId: true } }),
+      client.tripCompletion.findMany({ where: { tripId: { in: tripIds } }, select: { tripId: true } }),
+      userId ? client.tripLike.findMany({ where: { tripId: { in: tripIds }, userId }, select: { tripId: true } }) : Promise.resolve([]),
+      userId ? client.savedTrip.findMany({ where: { tripId: { in: tripIds }, userId }, select: { tripId: true } }) : Promise.resolve([]),
+      userId ? client.tripCompletion.findMany({ where: { tripId: { in: tripIds }, userId }, select: { tripId: true } }) : Promise.resolve([]),
+    ]);
+
+    const countBy = (rows: Array<{ tripId: string }>) => {
+      const map = new Map<string, number>();
+      for (const { tripId } of rows) {
+        map.set(tripId, (map.get(tripId) ?? 0) + 1);
+      }
+      return map;
+    };
+
+    const likeCountMap = countBy(likes);
+    const commentCountMap = countBy(comments);
+    const saveCountMap = countBy(saves);
+    const completionCountMap = countBy(completions);
+    const likedSet = new Set<string>((myLikes as Array<{ tripId: string }>).map((r) => r.tripId));
+    const savedSet = new Set<string>((mySaves as Array<{ tripId: string }>).map((r) => r.tripId));
+    const completedSet = new Set<string>((myCompletions as Array<{ tripId: string }>).map((r) => r.tripId));
+
+    return new Map(
+      tripIds.map((tripId) => [
+        tripId,
+        {
+          likeCount: likeCountMap.get(tripId) ?? 0,
+          commentCount: commentCountMap.get(tripId) ?? 0,
+          saveCount: saveCountMap.get(tripId) ?? 0,
+          completionCount: completionCountMap.get(tripId) ?? 0,
+          likedByMe: likedSet.has(tripId),
+          savedByMe: savedSet.has(tripId),
+          completedByMe: completedSet.has(tripId),
+        },
+      ]),
+    );
   }
 
   async findOne(userId: string, id: string) {
@@ -1468,6 +1548,7 @@ export class TripsService {
       optimizedAt: trip.optimizedAt,
       preview,
       creator: {
+        id: trip.user?.id ?? null,
         displayName: trip.user?.displayName ?? null,
       },
     };

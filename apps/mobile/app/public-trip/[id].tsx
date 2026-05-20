@@ -188,6 +188,7 @@ type HeroProps = {
   isFollowPending: boolean;
   onToggleFollow: () => void;
   isOwnTrip: boolean;
+  onCreatorPress?: () => void;
 };
 
 function HeroSection({
@@ -196,6 +197,7 @@ function HeroSection({
   isFollowPending,
   onToggleFollow,
   isOwnTrip,
+  onCreatorPress,
 }: HeroProps) {
   const imageUrl = detail.preview.imageUrl?.trim() || null;
 
@@ -246,7 +248,11 @@ function HeroSection({
 
         {/* Creator bar (follow inside) + trip date pill on the right */}
         <View style={heroStyles.creatorRow}>
-          <View style={heroStyles.creatorBar}>
+          <Pressable
+            style={heroStyles.creatorBar}
+            onPress={onCreatorPress}
+            disabled={!onCreatorPress}
+          >
             <View style={heroStyles.creatorAvatar}>
               <Text style={heroStyles.creatorInitials}>{creatorInitials}</Text>
             </View>
@@ -289,7 +295,7 @@ function HeroSection({
                 </Text>
               </Pressable>
             ) : null}
-          </View>
+          </Pressable>
 
           <View style={heroStyles.datePill}>
             <Text style={heroStyles.datePillText}>
@@ -468,10 +474,12 @@ type CommentsModalProps = {
   commentCount: number;
   tripId: string;
   token: string | null;
+  currentUserId?: string | null;
   onCommentCreated: (
     comments: PublicTripComment[],
     engagement: PublicTripEngagement,
   ) => void;
+  onAuthorPress?: (authorId: string) => void;
 };
 
 function CommentsModal({
@@ -481,7 +489,9 @@ function CommentsModal({
   commentCount,
   tripId,
   token,
+  currentUserId,
   onCommentCreated,
+  onAuthorPress,
 }: CommentsModalProps) {
   const [input, setInput] = useState("");
   const [isPending, setIsPending] = useState(false);
@@ -558,16 +568,25 @@ function CommentsModal({
             ) : (
               comments.map((comment) => (
                 <View key={comment.id} style={modalStyles.commentRow}>
-                  <View style={modalStyles.commentAvatar}>
+                  <Pressable
+                    style={modalStyles.commentAvatar}
+                    onPress={comment.author.id && onAuthorPress ? () => onAuthorPress(comment.author.id!) : undefined}
+                    disabled={!comment.author.id || !onAuthorPress}
+                  >
                     <Text style={modalStyles.commentAvatarText}>
                       {getInitials(comment.author.displayName)}
                     </Text>
-                  </View>
+                  </Pressable>
                   <View style={modalStyles.commentCard}>
                     <View style={modalStyles.commentMeta}>
-                      <Text style={modalStyles.commentAuthor}>
-                        {formatCreatorName(comment.author.displayName)}
-                      </Text>
+                      <Pressable
+                        onPress={comment.author.id && onAuthorPress ? () => onAuthorPress(comment.author.id!) : undefined}
+                        disabled={!comment.author.id || !onAuthorPress}
+                      >
+                        <Text style={modalStyles.commentAuthor}>
+                          {formatCreatorName(comment.author.displayName)}
+                        </Text>
+                      </Pressable>
                       <Text style={modalStyles.commentDate}>
                         {formatCommentDate(comment.createdAt)}
                       </Text>
@@ -1239,6 +1258,7 @@ export default function PublicTripDetailScreen() {
           isFollowPending={isFollowPending}
           onToggleFollow={() => void handleToggleFollow()}
           isOwnTrip={isOwnCreatorTrip}
+          onCreatorPress={!isOwnCreatorTrip && creatorId ? () => router.push(`/profile/${creatorId}` as any) : undefined}
         />
 
         {/* Edit Trip button — owner only, between hero and details */}
@@ -1385,15 +1405,32 @@ export default function PublicTripDetailScreen() {
             {recentComments.length > 0
               ? recentComments.map((comment) => (
                   <View key={comment.id} style={styles.commentRow}>
-                    <View style={styles.commentAvatar}>
+                    <Pressable
+                      style={styles.commentAvatar}
+                      onPress={comment.author.id
+                        ? comment.author.id === user?.id
+                          ? () => router.push('/(tabs)/profile' as any)
+                          : () => router.push(`/profile/${comment.author.id}` as any)
+                        : undefined}
+                      disabled={!comment.author.id}
+                    >
                       <Text style={styles.commentAvatarText}>
                         {getInitials(comment.author.displayName)}
                       </Text>
-                    </View>
+                    </Pressable>
                     <View style={styles.commentCard}>
-                      <Text style={styles.commentAuthor}>
-                        {formatCreatorName(comment.author.displayName)}
-                      </Text>
+                      <Pressable
+                        onPress={comment.author.id
+                          ? comment.author.id === user?.id
+                            ? () => router.push('/(tabs)/profile' as any)
+                            : () => router.push(`/profile/${comment.author.id}` as any)
+                          : undefined}
+                        disabled={!comment.author.id}
+                      >
+                        <Text style={styles.commentAuthor}>
+                          {formatCreatorName(comment.author.displayName)}
+                        </Text>
+                      </Pressable>
                       <Text style={styles.commentBody} numberOfLines={3}>
                         {comment.body}
                       </Text>
@@ -1601,9 +1638,18 @@ export default function PublicTripDetailScreen() {
         commentCount={engagement.commentCount}
         tripId={tripIdStr}
         token={token}
+        currentUserId={user?.id ?? null}
         onCommentCreated={(newComments, newEngagement) => {
           setComments(newComments);
           setEngagement(newEngagement);
+        }}
+        onAuthorPress={(authorId) => {
+          setCommentsModalOpen(false);
+          if (authorId === user?.id) {
+            router.push('/(tabs)/profile' as any);
+          } else {
+            router.push(`/profile/${authorId}` as any);
+          }
         }}
       />
     </SafeAreaView>

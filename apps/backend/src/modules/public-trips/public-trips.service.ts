@@ -722,14 +722,71 @@ export class PublicTripsService {
         recommendation: item.recommendation.payload,
       }));
 
+    const tripIds = mappedItems.map((item) => item.id);
+    const engagementByTripId = await this.getBatchEngagementSnapshots(db, tripIds, userId);
+
     return {
-      items: mappedItems,
+      items: mappedItems.map((item) => ({
+        ...item,
+        engagement: engagementByTripId.get(item.id) ?? this.createEmptyEngagement(),
+      })),
       meta: {
         personalizationState: tasteProfile.personalizationState,
         signalSummary: tasteProfile.signalSummary,
         total: mappedItems.length,
       },
     };
+  }
+
+  private async getBatchEngagementSnapshots(
+    client: any,
+    tripIds: string[],
+    userId: string,
+  ) {
+    if (tripIds.length === 0) {
+      return new Map<string, ReturnType<typeof this.createEmptyEngagement>>();
+    }
+
+    const [likes, comments, saves, completions, myLikes, mySaves, myCompletions] = await Promise.all([
+      client.tripLike.findMany({ where: { tripId: { in: tripIds } }, select: { tripId: true } }),
+      client.tripComment.findMany({ where: { tripId: { in: tripIds } }, select: { tripId: true } }),
+      client.savedTrip.findMany({ where: { tripId: { in: tripIds } }, select: { tripId: true } }),
+      client.tripCompletion.findMany({ where: { tripId: { in: tripIds } }, select: { tripId: true } }),
+      client.tripLike.findMany({ where: { tripId: { in: tripIds }, userId }, select: { tripId: true } }),
+      client.savedTrip.findMany({ where: { tripId: { in: tripIds }, userId }, select: { tripId: true } }),
+      client.tripCompletion.findMany({ where: { tripId: { in: tripIds }, userId }, select: { tripId: true } }),
+    ]);
+
+    const countBy = (rows: Array<{ tripId: string }>) => {
+      const map = new Map<string, number>();
+      for (const { tripId } of rows) {
+        map.set(tripId, (map.get(tripId) ?? 0) + 1);
+      }
+      return map;
+    };
+
+    const likeCountMap = countBy(likes);
+    const commentCountMap = countBy(comments);
+    const saveCountMap = countBy(saves);
+    const completionCountMap = countBy(completions);
+    const likedSet = new Set<string>((myLikes as Array<{ tripId: string }>).map((r) => r.tripId));
+    const savedSet = new Set<string>((mySaves as Array<{ tripId: string }>).map((r) => r.tripId));
+    const completedSet = new Set<string>((myCompletions as Array<{ tripId: string }>).map((r) => r.tripId));
+
+    return new Map(
+      tripIds.map((tripId) => [
+        tripId,
+        {
+          likeCount: likeCountMap.get(tripId) ?? 0,
+          commentCount: commentCountMap.get(tripId) ?? 0,
+          saveCount: saveCountMap.get(tripId) ?? 0,
+          completionCount: completionCountMap.get(tripId) ?? 0,
+          likedByMe: likedSet.has(tripId),
+          savedByMe: savedSet.has(tripId),
+          completedByMe: completedSet.has(tripId),
+        },
+      ]),
+    );
   }
 
   async createSavedTripCollection(

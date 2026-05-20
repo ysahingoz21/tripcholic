@@ -193,8 +193,17 @@ export default function ExploreScreen() {
         budgetMaxTl: selectedBudgetQuery.budgetMaxTl,
         weather: selectedWeather ?? undefined,
         limit: 20,
-      });
+      }, token ?? undefined);
       setExploreData(data);
+      setEngagementMap((prev) => {
+        const next = new Map(prev);
+        for (const item of data.items) {
+          if (item.engagement) {
+            next.set(item.id, item.engagement);
+          }
+        }
+        return next;
+      });
     } catch (err) {
       setExploreError(
         err instanceof Error ? err.message : 'Unable to load explore trips.'
@@ -208,6 +217,7 @@ export default function ExploreScreen() {
     selectedBudgetQuery,
     selectedCategory,
     selectedWeather,
+    token,
   ]);
 
   const loadForYouTrips = useCallback(async () => {
@@ -223,6 +233,15 @@ export default function ExploreScreen() {
       setForYouError(null);
       const data = await getForYouPublicTrips(token, 20);
       setForYouData(data);
+      setEngagementMap((prev) => {
+        const next = new Map(prev);
+        for (const item of data.items) {
+          if (item.engagement) {
+            next.set(item.id, item.engagement);
+          }
+        }
+        return next;
+      });
     } catch (err) {
       setForYouError(
         err instanceof Error
@@ -244,11 +263,13 @@ export default function ExploreScreen() {
     if (!token) return;
     getSavedPublicTrips(token)
       .then((result) => {
-        const map = new Map<string, PublicTripEngagement>();
-        for (const item of result.items) {
-          map.set(item.trip.id, item.engagement);
-        }
-        setEngagementMap(map);
+        setEngagementMap((prev) => {
+          const next = new Map(prev);
+          for (const item of result.items) {
+            next.set(item.trip.id, item.engagement);
+          }
+          return next;
+        });
       })
       .catch(() => {});
   }, [token]);
@@ -380,6 +401,7 @@ export default function ExploreScreen() {
               items={exploreItems}
               onRetry={() => void loadExploreTrips()}
               onTripPress={(id) => router.push(`/public-trip/${id}` as any)}
+              onCreatorPress={(creatorId) => router.push(`/profile/${creatorId}` as any)}
               onSwitchToSwipe={() => setMode('swipe')}
               token={token}
               engagementMap={engagementMap}
@@ -392,6 +414,7 @@ export default function ExploreScreen() {
               items={forYouItems}
               onRetry={() => void loadForYouTrips()}
               onTripPress={(id) => router.push(`/public-trip/${id}` as any)}
+              onCreatorPress={(creatorId) => router.push(`/profile/${creatorId}` as any)}
               onSwitchToExplore={() => setMode('explore')}
               token={token}
               engagementMap={engagementMap}
@@ -449,6 +472,7 @@ type ExploreContentProps = {
   items: ExploreTripItem[];
   onRetry: () => void;
   onTripPress: (id: string) => void;
+  onCreatorPress: (creatorId: string) => void;
   onSwitchToSwipe: () => void;
   token: string | null;
   engagementMap: Map<string, PublicTripEngagement>;
@@ -475,6 +499,7 @@ function ExploreContent({
   items,
   onRetry,
   onTripPress,
+  onCreatorPress,
   onSwitchToSwipe,
   token,
   engagementMap,
@@ -759,10 +784,12 @@ function ExploreContent({
                 dateLabel={formatOptimizedDate(trip.optimizedAt)}
                 token={token}
                 onPress={() => onTripPress(trip.id)}
+                onCreatorPress={trip.creator.id ? () => onCreatorPress(trip.creator.id!) : undefined}
                 initialSaved={eng?.savedByMe ?? false}
                 initialLiked={eng?.likedByMe ?? false}
                 initialLikeCount={eng?.likeCount ?? 0}
                 initialSaveCount={eng?.saveCount ?? 0}
+                initialCommentCount={eng?.commentCount ?? 0}
               />
             );
           })}
@@ -781,6 +808,7 @@ type ForYouContentProps = {
   items: ForYouTripItem[];
   onRetry: () => void;
   onTripPress: (id: string) => void;
+  onCreatorPress: (creatorId: string) => void;
   onSwitchToExplore: () => void;
   token: string | null;
   engagementMap: Map<string, PublicTripEngagement>;
@@ -793,6 +821,7 @@ function ForYouContent({
   items,
   onRetry,
   onTripPress,
+  onCreatorPress,
   onSwitchToExplore,
   token,
   engagementMap,
@@ -869,10 +898,12 @@ function ForYouContent({
                 dateLabel={formatOptimizedDate(trip.optimizedAt)}
                 token={token}
                 onPress={() => onTripPress(trip.id)}
+                onCreatorPress={trip.creator.id ? () => onCreatorPress(trip.creator.id!) : undefined}
                 initialSaved={eng?.savedByMe ?? false}
                 initialLiked={eng?.likedByMe ?? false}
                 initialLikeCount={eng?.likeCount ?? 0}
                 initialSaveCount={eng?.saveCount ?? 0}
+                initialCommentCount={eng?.commentCount ?? 0}
               />
             );
           })}
