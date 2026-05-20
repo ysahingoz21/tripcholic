@@ -46,6 +46,7 @@ import {
   getTripRouteSource,
 } from "@/utils/tripNavigation";
 import TripStopsMap from "../../components/trip/TripStopsMap";
+import TripDescriptionSection from "../../components/ui/TripDescriptionSection";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -1139,6 +1140,13 @@ export default function OwnerTripDetailScreen() {
             </View>
           </View>
         )}
+
+        {/* ── Trip Description ─────────────────────────────────────────────── */}
+        {tripDetail.trip.description?.trim() ? (
+          <View style={styles.content}>
+            <TripDescriptionSection description={tripDetail.trip.description} />
+          </View>
+        ) : null}
 
         {/* ── Content block 1 ─────────────────────────────────────────────── */}
         <View style={styles.content}>

@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AppHeader from '@/components/ui/AppHeader';
 import Artwork from '@/components/ui/Artwork';
+import FollowListModal from '@/components/ui/FollowListModal';
 import { theme } from '@/constants/theme';
 import { font, type } from '@/constants/typography';
 import { useAuth } from '@/context/AuthContext';
@@ -256,6 +257,7 @@ export default function ProfileScreen() {
   const [tripsError, setTripsError] = useState<string | null>(null);
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
+  const [followModal, setFollowModal] = useState<'followers' | 'following' | null>(null);
 
   const loadTrips = useCallback(async () => {
     if (isAuthLoading) return;
@@ -353,19 +355,27 @@ export default function ProfileScreen() {
 
           {/* ── Social stats row ── */}
           <View style={styles.statsRow}>
-            {(
-              [
-                { label: 'Trips', value: stats.trips },
-                { label: 'Followers', value: stats.followers },
-                { label: 'Following', value: stats.following },
-              ] as const
-            ).map(({ label, value }, index) => (
+            {[
+              { label: 'Trips', value: stats.trips, tappable: false },
+              { label: 'Followers', value: stats.followers, tappable: true },
+              { label: 'Following', value: stats.following, tappable: true },
+            ].map(({ label, value, tappable }, index) => (
               <View key={label} style={styles.statCell}>
                 {index > 0 && <View style={styles.statDivider} />}
-                <View style={styles.statCellInner}>
-                  <Text style={styles.statValue}>{value}</Text>
-                  <Text style={styles.statLabel}>{label}</Text>
-                </View>
+                {tappable ? (
+                  <Pressable
+                    style={({ pressed }) => [styles.statCellInner, pressed && { opacity: 0.6 }]}
+                    onPress={() => setFollowModal(label === 'Followers' ? 'followers' : 'following')}
+                  >
+                    <Text style={styles.statValue}>{value}</Text>
+                    <Text style={styles.statLabel}>{label}</Text>
+                  </Pressable>
+                ) : (
+                  <View style={styles.statCellInner}>
+                    <Text style={styles.statValue}>{value}</Text>
+                    <Text style={styles.statLabel}>{label}</Text>
+                  </View>
+                )}
               </View>
             ))}
           </View>
@@ -458,6 +468,18 @@ export default function ProfileScreen() {
           </View>
         </ScrollView>
       </SafeAreaView>
+
+      <FollowListModal
+        visible={followModal !== null}
+        onClose={() => setFollowModal(null)}
+        type={followModal ?? 'followers'}
+        targetUserId={user?.id ?? ''}
+        isOwnProfile
+        token={token}
+        currentUserId={user?.id ?? null}
+        onFollowerCountChange={(delta) => setFollowerCount((c) => c + delta)}
+        onFollowingCountChange={(delta) => setFollowingCount((c) => c + delta)}
+      />
     </View>
   );
 }
