@@ -41,6 +41,7 @@ import {
 } from "@/services/publicTrips";
 import { followUser, unfollowUser } from "@/services/users";
 import TripStopsMap from "../../components/trip/TripStopsMap";
+import TripDescriptionSection from "../../components/ui/TripDescriptionSection";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -1545,6 +1546,13 @@ export default function PublicTripDetailScreen() {
             </Text>
           </Pressable>
         </View>
+
+        {/* Trip Description */}
+        {tripDetail.trip.description?.trim() ? (
+          <View style={styles.content}>
+            <TripDescriptionSection description={tripDetail.trip.description} />
+          </View>
+        ) : null}
 
         {/* 9. Trip stop map — full-width, no horizontal padding */}
         <View style={styles.mapSection}>

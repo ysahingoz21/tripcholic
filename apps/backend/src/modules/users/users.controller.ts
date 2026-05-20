@@ -1,6 +1,7 @@
 import {
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   Param,
   Post,
@@ -107,5 +108,56 @@ export class UsersController {
     @Param('id') id: string,
   ) {
     return this.usersService.unfollowUser(req.user.id, id);
+  }
+
+  @Get(':id/followers')
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiOperation({
+    summary: 'Get followers list',
+    description: "Returns the list of users who follow the given user. isFollowedByMe requires a valid Bearer token.",
+  })
+  @ApiOkResponse({ description: 'Followers list.' })
+  @ApiNotFoundResponse({ description: 'User not found.' })
+  async getFollowers(
+    @Req() req: MaybeAuthenticatedRequest,
+    @Param('id') id: string,
+  ) {
+    return this.usersService.getFollowers(req.user?.id ?? null, id);
+  }
+
+  @Get(':id/following')
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiOperation({
+    summary: 'Get following list',
+    description: "Returns the list of users that the given user follows. isFollowedByMe requires a valid Bearer token.",
+  })
+  @ApiOkResponse({ description: 'Following list.' })
+  @ApiNotFoundResponse({ description: 'User not found.' })
+  async getFollowing(
+    @Req() req: MaybeAuthenticatedRequest,
+    @Param('id') id: string,
+  ) {
+    return this.usersService.getFollowing(req.user?.id ?? null, id);
+  }
+
+  @Delete(':id/followers/:followerId')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({
+    summary: 'Remove a follower',
+    description: 'Removes a user from the authenticated user\'s followers list. Only callable on your own profile.',
+  })
+  @ApiOkResponse({ description: 'Follower removed, updated follower count returned.' })
+  @ApiUnauthorizedResponse({ description: 'Missing, invalid, or expired Bearer token.' })
+  @ApiNotFoundResponse({ description: 'User not found.' })
+  async removeFollower(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Param('followerId') followerId: string,
+  ) {
+    if (req.user.id !== id) {
+      throw new ForbiddenException('You can only manage your own followers');
+    }
+    return this.usersService.removeFollower(req.user.id, followerId);
   }
 }

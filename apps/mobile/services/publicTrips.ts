@@ -227,7 +227,7 @@ export type ForYouTripItem = {
 export type ForYouTripsResponse = {
   items: ForYouTripItem[];
   meta: {
-    personalizationState: 'personalized' | 'cold_start';
+    personalizationState: 'personalized' | 'cold_start' | 'following' | 'no_follows';
     signalSummary: ForYouSignalSummary;
     total: number;
   };

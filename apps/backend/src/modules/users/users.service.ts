@@ -141,6 +141,94 @@ export class UsersService {
     };
   }
 
+  async getFollowers(viewerUserId: string | null, targetUserId: string) {
+    const client = await this.prisma.getClient();
+    const db = client as any;
+
+    const targetUser = await db.user.findUnique({
+      where: { id: targetUserId },
+      select: { id: true },
+    });
+
+    if (!targetUser) {
+      throw new NotFoundException('User not found');
+    }
+
+    const viewerId = viewerUserId ?? '';
+
+    const rows = (await db.$queryRaw(Prisma.sql`
+      SELECT
+        u."id",
+        u."displayName",
+        CASE WHEN vf."id" IS NOT NULL THEN TRUE ELSE FALSE END AS "isFollowedByMe"
+      FROM "user_follows" uf
+      JOIN "users" u ON u."id" = uf."followerId"
+      LEFT JOIN "user_follows" vf
+        ON vf."followerId" = ${viewerId}
+        AND vf."followingId" = u."id"
+      WHERE uf."followingId" = ${targetUserId}
+      ORDER BY uf."createdAt" DESC
+    `)) as Array<{ id: string; displayName: string | null; isFollowedByMe: boolean }>;
+
+    return rows.map((r) => ({ ...r, isFollowedByMe: Boolean(r.isFollowedByMe) }));
+  }
+
+  async getFollowing(viewerUserId: string | null, targetUserId: string) {
+    const client = await this.prisma.getClient();
+    const db = client as any;
+
+    const targetUser = await db.user.findUnique({
+      where: { id: targetUserId },
+      select: { id: true },
+    });
+
+    if (!targetUser) {
+      throw new NotFoundException('User not found');
+    }
+
+    const viewerId = viewerUserId ?? '';
+
+    const rows = (await db.$queryRaw(Prisma.sql`
+      SELECT
+        u."id",
+        u."displayName",
+        CASE WHEN vf."id" IS NOT NULL THEN TRUE ELSE FALSE END AS "isFollowedByMe"
+      FROM "user_follows" uf
+      JOIN "users" u ON u."id" = uf."followingId"
+      LEFT JOIN "user_follows" vf
+        ON vf."followerId" = ${viewerId}
+        AND vf."followingId" = u."id"
+      WHERE uf."followerId" = ${targetUserId}
+      ORDER BY uf."createdAt" DESC
+    `)) as Array<{ id: string; displayName: string | null; isFollowedByMe: boolean }>;
+
+    return rows.map((r) => ({ ...r, isFollowedByMe: Boolean(r.isFollowedByMe) }));
+  }
+
+  async removeFollower(currentUserId: string, followerUserId: string) {
+    const client = await this.prisma.getClient();
+    const db = client as any;
+
+    const followerUser = await db.user.findUnique({
+      where: { id: followerUserId },
+      select: { id: true },
+    });
+
+    if (!followerUser) {
+      throw new NotFoundException('User not found');
+    }
+
+    await db.$executeRaw(Prisma.sql`
+      DELETE FROM "user_follows"
+      WHERE "followerId" = ${followerUserId}
+        AND "followingId" = ${currentUserId}
+    `);
+
+    const followerCount = await this.getFollowerCount(db, currentUserId);
+
+    return { followerCount };
+  }
+
   private async getFollowerCount(client: any, userId: string) {
     const rows = (await client.$queryRaw(Prisma.sql`
       SELECT COUNT(*)::int AS "count"

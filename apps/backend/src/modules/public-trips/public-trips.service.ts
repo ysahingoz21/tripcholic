@@ -647,80 +647,54 @@ export class PublicTripsService {
     const client = await this.prisma.getClient();
     const db = client as any;
     const limit = query.limit ?? 20;
-    const tasteProfile = await this.buildForYouTasteProfile(db, userId);
-    const excludedTripIds = [...tasteProfile.excludedTripIds];
+
+    const followedRows = await db.userFollow.findMany({
+      where: { followerId: userId },
+      select: { followingId: true },
+    });
+    const followedUserIds: string[] = followedRows.map(
+      (r: { followingId: string }) => r.followingId,
+    );
+
+    const emptySignalSummary = { likes: 0, saves: 0, completions: 0, feedbackSubmissions: 0 };
+
+    if (followedUserIds.length === 0) {
+      return {
+        items: [],
+        meta: { personalizationState: 'no_follows' as const, signalSummary: emptySignalSummary, total: 0 },
+      };
+    }
 
     const candidates = (await db.trip.findMany({
       where: {
         ...this.buildEligiblePublicTripWhere(),
-        NOT: [{ userId }, ...(excludedTripIds.length > 0 ? [{ id: { in: excludedTripIds } }] : [])],
+        userId: { in: followedUserIds },
       },
       include: {
-        user: {
-          select: {
-            id: true,
-            displayName: true,
-          },
-        },
+        user: { select: { id: true, displayName: true } },
         stops: {
           orderBy: { order: 'asc' },
           include: {
             poi: {
-              select: {
-                category: true,
-                district: true,
-                imageUrl: true,
-                lat: true,
-                lng: true,
-              },
+              select: { category: true, district: true, imageUrl: true, lat: true, lng: true },
             },
           },
         },
       },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
     })) as PublicTripListRecord[];
 
-    const popularityByTripId = await this.getCandidatePopularityByTripId(
-      db,
-      candidates.map((candidate) => candidate.id),
-    );
-    const scoredItems = candidates.map((candidate) => {
-      const recommendation =
-        tasteProfile.personalizationState === 'personalized'
-          ? this.buildPersonalizedRecommendation(candidate, tasteProfile)
-          : null;
-      const popularity = popularityByTripId.get(candidate.id) ?? {
-        saves: 0,
-        completions: 0,
-        likes: 0,
-      };
-
-      return {
-        trip: candidate,
-        recommendation:
-          recommendation ?? this.buildFallbackRecommendation(candidate, popularity),
-        sortScore:
-          recommendation?.sortScore ??
-          this.buildFallbackSortScore(candidate, popularity),
-      };
-    });
-
-    const items = scoredItems
-      .sort((left, right) =>
-        right.sortScore - left.sortScore ||
-        this.compareNullableDates(right.trip.optimizedAt, left.trip.optimizedAt) ||
-        this.compareNullableDates(right.trip.createdAt, left.trip.createdAt) ||
-        left.trip.id.localeCompare(right.trip.id),
-      )
-      .slice(0, limit);
     const creatorFollowSummaryByUserId = await this.getCreatorFollowSummaryByUserId(
       db,
       userId,
-      items.map((item) => item.trip.user?.id ?? item.trip.userId ?? null),
+      candidates.map((c) => c.user?.id ?? c.userId ?? null),
     );
-    const mappedItems = items.map((item) => ({
-        ...this.toPublicTripListItem(item.trip, creatorFollowSummaryByUserId),
-        recommendation: item.recommendation.payload,
-      }));
+
+    const mappedItems = candidates.map((candidate) => ({
+      ...this.toPublicTripListItem(candidate, creatorFollowSummaryByUserId),
+      recommendation: { kind: 'personalized' as const, primaryReason: 'from_followed_creator', matchedTraits: [] as string[] },
+    }));
 
     const tripIds = mappedItems.map((item) => item.id);
     const engagementByTripId = await this.getBatchEngagementSnapshots(db, tripIds, userId);
@@ -730,11 +704,7 @@ export class PublicTripsService {
         ...item,
         engagement: engagementByTripId.get(item.id) ?? this.createEmptyEngagement(),
       })),
-      meta: {
-        personalizationState: tasteProfile.personalizationState,
-        signalSummary: tasteProfile.signalSummary,
-        total: mappedItems.length,
-      },
+      meta: { personalizationState: 'following' as const, signalSummary: emptySignalSummary, total: mappedItems.length },
     };
   }
 
