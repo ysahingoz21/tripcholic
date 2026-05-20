@@ -221,6 +221,7 @@ export type ForYouTripItem = {
     followerCount: number;
   };
   recommendation: ForYouRecommendation;
+  engagement: PublicTripEngagement;
 };
 
 export type ForYouTripsResponse = {

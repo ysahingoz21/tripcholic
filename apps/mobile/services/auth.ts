@@ -18,6 +18,8 @@ export type AuthUser = {
   email: string;
   createdAt: string;
   updatedAt?: string;
+  followerCount?: number;
+  followingCount?: number;
 };
 
 type LoginResponseData = {

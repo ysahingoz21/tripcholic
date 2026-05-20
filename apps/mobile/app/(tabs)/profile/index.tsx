@@ -13,11 +13,13 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import AppHeader from '@/components/ui/AppHeader';
 import Artwork from '@/components/ui/Artwork';
 import { theme } from '@/constants/theme';
 import { font, type } from '@/constants/typography';
 import { useAuth } from '@/context/AuthContext';
 import { getTrips, type TripListItem, type TripVisibility } from '@/services/trips';
+import { getMe } from '@/services/auth';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -44,7 +46,7 @@ function getAvatarLabel(displayName: string | null | undefined, email: string) {
     .split(/[\s._-]+/)
     .map((part) => part.trim())
     .filter(Boolean);
-  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  if (parts.length >= 2) return `${parts[0]![0]}${parts[1]![0]}`.toUpperCase();
   return source.slice(0, 2).toUpperCase();
 }
 
@@ -143,21 +145,35 @@ function JourneyCard({
       <View style={cardStyles.content}>
         <Text style={cardStyles.title} numberOfLines={2}>{trip.title}</Text>
         <Text style={cardStyles.date}>{formatShortDate(trip.date)}</Text>
-        {/* Engagement row — display-only; counts placeholder until API exposes them */}
-        <View style={cardStyles.metricsRow}>
-          <View style={cardStyles.metricItem}>
-            <Ionicons name="heart-outline" size={14} color={theme.colors.textSecondary} />
-            <Text style={cardStyles.metricText}>0</Text>
+        {trip.visibility !== 'PUBLIC' ? (
+          <View style={cardStyles.privateRow}>
+            <Ionicons name="lock-closed-outline" size={12} color={theme.colors.textSecondary} />
+            <Text style={cardStyles.privateText}>Private trip</Text>
           </View>
-          <View style={cardStyles.metricItem}>
-            <Ionicons name="chatbubble-outline" size={14} color={theme.colors.textSecondary} />
-            <Text style={cardStyles.metricText}>0</Text>
+        ) : (
+          <View style={cardStyles.metricsRow}>
+            <View style={cardStyles.metricItem}>
+              <Ionicons
+                name={trip.engagement?.likedByMe ? 'heart' : 'heart-outline'}
+                size={14}
+                color={trip.engagement?.likedByMe ? '#EF4444' : theme.colors.textSecondary}
+              />
+              <Text style={cardStyles.metricText}>{trip.engagement?.likeCount ?? 0}</Text>
+            </View>
+            <View style={cardStyles.metricItem}>
+              <Ionicons name="chatbubble-outline" size={14} color={theme.colors.textSecondary} />
+              <Text style={cardStyles.metricText}>{trip.engagement?.commentCount ?? 0}</Text>
+            </View>
+            <View style={cardStyles.metricItem}>
+              <Ionicons
+                name={trip.engagement?.savedByMe ? 'bookmark' : 'bookmark-outline'}
+                size={14}
+                color={trip.engagement?.savedByMe ? theme.colors.primary : theme.colors.textSecondary}
+              />
+              <Text style={cardStyles.metricText}>{trip.engagement?.saveCount ?? 0}</Text>
+            </View>
           </View>
-          <View style={cardStyles.metricItem}>
-            <Ionicons name="bookmark-outline" size={14} color={theme.colors.textSecondary} />
-            <Text style={cardStyles.metricText}>0</Text>
-          </View>
-        </View>
+        )}
       </View>
     </Pressable>
   );
@@ -215,6 +231,17 @@ const cardStyles = StyleSheet.create({
     fontSize: 13,
     color: theme.colors.textSecondary,
   },
+  privateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 3,
+  },
+  privateText: {
+    fontFamily: font.regular,
+    fontSize: 11,
+    color: theme.colors.textSecondary,
+  },
 });
 
 // ── Screen ────────────────────────────────────────────────────────────────────
@@ -227,6 +254,8 @@ export default function ProfileScreen() {
   const [trips, setTrips] = useState<TripListItem[]>([]);
   const [isTripsLoading, setIsTripsLoading] = useState(true);
   const [tripsError, setTripsError] = useState<string | null>(null);
+  const [followerCount, setFollowerCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
 
   const loadTrips = useCallback(async () => {
     if (isAuthLoading) return;
@@ -248,7 +277,19 @@ export default function ProfileScreen() {
     }
   }, [token, isAuthLoading]);
 
-  useFocusEffect(useCallback(() => { void loadTrips(); }, [loadTrips]));
+  const loadSocialStats = useCallback(async () => {
+    if (!token) return;
+    try {
+      const me = await getMe(token);
+      setFollowerCount(me.followerCount ?? 0);
+      setFollowingCount(me.followingCount ?? 0);
+    } catch { /* non-critical — counts stay at last known value */ }
+  }, [token]);
+
+  useFocusEffect(useCallback(() => {
+    void loadTrips();
+    void loadSocialStats();
+  }, [loadTrips, loadSocialStats]));
 
   const handleLogout = async () => {
     if (isSigningOut) return;
@@ -266,160 +307,158 @@ export default function ProfileScreen() {
   const avatarLabel = getAvatarLabel(user?.displayName, email);
   const tagline = buildTagline(trips);
 
-  // Social stats — followers/following are placeholders until social graph API is available
   const stats = useMemo(() => ({
     trips: trips.length,
-    followers: 0,
-    following: 0,
-  }), [trips]);
+    followers: followerCount,
+    following: followingCount,
+  }), [trips, followerCount, followingCount]);
 
-  // Own profile: show all trips (public + private).
-  // When other-user profile is added, pass an `isOwn` flag and filter to PUBLIC only for other users.
   const journeyTrips = useMemo(() => trips, [trips]);
 
   const cardWidth = Math.floor((screenWidth - H_PAD * 2 - CARD_GAP) / 2);
 
   return (
-    <SafeAreaView style={styles.safe} edges={['left', 'right']}>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
-        {/* ── Cover image — flush below AppHeader ── */}
-        <View style={styles.coverWrap}>
-          <Image
-            source={COVER_IMAGE}
-            style={styles.coverImage}
-            contentFit="cover"
-          />
-        </View>
-
-        {/* ── Avatar — overlaps lower edge of cover ── */}
-        <View style={styles.avatarAnchor}>
-          <View style={styles.avatarRing}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{avatarLabel}</Text>
-            </View>
+    <View style={styles.root}>
+      <AppHeader />
+      <SafeAreaView style={styles.safe} edges={['left', 'right']}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
+          {/* ── Cover image ── */}
+          <View style={styles.coverWrap}>
+            <Image
+              source={COVER_IMAGE}
+              style={styles.coverImage}
+              contentFit="cover"
+            />
           </View>
-        </View>
 
-        {/* ── Identity ── */}
-        <View style={styles.identitySection}>
-          <Text style={styles.name} numberOfLines={1}>{profileName}</Text>
-          {!isAuthLoading && (
-            <Text style={styles.tagline} numberOfLines={2}>{tagline}</Text>
-          )}
-        </View>
-
-        {/* ── Social stats row ── */}
-        <View style={styles.statsRow}>
-          {(
-            [
-              { label: 'Trips', value: stats.trips },
-              { label: 'Followers', value: stats.followers },
-              { label: 'Following', value: stats.following },
-            ] as const
-          ).map(({ label, value }, index) => (
-            <View key={label} style={styles.statCell}>
-              {index > 0 && <View style={styles.statDivider} />}
-              <View style={styles.statCellInner}>
-                <Text style={styles.statValue}>{value}</Text>
-                <Text style={styles.statLabel}>{label}</Text>
+          {/* ── Avatar — overlaps lower edge of cover ── */}
+          <View style={styles.avatarAnchor}>
+            <View style={styles.avatarRing}>
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>{avatarLabel}</Text>
               </View>
             </View>
-          ))}
-        </View>
-
-        {/* ── Action buttons (own-profile mode) ──
-            When other-user profile is supported, swap to Follow + Message. */}
-        <View style={styles.actionRow}>
-          <Pressable
-            style={({ pressed }) => [styles.btnPrimary, pressed && { opacity: 0.88 }]}
-            onPress={() => router.push('/saved-trips' as any)}
-          >
-            <Ionicons name="bookmark" size={15} color="#FFFFFF" />
-            <Text style={styles.btnPrimaryText}>Saved Trips</Text>
-          </Pressable>
-          <Pressable
-            style={({ pressed }) => [styles.btnSecondary, pressed && { opacity: 0.88 }]}
-            onPress={() => {}}
-          >
-            <Ionicons name="create-outline" size={15} color={theme.colors.textSecondary} />
-            <Text style={styles.btnSecondaryText}>Edit Profile</Text>
-          </Pressable>
-        </View>
-
-        {/* ── Journeys section header ── */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Journeys</Text>
-          {/* Grid-view toggle — non-functional placeholder */}
-          <Pressable hitSlop={8}>
-            <Ionicons name="grid-outline" size={20} color={theme.colors.textSecondary} />
-          </Pressable>
-        </View>
-
-        {/* ── Journey grid ── */}
-        {isTripsLoading ? (
-          <View style={styles.stateCenter}>
-            <ActivityIndicator size="small" color={theme.colors.primary} />
-            <Text style={styles.stateText}>Loading journeys…</Text>
           </View>
-        ) : tripsError ? (
-          <View style={styles.stateCenter}>
-            <View style={styles.stateIconWrap}>
-              <Ionicons name="alert-circle-outline" size={28} color={theme.colors.primary} />
-            </View>
-            <Text style={styles.stateTitle}>Couldn't load trips</Text>
-            <Text style={styles.stateText}>{tripsError}</Text>
-            <Pressable style={styles.actionBtn} onPress={() => void loadTrips()}>
-              <Text style={styles.actionBtnText}>Try again</Text>
-            </Pressable>
+
+          {/* ── Identity ── */}
+          <View style={styles.identitySection}>
+            <Text style={styles.name} numberOfLines={1}>{profileName}</Text>
+            {!isAuthLoading && (
+              <Text style={styles.tagline} numberOfLines={2}>{tagline}</Text>
+            )}
           </View>
-        ) : journeyTrips.length > 0 ? (
-          <View style={styles.grid}>
-            {journeyTrips.map((trip) => (
-              <JourneyCard
-                key={trip.id}
-                trip={trip}
-                cardWidth={cardWidth}
-                showVisibility
-                onPress={() => router.push(`/trip/${trip.id}` as any)}
-              />
+
+          {/* ── Social stats row ── */}
+          <View style={styles.statsRow}>
+            {(
+              [
+                { label: 'Trips', value: stats.trips },
+                { label: 'Followers', value: stats.followers },
+                { label: 'Following', value: stats.following },
+              ] as const
+            ).map(({ label, value }, index) => (
+              <View key={label} style={styles.statCell}>
+                {index > 0 && <View style={styles.statDivider} />}
+                <View style={styles.statCellInner}>
+                  <Text style={styles.statValue}>{value}</Text>
+                  <Text style={styles.statLabel}>{label}</Text>
+                </View>
+              </View>
             ))}
           </View>
-        ) : (
-          <View style={styles.emptyState}>
-            <View style={styles.stateIconWrap}>
-              <Ionicons name="map-outline" size={28} color={theme.colors.primary} />
-            </View>
-            <Text style={styles.stateTitle}>No journeys yet</Text>
-            <Text style={styles.stateText}>
-              Trips you create will appear here. Plan your first one!
-            </Text>
+
+          {/* ── Action buttons ── */}
+          <View style={styles.actionRow}>
             <Pressable
-              style={styles.actionBtn}
-              onPress={() => router.push('/(tabs)/planner')}
+              style={({ pressed }) => [styles.btnPrimary, pressed && { opacity: 0.88 }]}
+              onPress={() => router.push('/saved-trips' as any)}
             >
-              <Text style={styles.actionBtnText}>Plan a trip</Text>
+              <Ionicons name="bookmark" size={15} color="#FFFFFF" />
+              <Text style={styles.btnPrimaryText}>Saved Trips</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.btnSecondary, pressed && { opacity: 0.88 }]}
+              onPress={() => {}}
+            >
+              <Ionicons name="create-outline" size={15} color={theme.colors.textSecondary} />
+              <Text style={styles.btnSecondaryText}>Edit Profile</Text>
             </Pressable>
           </View>
-        )}
 
-        {/* ── Sign out ── */}
-        <View style={styles.signOutWrap}>
-          <Pressable
-            style={({ pressed }) => [styles.signOutBtn, pressed && { opacity: 0.7 }]}
-            onPress={() => void handleLogout()}
-            disabled={isSigningOut}
-          >
-            <Ionicons name="log-out-outline" size={16} color={theme.colors.textSecondary} />
-            <Text style={[styles.signOutText, isSigningOut && { opacity: 0.45 }]}>
-              {isSigningOut ? 'Signing out…' : 'Sign out'}
-            </Text>
-          </Pressable>
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+          {/* ── Journeys section header ── */}
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Journeys</Text>
+            <Pressable hitSlop={8}>
+              <Ionicons name="grid-outline" size={20} color={theme.colors.textSecondary} />
+            </Pressable>
+          </View>
+
+          {/* ── Journey grid ── */}
+          {isTripsLoading ? (
+            <View style={styles.stateCenter}>
+              <ActivityIndicator size="small" color={theme.colors.primary} />
+              <Text style={styles.stateText}>Loading journeys…</Text>
+            </View>
+          ) : tripsError ? (
+            <View style={styles.stateCenter}>
+              <View style={styles.stateIconWrap}>
+                <Ionicons name="alert-circle-outline" size={28} color={theme.colors.primary} />
+              </View>
+              <Text style={styles.stateTitle}>Couldn't load trips</Text>
+              <Text style={styles.stateText}>{tripsError}</Text>
+              <Pressable style={styles.actionBtn} onPress={() => void loadTrips()}>
+                <Text style={styles.actionBtnText}>Try again</Text>
+              </Pressable>
+            </View>
+          ) : journeyTrips.length > 0 ? (
+            <View style={styles.grid}>
+              {journeyTrips.map((trip) => (
+                <JourneyCard
+                  key={trip.id}
+                  trip={trip}
+                  cardWidth={cardWidth}
+                  showVisibility
+                  onPress={() => router.push(`/trip/${trip.id}` as any)}
+                />
+              ))}
+            </View>
+          ) : (
+            <View style={styles.emptyState}>
+              <View style={styles.stateIconWrap}>
+                <Ionicons name="map-outline" size={28} color={theme.colors.primary} />
+              </View>
+              <Text style={styles.stateTitle}>No journeys yet</Text>
+              <Text style={styles.stateText}>
+                Trips you create will appear here. Plan your first one!
+              </Text>
+              <Pressable
+                style={styles.actionBtn}
+                onPress={() => router.push('/(tabs)/planner')}
+              >
+                <Text style={styles.actionBtnText}>Plan a trip</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {/* ── Sign out ── */}
+          <View style={styles.signOutWrap}>
+            <Pressable
+              style={({ pressed }) => [styles.signOutBtn, pressed && { opacity: 0.7 }]}
+              onPress={() => void handleLogout()}
+              disabled={isSigningOut}
+            >
+              <Ionicons name="log-out-outline" size={16} color={theme.colors.textSecondary} />
+              <Text style={[styles.signOutText, isSigningOut && { opacity: 0.45 }]}>
+                {isSigningOut ? 'Signing out…' : 'Sign out'}
+              </Text>
+            </Pressable>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    </View>
   );
 }
 
@@ -428,6 +467,10 @@ export default function ProfileScreen() {
 const AVATAR_TOTAL = AVATAR_SIZE + AVATAR_RING * 2;
 
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+  },
   safe: {
     flex: 1,
     backgroundColor: theme.colors.background,

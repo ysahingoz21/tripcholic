@@ -22,10 +22,12 @@ type Props = {
   dateLabel?: string;
   token: string | null;
   onPress: () => void;
+  onCreatorPress?: () => void;
   initialLiked?: boolean;
   initialSaved?: boolean;
   initialLikeCount?: number;
   initialSaveCount?: number;
+  initialCommentCount?: number;
   hideDistrictLabel?: boolean;
 };
 
@@ -53,10 +55,12 @@ export default function ExploreTripCard({
   dateLabel,
   token,
   onPress,
+  onCreatorPress,
   initialLiked = false,
   initialSaved = false,
   initialLikeCount = 0,
   initialSaveCount = 0,
+  initialCommentCount = 0,
   hideDistrictLabel = false,
 }: Props) {
   const imageUrl = preview.imageUrl?.trim() || null;
@@ -67,11 +71,13 @@ export default function ExploreTripCard({
   const [saved, setSaved] = useState(initialSaved);
   const [likeCount, setLikeCount] = useState(initialLikeCount);
   const [saveCount, setSaveCount] = useState(initialSaveCount);
+  const [commentCount, setCommentCount] = useState(initialCommentCount);
 
   useEffect(() => { setLiked(initialLiked); }, [initialLiked]);
   useEffect(() => { setSaved(initialSaved); }, [initialSaved]);
   useEffect(() => { setLikeCount(initialLikeCount); }, [initialLikeCount]);
   useEffect(() => { setSaveCount(initialSaveCount); }, [initialSaveCount]);
+  useEffect(() => { setCommentCount(initialCommentCount); }, [initialCommentCount]);
 
   const handleLike = async () => {
     if (!token) {
@@ -145,7 +151,12 @@ export default function ExploreTripCard({
 
       {/* ── Top row: creator block + 3-dots menu ── */}
       <View style={styles.cardTopRow}>
-        <View style={styles.creatorBlock}>
+        <Pressable
+          style={styles.creatorBlock}
+          onPress={onCreatorPress}
+          disabled={!onCreatorPress}
+          hitSlop={4}
+        >
           <View style={styles.creatorAvatar}>
             <Text style={styles.creatorAvatarText}>
               {getInitials(creatorName)}
@@ -154,7 +165,7 @@ export default function ExploreTripCard({
           <Text style={styles.creatorName} numberOfLines={1}>
             {formatCreator(creatorName)}
           </Text>
-        </View>
+        </Pressable>
 
         <View style={styles.menuButton}>
           <Ionicons
@@ -238,7 +249,7 @@ export default function ExploreTripCard({
               hitSlop={8}
             >
               <Ionicons name="chatbubble-outline" size={18} color="#FFFFFF" />
-              <Text style={styles.engagementCount}>0</Text>
+              <Text style={styles.engagementCount}>{commentCount}</Text>
             </Pressable>
             <Pressable
               style={styles.engagementItem}

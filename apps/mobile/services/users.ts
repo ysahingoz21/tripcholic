@@ -21,6 +21,14 @@ export type CreatorFollowState = {
   };
 };
 
+export type PublicUserProfile = {
+  id: string;
+  displayName: string | null;
+  followerCount: number;
+  followingCount: number;
+  isFollowedByMe: boolean;
+};
+
 function getErrorMessage(payload: unknown, fallback: string) {
   if (payload && typeof payload === 'object' && 'success' in payload) {
     const apiPayload = payload as ApiErrorEnvelope;
@@ -66,6 +74,18 @@ function getAuthHeaders(token: string) {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${token}`,
   };
+}
+
+export async function getUserProfile(userId: string, token?: string | null) {
+  const headers: Record<string, string> = token
+    ? { Authorization: `Bearer ${token}` }
+    : {};
+  const response = await fetch(`${API_BASE_URL}/users/${userId}`, {
+    method: 'GET',
+    headers,
+  });
+
+  return parseApiResponse<PublicUserProfile>(response, 'Failed to load user profile');
 }
 
 export async function followUser(userId: string, token: string) {
