@@ -11,6 +11,7 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/context/AuthContext';
+import UserAvatar from '@/components/ui/UserAvatar';
 import { theme } from '@/constants/theme';
 import { font } from '@/constants/typography';
 
@@ -18,19 +19,6 @@ type Props = {
   visible: boolean;
   onClose: () => void;
 };
-
-function getInitials(displayName: string | null | undefined, email: string | null | undefined): string {
-  if (displayName?.trim()) {
-    return displayName
-      .trim()
-      .split(/\s+/)
-      .map((w) => w[0] ?? '')
-      .join('')
-      .slice(0, 2)
-      .toUpperCase();
-  }
-  return (email?.[0]?.toUpperCase() ?? 'T');
-}
 
 export default function AppDrawer({ visible, onClose }: Props) {
   const router = useRouter();
@@ -79,7 +67,6 @@ export default function AppDrawer({ visible, onClose }: Props) {
     router.replace('/login');
   }
 
-  const initials = getInitials(user?.displayName, user?.email);
   const displayName = user?.displayName?.trim() || user?.email || 'Traveller';
 
   if (!mounted) return null;
@@ -95,9 +82,13 @@ export default function AppDrawer({ visible, onClose }: Props) {
       <Animated.View style={[styles.drawer, { width: drawerWidth, transform: [{ translateX }] }]}>
         {/* Header: avatar + name */}
         <View style={styles.profileSection}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{initials}</Text>
-          </View>
+          <UserAvatar
+            avatarUrl={user?.avatarUrl}
+            displayName={user?.displayName}
+            email={user?.email}
+            size={56}
+            ringSize={0}
+          />
           <Text style={styles.displayName} numberOfLines={2}>{displayName}</Text>
         </View>
 
@@ -186,20 +177,6 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
     paddingHorizontal: 24,
     gap: 12,
-  },
-  avatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: theme.colors.primaryDark,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: {
-    fontFamily: font.bold,
-    fontSize: 20,
-    color: '#FFFFFF',
-    lineHeight: 24,
   },
   displayName: {
     fontFamily: font.semiBold,

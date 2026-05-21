@@ -38,6 +38,11 @@ model User {
   email                String                @unique
   passwordHash         String
   displayName          String?
+  avatarUrl            String?
+  coverImageUrl        String?
+  bio                  String?
+  travelVibes          String[]              @default([])
+  favoriteCategories   String[]              @default([])
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
 
@@ -92,6 +97,7 @@ model Trip {
   routeAlgorithmUsed    String?
   routeExplanation      String?
   optimizedAt           DateTime?
+  coverImageUrl         String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -221,11 +227,12 @@ model SavedTrip {
 }
 
 model SavedTripCollection {
-  id        String                    @id @default(uuid())
-  userId    String
-  name      String
-  createdAt DateTime                  @default(now())
-  updatedAt DateTime                  @updatedAt
+  id            String  @id @default(uuid())
+  userId        String
+  name          String
+  coverImageUrl String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   user  User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
   items SavedTripCollectionItem[]

@@ -20,6 +20,7 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import Artwork from "@/components/ui/Artwork";
+import UserAvatar from "@/components/ui/UserAvatar";
 import { getSortedTripStops } from "@/components/trip/tripMapUtils";
 import { theme } from "@/constants/theme";
 import { font } from "@/constants/typography";
@@ -60,15 +61,6 @@ function formatDateLabel(value: string) {
     day: "numeric",
     year: "numeric",
   });
-}
-
-function getInitials(name: string | null | undefined): string {
-  if (!name?.trim()) return "T";
-  const parts = name.trim().split(/\s+/);
-  if (parts.length >= 2) {
-    return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase();
-  }
-  return (name[0] ?? "T").toUpperCase();
 }
 
 function getVisibilityConfig(visibility: TripVisibility) {
@@ -186,11 +178,12 @@ function CommentsModal({
             ) : (
               comments.map((comment) => (
                 <View key={comment.id} style={modalStyles.commentRow}>
-                  <View style={modalStyles.commentAvatar}>
-                    <Text style={modalStyles.commentAvatarText}>
-                      {getInitials(comment.author.displayName)}
-                    </Text>
-                  </View>
+                  <UserAvatar
+                    avatarUrl={comment.author.avatarUrl}
+                    displayName={comment.author.displayName}
+                    size={36}
+                    ringSize={0}
+                  />
                   <View style={modalStyles.commentCard}>
                     <View style={modalStyles.commentMeta}>
                       <Text style={modalStyles.commentAuthor}>
@@ -288,20 +281,6 @@ const modalStyles = StyleSheet.create({
     textAlign: "center",
   },
   commentRow: { flexDirection: "row", gap: 10, alignItems: "flex-start" },
-  commentAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: theme.colors.primaryDark,
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
-  commentAvatarText: {
-    fontFamily: font.bold,
-    fontSize: 11,
-    color: "#FFFFFF",
-  },
   commentCard: {
     flex: 1,
     backgroundColor: theme.colors.surface,
@@ -382,14 +361,6 @@ function PageHeader({ onBack }: { onBack: () => void }) {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
 
-  const initials = user?.displayName
-    ? user.displayName
-        .split(" ")
-        .map((w) => w[0] ?? "")
-        .join("")
-        .slice(0, 2)
-        .toUpperCase()
-    : (user?.email?.[0]?.toUpperCase() ?? "T");
 
   return (
     <View style={[hdrStyles.header, { paddingTop: insets.top }]}>
@@ -414,9 +385,13 @@ function PageHeader({ onBack }: { onBack: () => void }) {
           TRIPCHOLIC
         </Text>
         <View style={[hdrStyles.side, hdrStyles.sideRight]}>
-          <View style={hdrStyles.avatar}>
-            <Text style={hdrStyles.avatarText}>{initials}</Text>
-          </View>
+          <UserAvatar
+            avatarUrl={user?.avatarUrl}
+            displayName={user?.displayName}
+            email={user?.email}
+            size={32}
+            ringSize={0}
+          />
         </View>
       </View>
     </View>
@@ -455,20 +430,6 @@ const hdrStyles = StyleSheet.create({
     letterSpacing: 3,
     color: theme.colors.primaryDark,
   },
-  avatar: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: theme.colors.primaryDark,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: {
-    fontFamily: font.bold,
-    fontSize: 13,
-    lineHeight: 15,
-    color: "#FFFFFF",
-  },
 });
 
 // ── OwnerHeroSection ──────────────────────────────────────────────────────────
@@ -476,13 +437,13 @@ const hdrStyles = StyleSheet.create({
 type OwnerHeroProps = {
   detail: TripDetailResponse;
   ownerName: string | null;
-  ownerInitials: string;
+  ownerAvatarUrl?: string | null;
 };
 
 function OwnerHeroSection({
   detail,
   ownerName,
-  ownerInitials,
+  ownerAvatarUrl,
 }: OwnerHeroProps) {
   const imageUrl = detail.preview.imageUrl?.trim() || null;
   const visConfig = getVisibilityConfig(detail.trip.visibility);
@@ -538,11 +499,12 @@ function OwnerHeroSection({
         {/* Creator bar + You pill + date */}
         <View style={ownerHeroStyles.creatorRow}>
           <View style={ownerHeroStyles.creatorBar}>
-            <View style={ownerHeroStyles.creatorAvatar}>
-              <Text style={ownerHeroStyles.creatorInitials}>
-                {ownerInitials}
-              </Text>
-            </View>
+            <UserAvatar
+              avatarUrl={ownerAvatarUrl}
+              displayName={ownerName}
+              size={30}
+              ringSize={0}
+            />
             <View style={ownerHeroStyles.creatorInfo}>
               <Text style={ownerHeroStyles.creatorName} numberOfLines={1}>
                 {creatorName}
@@ -577,7 +539,7 @@ const ownerHeroStyles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: "54%",
+    height: "45%",
     backgroundColor: "rgba(11,36,48,0.80)",
   },
   visBadge: {
@@ -642,15 +604,6 @@ const ownerHeroStyles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 8,
     minWidth: 0,
-  },
-  creatorAvatar: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: theme.colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
   },
   creatorInitials: {
     fontFamily: font.bold,
@@ -837,7 +790,8 @@ export default function OwnerTripDetailScreen() {
   const [tripDetail, setTripDetail] = useState<TripDetailResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [engagement, setEngagement] = useState<PublicTripEngagement>(DEFAULT_ENGAGEMENT);
+  const [engagement, setEngagement] =
+    useState<PublicTripEngagement>(DEFAULT_ENGAGEMENT);
   const [isPublicTrip, setIsPublicTrip] = useState(false);
   const [comments, setComments] = useState<PublicTripComment[]>([]);
   const [isLikePending, setIsLikePending] = useState(false);
@@ -896,12 +850,17 @@ export default function OwnerTripDetailScreen() {
   );
 
   const ownerName = user?.displayName ?? null;
-  const ownerInitials = getInitials(user?.displayName ?? user?.email);
 
   const recentComments = useMemo(() => comments.slice(0, 3), [comments]);
 
   const handleToggleLike = async () => {
-    if (!token || !id || typeof id !== "string" || !isPublicTrip || isLikePending)
+    if (
+      !token ||
+      !id ||
+      typeof id !== "string" ||
+      !isPublicTrip ||
+      isLikePending
+    )
       return;
     try {
       setIsLikePending(true);
@@ -917,7 +876,13 @@ export default function OwnerTripDetailScreen() {
   };
 
   const handleToggleSave = async () => {
-    if (!token || !id || typeof id !== "string" || !isPublicTrip || isSavePending)
+    if (
+      !token ||
+      !id ||
+      typeof id !== "string" ||
+      !isPublicTrip ||
+      isSavePending
+    )
       return;
     try {
       setIsSavePending(true);
@@ -987,7 +952,7 @@ export default function OwnerTripDetailScreen() {
         <OwnerHeroSection
           detail={tripDetail}
           ownerName={ownerName}
-          ownerInitials={ownerInitials}
+          ownerAvatarUrl={user?.avatarUrl}
         />
 
         {/* Edit Trip CTA — between hero and details */}
@@ -1040,11 +1005,7 @@ export default function OwnerTripDetailScreen() {
                 style={styles.socialItem}
                 onPress={() => setCommentsModalOpen(true)}
               >
-                <Ionicons
-                  name="chatbubble-outline"
-                  size={21}
-                  color="#64748B"
-                />
+                <Ionicons name="chatbubble-outline" size={21} color="#64748B" />
                 <Text style={styles.socialCount}>
                   {engagement.commentCount}
                 </Text>
@@ -1057,9 +1018,7 @@ export default function OwnerTripDetailScreen() {
                 disabled={isSavePending}
               >
                 <Ionicons
-                  name={
-                    engagement.savedByMe ? "bookmark" : "bookmark-outline"
-                  }
+                  name={engagement.savedByMe ? "bookmark" : "bookmark-outline"}
                   size={21}
                   color={engagement.savedByMe ? "#006A69" : "#64748B"}
                 />
@@ -1075,11 +1034,7 @@ export default function OwnerTripDetailScreen() {
               <View style={styles.socialSep} />
 
               <View style={styles.socialItem}>
-                <Ionicons
-                  name="footsteps-outline"
-                  size={21}
-                  color="#64748B"
-                />
+                <Ionicons name="footsteps-outline" size={21} color="#64748B" />
                 <Text style={styles.socialCount}>
                   {engagement.completionCount}
                 </Text>
@@ -1092,11 +1047,12 @@ export default function OwnerTripDetailScreen() {
               {recentComments.length > 0
                 ? recentComments.map((comment) => (
                     <View key={comment.id} style={styles.commentRow}>
-                      <View style={styles.commentAvatar}>
-                        <Text style={styles.commentAvatarText}>
-                          {getInitials(comment.author.displayName)}
-                        </Text>
-                      </View>
+                      <UserAvatar
+                        avatarUrl={comment.author.avatarUrl}
+                        displayName={comment.author.displayName}
+                        size={32}
+                        ringSize={0}
+                      />
                       <View style={styles.commentCard}>
                         <Text style={styles.commentAuthor}>
                           {formatCreatorName(comment.author.displayName)}
@@ -1506,20 +1462,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
     gap: 10,
-  },
-  commentAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: theme.colors.primaryDark,
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
-  commentAvatarText: {
-    fontFamily: font.bold,
-    fontSize: 11,
-    color: "#FFFFFF",
   },
   commentCard: {
     flex: 1,

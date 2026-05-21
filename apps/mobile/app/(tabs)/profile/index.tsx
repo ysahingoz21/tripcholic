@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import AppHeader from '@/components/ui/AppHeader';
 import Artwork from '@/components/ui/Artwork';
 import FollowListModal from '@/components/ui/FollowListModal';
+import UserAvatar from '@/components/ui/UserAvatar';
 import { theme } from '@/constants/theme';
 import { font, type } from '@/constants/typography';
 import { useAuth } from '@/context/AuthContext';
@@ -39,16 +40,6 @@ function getDisplayName(displayName: string | null | undefined, email: string) {
   if (trimmedDisplayName) return trimmedDisplayName;
   const localPart = email.split('@')[0]?.trim();
   return localPart || 'Traveler';
-}
-
-function getAvatarLabel(displayName: string | null | undefined, email: string) {
-  const source = displayName?.trim() || email.split('@')[0] || 'Traveler';
-  const parts = source
-    .split(/[\s._-]+/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-  if (parts.length >= 2) return `${parts[0]![0]}${parts[1]![0]}`.toUpperCase();
-  return source.slice(0, 2).toUpperCase();
 }
 
 function formatShortDate(date: string) {
@@ -306,7 +297,6 @@ export default function ProfileScreen() {
 
   const email = user?.email ?? 'Not signed in';
   const profileName = getDisplayName(user?.displayName, email);
-  const avatarLabel = getAvatarLabel(user?.displayName, email);
   const tagline = buildTagline(trips);
 
   const stats = useMemo(() => ({
@@ -330,7 +320,7 @@ export default function ProfileScreen() {
           {/* ── Cover image ── */}
           <View style={styles.coverWrap}>
             <Image
-              source={COVER_IMAGE}
+              source={user?.coverImageUrl ? { uri: user.coverImageUrl } : COVER_IMAGE}
               style={styles.coverImage}
               contentFit="cover"
             />
@@ -338,19 +328,26 @@ export default function ProfileScreen() {
 
           {/* ── Avatar — overlaps lower edge of cover ── */}
           <View style={styles.avatarAnchor}>
-            <View style={styles.avatarRing}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{avatarLabel}</Text>
-              </View>
-            </View>
+            <UserAvatar
+              avatarUrl={user?.avatarUrl}
+              displayName={user?.displayName}
+              email={email}
+              size={AVATAR_SIZE}
+              ringSize={AVATAR_RING}
+            />
           </View>
 
           {/* ── Identity ── */}
           <View style={styles.identitySection}>
             <Text style={styles.name} numberOfLines={1}>{profileName}</Text>
-            {!isAuthLoading && (
+            {!isAuthLoading && user?.travelVibes && user.travelVibes.length > 0 ? (
+              <Text style={styles.vibes} numberOfLines={1}>{user.travelVibes.join(' • ')}</Text>
+            ) : null}
+            {!isAuthLoading && user?.bio ? (
+              <Text style={styles.bio} numberOfLines={3}>{user.bio}</Text>
+            ) : !isAuthLoading ? (
               <Text style={styles.tagline} numberOfLines={2}>{tagline}</Text>
-            )}
+            ) : null}
           </View>
 
           {/* ── Social stats row ── */}
@@ -391,9 +388,9 @@ export default function ProfileScreen() {
             </Pressable>
             <Pressable
               style={({ pressed }) => [styles.btnSecondary, pressed && { opacity: 0.88 }]}
-              onPress={() => {}}
+              onPress={() => router.push('/edit-profile' as any)}
             >
-              <Ionicons name="create-outline" size={15} color={theme.colors.textSecondary} />
+              <Ionicons name="create-outline" size={15} color={theme.colors.primaryDark} />
               <Text style={styles.btnSecondaryText}>Edit Profile</Text>
             </Pressable>
           </View>
@@ -516,28 +513,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: -(AVATAR_TOTAL / 2),
   },
-  avatarRing: {
-    width: AVATAR_TOTAL,
-    height: AVATAR_TOTAL,
-    borderRadius: AVATAR_TOTAL / 2,
-    backgroundColor: theme.colors.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatar: {
-    width: AVATAR_SIZE,
-    height: AVATAR_SIZE,
-    borderRadius: AVATAR_SIZE / 2,
-    backgroundColor: theme.colors.primaryDark,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: {
-    fontFamily: font.bold,
-    fontSize: 26,
-    color: '#FFFFFF',
-    letterSpacing: 0.5,
-  },
 
   // ── Identity ─────────────────────────────────────────────────────────────
   identitySection: {
@@ -557,6 +532,13 @@ const styles = StyleSheet.create({
   },
   tagline: {
     ...type.bodySm,
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
+  },
+  bio: {
+    fontFamily: font.regular,
+    fontSize: 14,
+    lineHeight: 21,
     color: theme.colors.textSecondary,
     textAlign: 'center',
   },
@@ -628,14 +610,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 7,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: '#DFF7F6',
     borderRadius: 14,
     paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
   },
   btnSecondaryText: {
     fontFamily: font.semiBold,
     fontSize: 14,
-    color: theme.colors.textSecondary,
+    color: theme.colors.primaryDark,
+  },
+  vibes: {
+    fontFamily: font.medium,
+    fontSize: 13,
+    color: theme.colors.primary,
+    textAlign: 'center',
   },
 
   // ── Section header ────────────────────────────────────────────────────────

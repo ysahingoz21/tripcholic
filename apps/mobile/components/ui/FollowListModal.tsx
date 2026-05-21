@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import UserAvatar from '@/components/ui/UserAvatar';
 import { theme } from '@/constants/theme';
 import { font } from '@/constants/typography';
 import {
@@ -22,13 +23,6 @@ import {
   unfollowUser,
   type FollowListItem,
 } from '@/services/users';
-
-function getAvatarLabel(displayName: string | null): string {
-  const source = displayName?.trim() || 'T';
-  const parts = source.split(/[\s._-]+/).map((p) => p.trim()).filter(Boolean);
-  if (parts.length >= 2) return `${parts[0]![0]}${parts[1]![0]}`.toUpperCase();
-  return source.slice(0, 2).toUpperCase();
-}
 
 type Props = {
   visible: boolean;
@@ -227,9 +221,12 @@ export default function FollowListModal({
           style={({ pressed }) => [rowStyles.row, pressed && { backgroundColor: '#F8FAFC' }]}
           onPress={() => handleUserPress(item.id)}
         >
-          <View style={rowStyles.avatar}>
-            <Text style={rowStyles.avatarText}>{getAvatarLabel(item.displayName)}</Text>
-          </View>
+          <UserAvatar
+            avatarUrl={item.avatarUrl}
+            displayName={item.displayName}
+            size={40}
+            ringSize={0}
+          />
           <Text style={rowStyles.name} numberOfLines={1}>
             {item.displayName?.trim() || 'Tripcholic Traveler'}
           </Text>
@@ -423,21 +420,6 @@ const rowStyles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 12,
     gap: 12,
-  },
-  avatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: theme.colors.primaryDark,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  avatarText: {
-    fontFamily: font.bold,
-    fontSize: 15,
-    color: '#FFFFFF',
-    letterSpacing: 0.3,
   },
   name: {
     flex: 1,

@@ -21,6 +21,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import Artwork from "@/components/ui/Artwork";
+import UserAvatar from "@/components/ui/UserAvatar";
 import { theme } from "@/constants/theme";
 import { font } from "@/constants/typography";
 import {
@@ -39,12 +40,6 @@ const EXPAND_CTA_HEIGHT = 52; // height of the "See stops" strip in collapsed mo
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function getInitials(name: string | null): string {
-  if (!name?.trim()) return "T";
-  const parts = name.trim().split(/\s+/);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return name[0].toUpperCase();
-}
 
 function formatCreator(name: string | null) {
   return name?.trim() || "Tripcholic traveler";
@@ -609,11 +604,12 @@ function SwipeCard({ trip, token, isExpanded, onExpand, onCreatorPress }: SwipeC
               disabled={!onCreatorPress}
               hitSlop={4}
             >
-              <View style={cardStyles.creatorAvatar}>
-                <Text style={cardStyles.creatorAvatarText}>
-                  {getInitials(trip.creator.displayName)}
-                </Text>
-              </View>
+              <UserAvatar
+                avatarUrl={trip.creator.avatarUrl}
+                displayName={trip.creator.displayName}
+                size={28}
+                ringSize={0}
+              />
               <Text style={cardStyles.creatorName} numberOfLines={1}>
                 {formatCreator(trip.creator.displayName)}
               </Text>
@@ -1013,21 +1009,6 @@ const cardStyles = StyleSheet.create({
     paddingVertical: 9,
     maxWidth: 220,
     flexShrink: 1,
-  },
-  creatorAvatar: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: theme.colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
-  creatorAvatarText: {
-    fontFamily: font.bold,
-    fontSize: 10,
-    color: "#FFFFFF",
-    letterSpacing: 0.3,
   },
   creatorName: {
     fontFamily: font.semiBold,

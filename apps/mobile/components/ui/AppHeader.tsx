@@ -7,21 +7,13 @@ import { useAuth } from '@/context/AuthContext';
 import { theme } from '@/constants/theme';
 import { font } from '@/constants/typography';
 import AppDrawer from './AppDrawer';
+import UserAvatar from './UserAvatar';
 
 export default function AppHeader() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const [drawerOpen, setDrawerOpen] = useState(false);
-
-  const initials = user?.displayName
-    ? user.displayName
-        .split(' ')
-        .map((w) => w[0] ?? '')
-        .join('')
-        .slice(0, 2)
-        .toUpperCase()
-    : (user?.email?.[0]?.toUpperCase() ?? 'T');
 
   return (
     <>
@@ -47,14 +39,17 @@ export default function AppHeader() {
           {/* Right — profile avatar → navigates to Profile */}
           <View style={[styles.side, styles.sideRight]}>
             <Pressable
-              style={({ pressed }) => [
-                styles.avatar,
-                pressed && styles.avatarPressed,
-              ]}
+              style={({ pressed }) => [pressed && { opacity: 0.75 }]}
               onPress={() => router.push('/(tabs)/profile')}
               hitSlop={8}
             >
-              <Text style={styles.avatarText}>{initials}</Text>
+              <UserAvatar
+                avatarUrl={user?.avatarUrl}
+                displayName={user?.displayName}
+                email={user?.email}
+                size={32}
+                ringSize={0}
+              />
             </Pressable>
           </View>
 
@@ -105,22 +100,4 @@ const styles = StyleSheet.create({
     color: theme.colors.primaryDark,
   },
 
-  // ── Avatar ──
-  avatar: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: theme.colors.primaryDark,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarPressed: {
-    opacity: 0.75,
-  },
-  avatarText: {
-    fontFamily: font.bold,
-    fontSize: 13,
-    lineHeight: 15,
-    color: '#FFFFFF',
-  },
 });

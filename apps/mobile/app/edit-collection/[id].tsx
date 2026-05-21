@@ -1,9 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,10 +14,12 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import ChangeCoverButton from '@/components/ui/ChangeCoverButton';
 import { theme } from '@/constants/theme';
 import { font } from '@/constants/typography';
 import { useAuth } from '@/context/AuthContext';
 import { renameSavedTripCollection } from '@/services/publicTrips';
+import { uploadImage } from '@/services/uploads';
 
 const DEFAULT_COVER = require('@/assets/images/placeholders/default-collection.png');
 
@@ -23,11 +27,45 @@ export default function EditCollectionScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { token } = useAuth();
-  const { id, name: initialName } = useLocalSearchParams<{ id: string; name: string }>();
+  const { id, name: initialName, coverImageUrl: initialCoverUrl } = useLocalSearchParams<{
+    id: string;
+    name: string;
+    coverImageUrl?: string;
+  }>();
 
   const [name, setName] = useState(initialName ?? '');
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingCoverUrl, setPendingCoverUrl] = useState<string | null>(
+    initialCoverUrl && initialCoverUrl.length > 0 ? initialCoverUrl : null
+  );
+  const [isUploadingCover, setIsUploadingCover] = useState(false);
+
+  const handleChangeCover = async () => {
+    if (!token) return;
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Permission required', 'Please allow photo library access to change the cover.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.85,
+    });
+    if (result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
+    try {
+      setIsUploadingCover(true);
+      const uploaded = await uploadImage(token, asset.uri, asset.mimeType ?? 'image/jpeg');
+      setPendingCoverUrl(uploaded.url);
+    } catch (e) {
+      Alert.alert('Upload failed', e instanceof Error ? e.message : 'Could not upload cover image.');
+    } finally {
+      setIsUploadingCover(false);
+    }
+  };
 
   const handleSave = async () => {
     const trimmedName = name.trim();
@@ -39,14 +77,16 @@ export default function EditCollectionScreen() {
       setError('Authentication required. Please sign in.');
       return;
     }
-    if (trimmedName === initialName) {
+    const nameUnchanged = trimmedName === initialName;
+    const coverUnchanged = pendingCoverUrl === (initialCoverUrl && initialCoverUrl.length > 0 ? initialCoverUrl : null);
+    if (nameUnchanged && coverUnchanged) {
       router.back();
       return;
     }
     try {
       setIsSaving(true);
       setError(null);
-      await renameSavedTripCollection(token, id, trimmedName);
+      await renameSavedTripCollection(token, id, trimmedName, pendingCoverUrl);
       router.back();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Unable to save changes.');
@@ -81,13 +121,18 @@ export default function EditCollectionScreen() {
       >
         {/* Cover image area */}
         <View style={styles.coverWrap}>
-          <Image source={DEFAULT_COVER} style={styles.coverImage} contentFit="cover" />
+          <Image
+            source={pendingCoverUrl ? { uri: pendingCoverUrl } : DEFAULT_COVER}
+            style={styles.coverImage}
+            contentFit="cover"
+          />
           <View style={styles.coverScrim} />
           <View style={styles.coverOverlay}>
-            <Pressable style={styles.changeCoverBtn}>
-              <Ionicons name="camera-outline" size={16} color="#FFFFFF" />
-              <Text style={styles.changeCoverText}>Change Cover</Text>
-            </Pressable>
+            <ChangeCoverButton
+              onPress={() => void handleChangeCover()}
+              isUploading={isUploadingCover}
+              disabled={isSaving}
+            />
           </View>
         </View>
 
@@ -113,9 +158,9 @@ export default function EditCollectionScreen() {
 
         {/* Save button */}
         <Pressable
-          style={[styles.saveBtn, isSaving && styles.saveBtnDisabled]}
+          style={[styles.saveBtn, (isSaving || isUploadingCover) && styles.saveBtnDisabled]}
           onPress={() => void handleSave()}
-          disabled={isSaving}
+          disabled={isSaving || isUploadingCover}
         >
           {isSaving ? (
             <ActivityIndicator size="small" color="#FFFFFF" />
@@ -177,7 +222,8 @@ const styles = StyleSheet.create({
   },
 
   coverWrap: {
-    height: 220,
+    width: '100%',
+    aspectRatio: 1,
     backgroundColor: '#DFF7F6',
   },
   coverImage: {
@@ -191,22 +237,6 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  changeCoverBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
-    borderRadius: 9999,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  changeCoverText: {
-    fontFamily: font.semiBold,
-    fontSize: 14,
-    color: '#FFFFFF',
   },
 
   section: {

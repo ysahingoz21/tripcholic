@@ -44,7 +44,11 @@ function GridCollectionCard({
       style={({ pressed }) => [gridStyles.card, { width: cardWidth }, pressed && { opacity: 0.88 }]}
       onPress={onPress}
     >
-      <Image source={DEFAULT_COLLECTION_COVER} style={[gridStyles.image, { width: cardWidth }]} contentFit="cover" />
+      <Image
+        source={collection.coverImageUrl ? { uri: collection.coverImageUrl } : DEFAULT_COLLECTION_COVER}
+        style={[gridStyles.image, { width: cardWidth }]}
+        contentFit="cover"
+      />
       <View style={gridStyles.info}>
         <Text style={gridStyles.name} numberOfLines={1}>{collection.name}</Text>
         <Text style={gridStyles.count}>
@@ -274,7 +278,7 @@ export default function AllCollectionsScreen() {
           },
           {
             label: 'Edit Collection',
-            onPress: () => menuCollection && router.push(`/edit-collection/${menuCollection.id}?name=${encodeURIComponent(menuCollection.name)}` as any),
+            onPress: () => menuCollection && router.push(`/edit-collection/${menuCollection.id}?name=${encodeURIComponent(menuCollection.name)}&coverImageUrl=${encodeURIComponent(menuCollection.coverImageUrl ?? '')}` as any),
           },
           {
             label: 'Delete Collection',
