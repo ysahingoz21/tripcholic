@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import Artwork from "@/components/ui/Artwork";
+import UserAvatar from "@/components/ui/UserAvatar";
 import { theme } from "@/constants/theme";
 import { font } from "@/constants/typography";
 import {
@@ -19,6 +20,7 @@ type Props = {
   categories: string[];
   preview: TripPreview;
   creatorName: string | null;
+  creatorAvatarUrl?: string | null;
   dateLabel?: string;
   token: string | null;
   onPress: () => void;
@@ -30,13 +32,6 @@ type Props = {
   initialCommentCount?: number;
   hideDistrictLabel?: boolean;
 };
-
-function getInitials(name: string | null): string {
-  if (!name?.trim()) return "T";
-  const parts = name.trim().split(/\s+/);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return name[0].toUpperCase();
-}
 
 function formatCreator(name: string | null) {
   return name?.trim() || "Tripcholic traveler";
@@ -52,6 +47,7 @@ export default function ExploreTripCard({
   categories,
   preview,
   creatorName,
+  creatorAvatarUrl,
   dateLabel,
   token,
   onPress,
@@ -157,11 +153,12 @@ export default function ExploreTripCard({
           disabled={!onCreatorPress}
           hitSlop={4}
         >
-          <View style={styles.creatorAvatar}>
-            <Text style={styles.creatorAvatarText}>
-              {getInitials(creatorName)}
-            </Text>
-          </View>
+          <UserAvatar
+            avatarUrl={creatorAvatarUrl}
+            displayName={creatorName}
+            size={28}
+            ringSize={0}
+          />
           <Text style={styles.creatorName} numberOfLines={1}>
             {formatCreator(creatorName)}
           </Text>
@@ -328,21 +325,6 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     maxWidth: 220,
     flexShrink: 1,
-  },
-  creatorAvatar: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: theme.colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
-  creatorAvatarText: {
-    fontFamily: font.bold,
-    fontSize: 10,
-    color: "#FFFFFF",
-    letterSpacing: 0.3,
   },
   creatorName: {
     fontFamily: font.semiBold,

@@ -297,6 +297,7 @@ type ExploreTripRecord = Prisma.TripGetPayload<{
       select: {
         id: true;
         displayName: true;
+        avatarUrl: true;
       };
     };
     stops: {
@@ -433,6 +434,7 @@ export class TripsService {
             select: {
               id: true,
               displayName: true,
+              avatarUrl: true,
             },
           },
           stops: {
@@ -597,6 +599,9 @@ export class TripsService {
         ...(payload.maxStops !== undefined && { maxPois: payload.maxStops }),
         ...(payload.visibility !== undefined && {
           visibility: payload.visibility,
+        }),
+        ...(payload.coverImageUrl !== undefined && {
+          coverImageUrl: payload.coverImageUrl ?? null,
         }),
       },
     });
@@ -1479,6 +1484,7 @@ export class TripsService {
       categories: trip.categories,
       routeTotalDurationMin: trip.routeTotalDurationMin,
       routeTotalCostTl: trip.routeTotalCostTl,
+      coverImageUrl: trip.coverImageUrl,
       stops: trip.stops.map((stop) => ({
         category: stop.poi.category.toLowerCase(),
         district: stop.poi.district,
@@ -1527,6 +1533,7 @@ export class TripsService {
       categories: trip.categories,
       routeTotalDurationMin: trip.routeTotalDurationMin,
       routeTotalCostTl: trip.routeTotalCostTl,
+      coverImageUrl: trip.coverImageUrl,
       stops: trip.stops.map((stop) => ({
         category: stop.poi.category.toLowerCase(),
         district: stop.poi.district,
@@ -1550,6 +1557,7 @@ export class TripsService {
       creator: {
         id: trip.user?.id ?? null,
         displayName: trip.user?.displayName ?? null,
+        avatarUrl: trip.user?.avatarUrl ?? null,
       },
     };
   }
@@ -1595,6 +1603,7 @@ export class TripsService {
       categories: trip.categories,
       routeTotalDurationMin: trip.routeTotalDurationMin,
       routeTotalCostTl: trip.routeTotalCostTl,
+      coverImageUrl: trip.coverImageUrl,
       stops: stops.map((stop) => ({
         category: stop.poi.category,
         district: stop.poi.district,
@@ -1622,6 +1631,7 @@ export class TripsService {
         maxPois: trip.maxPois,
         status: trip.status,
         visibility: trip.visibility,
+        coverImageUrl: trip.coverImageUrl ?? null,
         createdAt: trip.createdAt,
         updatedAt: trip.updatedAt,
       },

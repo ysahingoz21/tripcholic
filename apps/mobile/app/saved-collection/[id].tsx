@@ -398,7 +398,7 @@ export default function SavedCollectionScreen() {
           { label: 'Add Trips to Collection', onPress: () => router.push(`/collection-add-trips/${id}` as any) },
           {
             label: 'Edit Collection',
-            onPress: () => router.push(`/edit-collection/${id}?name=${encodeURIComponent(collectionName)}` as any),
+            onPress: () => router.push(`/edit-collection/${id}?name=${encodeURIComponent(collectionName)}&coverImageUrl=${encodeURIComponent(data?.filter.selectedCollection?.coverImageUrl ?? '')}` as any),
           },
           { label: 'Delete Collection', destructive: true, onPress: confirmDelete },
           { label: 'Cancel', cancel: true },

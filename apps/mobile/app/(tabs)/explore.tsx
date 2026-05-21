@@ -781,6 +781,7 @@ function ExploreContent({
                 categories={trip.categories}
                 preview={trip.preview}
                 creatorName={trip.creator.displayName}
+                creatorAvatarUrl={trip.creator.avatarUrl}
                 dateLabel={formatOptimizedDate(trip.optimizedAt)}
                 token={token}
                 onPress={() => onTripPress(trip.id)}
@@ -826,26 +827,15 @@ function ForYouContent({
   token,
   engagementMap,
 }: ForYouContentProps) {
-  const isColdStart = data?.meta.personalizationState === 'cold_start';
+  const isNoFollows = data?.meta.personalizationState === 'no_follows';
 
   return (
     <>
-      {/* Cold-start notice */}
-      {isColdStart && (
-        <View style={styles.coldStartBanner}>
-          <Ionicons name="sparkles-outline" size={15} color={theme.colors.primary} />
-          <Text style={styles.coldStartText}>
-            Still learning your taste — results improve as you save, like, and
-            complete trips.
-          </Text>
-        </View>
-      )}
-
       {/* Results */}
       {isLoading ? (
         <View style={styles.feedState}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
-          <Text style={styles.feedStateBody}>Personalizing your feed…</Text>
+          <Text style={styles.feedStateBody}>Loading your feed…</Text>
         </View>
       ) : error ? (
         <View style={styles.feedState}>
@@ -865,19 +855,22 @@ function ForYouContent({
             <Text style={styles.feedStateLinkText}>Switch to Explore</Text>
           </Pressable>
         </View>
-      ) : items.length === 0 ? (
+      ) : isNoFollows || items.length === 0 ? (
         <View style={styles.feedState}>
           <View style={styles.stateIconWrap}>
             <Ionicons
-              name="compass-outline"
+              name="people-outline"
               size={28}
               color={theme.colors.primary}
             />
           </View>
-          <Text style={styles.feedStateTitle}>No For You picks yet</Text>
+          <Text style={styles.feedStateTitle}>
+            {isNoFollows ? 'Follow creators to get started' : 'No trips yet'}
+          </Text>
           <Text style={styles.feedStateBody}>
-            We couldn't find eligible public trips right now. Try Explore for
-            the full catalog.
+            {isNoFollows
+              ? 'For You shows the latest public trips from creators you follow. Discover someone new in Explore, then follow them.'
+              : "The creators you follow haven’t published any public trips yet. Check back soon or discover more in Explore."}
           </Text>
           <Pressable style={styles.feedStateButton} onPress={onSwitchToExplore}>
             <Text style={styles.feedStateButtonText}>Open Explore</Text>
@@ -895,6 +888,7 @@ function ForYouContent({
                 categories={trip.categories}
                 preview={trip.preview}
                 creatorName={trip.creator.displayName}
+                creatorAvatarUrl={trip.creator.avatarUrl}
                 dateLabel={formatOptimizedDate(trip.optimizedAt)}
                 token={token}
                 onPress={() => onTripPress(trip.id)}

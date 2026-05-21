@@ -1,4 +1,5 @@
 import { API_BASE_URL } from '../constants/api';
+import type { AuthUser } from './auth';
 
 type ApiSuccessEnvelope<T> = {
   success: true;
@@ -21,12 +22,30 @@ export type CreatorFollowState = {
   };
 };
 
+export type FollowListItem = {
+  id: string;
+  displayName: string | null;
+  avatarUrl?: string | null;
+  isFollowedByMe: boolean;
+};
+
 export type PublicUserProfile = {
   id: string;
   displayName: string | null;
+  avatarUrl?: string | null;
+  coverImageUrl?: string | null;
   followerCount: number;
   followingCount: number;
   isFollowedByMe: boolean;
+};
+
+export type UpdateProfilePayload = {
+  displayName?: string | null;
+  bio?: string | null;
+  avatarUrl?: string | null;
+  coverImageUrl?: string | null;
+  travelVibes?: string[];
+  favoriteCategories?: string[];
 };
 
 function getErrorMessage(payload: unknown, fallback: string) {
@@ -104,4 +123,55 @@ export async function unfollowUser(userId: string, token: string) {
   });
 
   return parseApiResponse<CreatorFollowState>(response, 'Failed to unfollow creator');
+}
+
+export async function getUserFollowers(
+  userId: string,
+  token?: string | null,
+): Promise<FollowListItem[]> {
+  const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+  const response = await fetch(`${API_BASE_URL}/users/${userId}/followers`, {
+    method: 'GET',
+    headers,
+  });
+  return parseApiResponse<FollowListItem[]>(response, 'Failed to load followers');
+}
+
+export async function getUserFollowing(
+  userId: string,
+  token?: string | null,
+): Promise<FollowListItem[]> {
+  const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+  const response = await fetch(`${API_BASE_URL}/users/${userId}/following`, {
+    method: 'GET',
+    headers,
+  });
+  return parseApiResponse<FollowListItem[]>(response, 'Failed to load following list');
+}
+
+export async function removeFollower(
+  myUserId: string,
+  followerUserId: string,
+  token: string,
+): Promise<{ followerCount: number }> {
+  const response = await fetch(
+    `${API_BASE_URL}/users/${myUserId}/followers/${followerUserId}`,
+    {
+      method: 'DELETE',
+      headers: getAuthHeaders(token),
+    },
+  );
+  return parseApiResponse<{ followerCount: number }>(response, 'Failed to remove follower');
+}
+
+export async function updateProfile(
+  token: string,
+  payload: UpdateProfilePayload,
+): Promise<AuthUser> {
+  const response = await fetch(`${API_BASE_URL}/users/me`, {
+    method: 'PATCH',
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload),
+  });
+  return parseApiResponse<AuthUser>(response, 'Failed to update profile');
 }

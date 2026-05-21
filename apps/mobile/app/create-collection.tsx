@@ -1,9 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,10 +14,12 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import ChangeCoverButton from '@/components/ui/ChangeCoverButton';
 import { theme } from '@/constants/theme';
 import { font } from '@/constants/typography';
 import { useAuth } from '@/context/AuthContext';
 import { createSavedTripCollection } from '@/services/publicTrips';
+import { uploadImage } from '@/services/uploads';
 
 const DEFAULT_COVER = require('@/assets/images/placeholders/default-collection.png');
 
@@ -27,6 +31,34 @@ export default function CreateCollectionScreen() {
   const [name, setName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingCoverUrl, setPendingCoverUrl] = useState<string | null>(null);
+  const [isUploadingCover, setIsUploadingCover] = useState(false);
+
+  const handleChangeCover = async () => {
+    if (!token) return;
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Permission required', 'Please allow photo library access to change the cover.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.85,
+    });
+    if (result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
+    try {
+      setIsUploadingCover(true);
+      const uploaded = await uploadImage(token, asset.uri, asset.mimeType ?? 'image/jpeg');
+      setPendingCoverUrl(uploaded.url);
+    } catch (e) {
+      Alert.alert('Upload failed', e instanceof Error ? e.message : 'Could not upload cover image.');
+    } finally {
+      setIsUploadingCover(false);
+    }
+  };
 
   const handleCreate = async () => {
     const trimmedName = name.trim();
@@ -42,7 +74,7 @@ export default function CreateCollectionScreen() {
     try {
       setIsCreating(true);
       setError(null);
-      await createSavedTripCollection(token, trimmedName);
+      await createSavedTripCollection(token, trimmedName, pendingCoverUrl);
       router.back();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Unable to create collection.');
@@ -77,13 +109,18 @@ export default function CreateCollectionScreen() {
       >
         {/* Cover image area */}
         <View style={styles.coverWrap}>
-          <Image source={DEFAULT_COVER} style={styles.coverImage} contentFit="cover" />
+          <Image
+            source={pendingCoverUrl ? { uri: pendingCoverUrl } : DEFAULT_COVER}
+            style={styles.coverImage}
+            contentFit="cover"
+          />
           <View style={styles.coverScrim} />
           <View style={styles.coverOverlay}>
-            <Pressable style={styles.changeCoverBtn}>
-              <Ionicons name="camera-outline" size={16} color="#FFFFFF" />
-              <Text style={styles.changeCoverText}>Change Cover</Text>
-            </Pressable>
+            <ChangeCoverButton
+              onPress={() => void handleChangeCover()}
+              isUploading={isUploadingCover}
+              disabled={isCreating}
+            />
           </View>
         </View>
 
@@ -109,9 +146,9 @@ export default function CreateCollectionScreen() {
 
         {/* Create button */}
         <Pressable
-          style={[styles.createBtn, isCreating && styles.createBtnDisabled]}
+          style={[styles.createBtn, (isCreating || isUploadingCover) && styles.createBtnDisabled]}
           onPress={() => void handleCreate()}
-          disabled={isCreating}
+          disabled={isCreating || isUploadingCover}
         >
           {isCreating ? (
             <ActivityIndicator size="small" color="#FFFFFF" />
@@ -178,9 +215,9 @@ const styles = StyleSheet.create({
 
   // Cover
   coverWrap: {
-    height: 220,
+    width: '100%',
+    aspectRatio: 1,
     backgroundColor: '#DFF7F6',
-    position: 'relative',
   },
   coverImage: {
     ...StyleSheet.absoluteFillObject,
@@ -193,22 +230,6 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  changeCoverBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
-    borderRadius: 9999,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  changeCoverText: {
-    fontFamily: font.semiBold,
-    fontSize: 14,
-    color: '#FFFFFF',
   },
 
   // Section

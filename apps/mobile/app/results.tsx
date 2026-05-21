@@ -607,9 +607,7 @@ export default function ResultsScreen() {
               <Text style={styles.sectionTitle}>Trip Stop Map</Text>
             </View>
           </View>
-          <View style={styles.mapWrapper}>
-            <TripStopsMap stops={stops} />
-          </View>
+          <TripStopsMap stops={stops} hideTitle />
         </View>
 
         {/* 7 ── Timeline ──────────────────────────────────────────────────── */}
@@ -962,14 +960,6 @@ const styles = StyleSheet.create({
   infoSep: {
     height: 1,
     backgroundColor: '#F1F5F9',
-  },
-
-  // ── Map wrapper ──
-  mapWrapper: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#E8ECF0',
   },
 
   // ── Generic card (explanation) ──

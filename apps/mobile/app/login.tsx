@@ -58,16 +58,6 @@ export default function LoginScreen() {
         />
       </View>
 
-      {/* Forgot password — visual only; no backend support yet */}
-      <Pressable
-        style={styles.forgotRow}
-        onPress={() =>
-          Alert.alert('Coming soon', 'Password reset will be available in a future update.')
-        }
-      >
-        <Text style={styles.forgotText}>Forgot password?</Text>
-      </Pressable>
-
       <Pressable
         style={[styles.button, isSubmitting && styles.buttonDisabled]}
         onPress={handleLogin}
@@ -104,18 +94,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   form: {
-    marginBottom: 4,
-  },
-  forgotRow: {
-    alignSelf: 'flex-end',
-    marginBottom: 20,
-    paddingVertical: 2,
-  },
-  forgotText: {
-    fontFamily: font.medium,
-    fontSize: 13,
-    lineHeight: 18,
-    color: theme.colors.primary,
+    marginBottom: 24,
   },
   button: {
     backgroundColor: theme.colors.primary,

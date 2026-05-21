@@ -42,6 +42,7 @@ export type TripDetailResponse = {
     maxPois: number | null;
     status: string;
     visibility: TripVisibility;
+    coverImageUrl: string | null;
     createdAt: string;
     updatedAt: string;
   };
@@ -144,6 +145,7 @@ export type ExploreTripItem = {
   creator: {
     id: string | null;
     displayName: string | null;
+    avatarUrl?: string | null;
   };
   engagement?: {
     likeCount: number;
@@ -208,6 +210,7 @@ export type UpdateTripPayload = {
   maxStops?: number;
   weather?: string;
   visibility?: TripVisibility;
+  coverImageUrl?: string | null;
 };
 
 function getErrorMessage(payload: unknown, fallback: string) {

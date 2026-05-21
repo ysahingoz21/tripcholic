@@ -10,6 +10,27 @@ export class CurrentUserResponseDto {
   @ApiProperty({ example: 'user@example.com' })
   email!: string;
 
+  @ApiProperty({ example: 'https://res.cloudinary.com/...', required: false, nullable: true })
+  avatarUrl!: string | null;
+
+  @ApiProperty({ example: 'https://res.cloudinary.com/...', required: false, nullable: true })
+  coverImageUrl!: string | null;
+
+  @ApiProperty({ example: 'Coffee enthusiast exploring hidden gems.', required: false, nullable: true })
+  bio!: string | null;
+
+  @ApiProperty({ example: ['Food Hunter', 'Night Owl'], required: false })
+  travelVibes!: string[];
+
+  @ApiProperty({ example: ['FOOD', 'HISTORICAL'], required: false })
+  favoriteCategories!: string[];
+
+  @ApiProperty({ example: 42 })
+  followerCount!: number;
+
+  @ApiProperty({ example: 17 })
+  followingCount!: number;
+
   @ApiProperty({ example: '2026-04-01T10:15:30.000Z' })
   createdAt!: string;
 

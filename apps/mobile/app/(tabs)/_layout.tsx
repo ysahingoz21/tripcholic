@@ -1,5 +1,6 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '@/constants/theme';
 import AppHeader from '@/components/ui/AppHeader';
@@ -72,13 +73,26 @@ export default function TabLayout() {
 
       <Tabs.Screen
         name="profile"
-        options={{
-          title: 'Profile',
-          headerShown: false,
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person" size={size} color={color} />
-          ),
+        options={({ route }) => {
+          // Hide the tab bar when a user profile screen is open inside the
+          // profile stack so [userId] feels like a standalone screen.
+          const focused = getFocusedRouteNameFromRoute(route) ?? 'index';
+          return {
+            title: 'Profile',
+            headerShown: false,
+            tabBarIcon: ({ color, size }: { color: string; size: number }) => (
+              <Ionicons name="person" size={size} color={color} />
+            ),
+            tabBarStyle: focused === '[userId]' ? { display: 'none' } : undefined,
+          };
         }}
+        listeners={({ navigation }) => ({
+          tabPress: (e) => {
+            // Always navigate to own-profile root regardless of the stack state.
+            e.preventDefault();
+            navigation.navigate('profile', { screen: 'index' });
+          },
+        })}
       />
     </Tabs>
   );

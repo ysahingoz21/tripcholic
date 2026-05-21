@@ -7,6 +7,9 @@ type EnvVariables = {
   JWT_SECRET: string;
   OPTIMIZER_URL: string;
   CORS_ORIGIN: string;
+  CLOUDINARY_CLOUD_NAME: string;
+  CLOUDINARY_API_KEY: string;
+  CLOUDINARY_API_SECRET: string;
 };
 
 const envSchema = Joi.object<EnvVariables>({
@@ -16,6 +19,9 @@ const envSchema = Joi.object<EnvVariables>({
   JWT_SECRET: Joi.string().min(16).required(),
   OPTIMIZER_URL: Joi.string().uri({ scheme: ['http', 'https'] }).required(),
   CORS_ORIGIN: Joi.string().min(1).required(),
+  CLOUDINARY_CLOUD_NAME: Joi.string().min(1).required(),
+  CLOUDINARY_API_KEY: Joi.string().min(1).required(),
+  CLOUDINARY_API_SECRET: Joi.string().min(1).required(),
 });
 
 export function validateEnv(config: Record<string, unknown>): EnvVariables {

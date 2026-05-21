@@ -21,6 +21,7 @@ export type PublicTripComment = {
   author: {
     id: string;
     displayName: string | null;
+    avatarUrl?: string | null;
   };
 };
 
@@ -78,6 +79,7 @@ export type PublicTripDetailResponse = {
   creator: {
     id: string | null;
     displayName: string | null;
+    avatarUrl?: string | null;
     isFollowedByMe: boolean;
     followerCount: number;
   };
@@ -161,6 +163,7 @@ export type SavedTripCollectionMembership = {
 };
 
 export type SavedTripCollectionSummary = SavedTripCollectionMembership & {
+  coverImageUrl: string | null;
   savedTripCount: number;
 };
 
@@ -179,6 +182,7 @@ export type SavedPublicTripItem = {
   creator: {
     id: string | null;
     displayName: string | null;
+    avatarUrl?: string | null;
     isFollowedByMe: boolean;
     followerCount: number;
   };
@@ -217,6 +221,7 @@ export type ForYouTripItem = {
   creator: {
     id: string | null;
     displayName: string | null;
+    avatarUrl?: string | null;
     isFollowedByMe: boolean;
     followerCount: number;
   };
@@ -227,7 +232,7 @@ export type ForYouTripItem = {
 export type ForYouTripsResponse = {
   items: ForYouTripItem[];
   meta: {
-    personalizationState: 'personalized' | 'cold_start';
+    personalizationState: 'personalized' | 'cold_start' | 'following' | 'no_follows';
     signalSummary: ForYouSignalSummary;
     total: number;
   };
@@ -237,7 +242,7 @@ export type SavedPublicTripsResponse = {
   collections: SavedTripCollectionSummary[];
   filter: {
     collectionId: string | null;
-    selectedCollection: SavedTripCollectionMembership | null;
+    selectedCollection: SavedTripCollectionSummary | null;
     totalSavedCount: number;
     ungroupedCount: number;
   };
@@ -495,11 +500,15 @@ export async function getForYouPublicTrips(token: string, limit = 20) {
   );
 }
 
-export async function createSavedTripCollection(token: string, name: string) {
+export async function createSavedTripCollection(
+  token: string,
+  name: string,
+  coverImageUrl?: string | null,
+) {
   const response = await fetch(`${API_BASE_URL}/public-trips/saved/collections`, {
     method: 'POST',
     headers: getAuthHeaders(token),
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, ...(coverImageUrl ? { coverImageUrl } : {}) }),
   });
 
   return parseApiResponse<SavedTripCollectionCreateResponse>(
@@ -535,14 +544,15 @@ export type SavedTripCollectionRenameResponse = {
 export async function renameSavedTripCollection(
   token: string,
   collectionId: string,
-  name: string
+  name: string,
+  coverImageUrl?: string | null,
 ) {
   const response = await fetch(
     `${API_BASE_URL}/public-trips/saved/collections/${collectionId}`,
     {
       method: 'PATCH',
       headers: getAuthHeaders(token),
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, ...(coverImageUrl !== undefined ? { coverImageUrl } : {}) }),
     }
   );
   return parseApiResponse<SavedTripCollectionRenameResponse>(
