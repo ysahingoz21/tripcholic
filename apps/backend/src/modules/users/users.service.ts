@@ -296,6 +296,46 @@ export class UsersService {
     return { followerCount };
   }
 
+  async searchUsers(viewerUserId: string | null, q: string, limit = 20) {
+    const query = q.trim();
+    if (!query) return [];
+
+    const client = await this.prisma.getClient();
+    const db = client as any;
+    const viewerId = viewerUserId ?? '';
+    const pattern = `%${query}%`;
+
+    const rows = (await db.$queryRaw(Prisma.sql`
+      SELECT
+        u."id",
+        u."displayName",
+        u."avatarUrl",
+        (SELECT COUNT(*)::int FROM "user_follows" WHERE "followingId" = u."id") AS "followerCount",
+        CASE WHEN vf."id" IS NOT NULL THEN TRUE ELSE FALSE END AS "isFollowedByMe"
+      FROM "users" u
+      LEFT JOIN "user_follows" vf
+        ON vf."followerId" = ${viewerId}
+        AND vf."followingId" = u."id"
+      WHERE u."displayName" ILIKE ${pattern}
+      ORDER BY "followerCount" DESC, u."displayName" ASC
+      LIMIT ${limit}
+    `)) as Array<{
+      id: string;
+      displayName: string | null;
+      avatarUrl: string | null;
+      followerCount: number;
+      isFollowedByMe: boolean;
+    }>;
+
+    return rows.map((r) => ({
+      id: r.id,
+      displayName: r.displayName ?? null,
+      avatarUrl: r.avatarUrl ?? null,
+      followerCount: Number(r.followerCount),
+      isFollowedByMe: Boolean(r.isFollowedByMe),
+    }));
+  }
+
   private async getFollowerCount(client: any, userId: string) {
     const rows = (await client.$queryRaw(Prisma.sql`
       SELECT COUNT(*)::int AS "count"

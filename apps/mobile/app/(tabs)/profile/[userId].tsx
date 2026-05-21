@@ -14,11 +14,12 @@ import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Artwork from '@/components/ui/Artwork';
 import FollowListModal from '@/components/ui/FollowListModal';
-import UserAvatar from '@/components/ui/UserAvatar';
+import UserAvatar, { PROFILE_AVATAR_FRAME_INSET } from '@/components/ui/UserAvatar';
 import { theme } from '@/constants/theme';
 import { font, type } from '@/constants/typography';
 import { useAuth } from '@/context/AuthContext';
 import { getExploreTrips, type ExploreTripItem } from '@/services/trips';
+import { likePublicTrip, unlikePublicTrip, savePublicTrip, unsavePublicTrip } from '@/services/publicTrips';
 import {
   followUser,
   getUserProfile,
@@ -30,10 +31,9 @@ import {
 
 const COVER_HEIGHT = 180;
 const AVATAR_SIZE = 80;
-const AVATAR_RING = 4;
 const H_PAD = 20;
 const CARD_GAP = 12;
-const AVATAR_TOTAL = AVATAR_SIZE + AVATAR_RING * 2;
+const AVATAR_TOTAL = AVATAR_SIZE + PROFILE_AVATAR_FRAME_INSET * 2;
 
 const COVER_IMAGE = require('@/assets/images/profile/profile-cover.png');
 
@@ -45,6 +45,14 @@ function getDisplayName(displayName: string | null | undefined): string {
 
 function cap(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function formatShortDate(date: string) {
+  return new Date(date).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
 // ── Header ────────────────────────────────────────────────────────────────────
@@ -86,7 +94,7 @@ function ProfilePageHeader({
               displayName={user?.displayName}
               email={user?.email}
               size={30}
-              ringSize={0}
+              variant="header"
             />
           </Pressable>
         </View>
@@ -249,6 +257,161 @@ const cardStyles = StyleSheet.create({
   },
 });
 
+// ── Journey list row ──────────────────────────────────────────────────────────
+
+function JourneyListRow({
+  trip,
+  token,
+  onPress,
+}: {
+  trip: ExploreTripItem;
+  token: string | null;
+  onPress: () => void;
+}) {
+  const [likedByMe, setLikedByMe] = useState(trip.engagement?.likedByMe ?? false);
+  const [likeCount, setLikeCount] = useState(trip.engagement?.likeCount ?? 0);
+  const [savedByMe, setSavedByMe] = useState(trip.engagement?.savedByMe ?? false);
+  const [saveCount, setSaveCount] = useState(trip.engagement?.saveCount ?? 0);
+  const [likePending, setLikePending] = useState(false);
+  const [savePending, setSavePending] = useState(false);
+
+  const imageUrl = trip.preview?.imageUrl?.trim() || null;
+
+  const handleLike = async () => {
+    if (!token || likePending) return;
+    setLikePending(true);
+    const wasLiked = likedByMe;
+    setLikedByMe(!wasLiked);
+    setLikeCount((c) => (wasLiked ? c - 1 : c + 1));
+    try {
+      if (wasLiked) await unlikePublicTrip(trip.id, token);
+      else await likePublicTrip(trip.id, token);
+    } catch {
+      setLikedByMe(wasLiked);
+      setLikeCount((c) => (wasLiked ? c + 1 : c - 1));
+    } finally {
+      setLikePending(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!token || savePending) return;
+    setSavePending(true);
+    const wasSaved = savedByMe;
+    setSavedByMe(!wasSaved);
+    setSaveCount((c) => (wasSaved ? c - 1 : c + 1));
+    try {
+      if (wasSaved) await unsavePublicTrip(trip.id, token);
+      else await savePublicTrip(trip.id, token);
+    } catch {
+      setSavedByMe(wasSaved);
+      setSaveCount((c) => (wasSaved ? c + 1 : c - 1));
+    } finally {
+      setSavePending(false);
+    }
+  };
+
+  const categoryLine = trip.categories.length > 0
+    ? trip.categories.map(cap).slice(0, 3).join(', ')
+    : null;
+
+  const dateLabel = trip.optimizedAt ? formatShortDate(trip.optimizedAt) : null;
+
+  return (
+    <Pressable
+      style={({ pressed }) => [listRowStyles.row, pressed && { opacity: 0.92 }]}
+      onPress={onPress}
+    >
+      <View style={listRowStyles.imageWrap}>
+        <Artwork imageUrl={imageUrl} kind="trip" variant="cover" />
+      </View>
+      <View style={listRowStyles.content}>
+        <Text style={listRowStyles.title} numberOfLines={2}>{trip.title}</Text>
+        {dateLabel ? (
+          <Text style={listRowStyles.metaText}>{dateLabel}</Text>
+        ) : null}
+        {categoryLine ? (
+          <Text style={listRowStyles.metaText} numberOfLines={1}>{categoryLine}</Text>
+        ) : null}
+        <View style={listRowStyles.metricsRow}>
+          <Pressable style={listRowStyles.metricBtn} onPress={handleLike} hitSlop={4}>
+            <Ionicons
+              name={likedByMe ? 'heart' : 'heart-outline'}
+              size={14}
+              color={likedByMe ? '#EF4444' : theme.colors.textSecondary}
+            />
+            <Text style={listRowStyles.metricText}>{likeCount}</Text>
+          </Pressable>
+          <View style={listRowStyles.metricItem}>
+            <Ionicons name="chatbubble-outline" size={14} color={theme.colors.textSecondary} />
+            <Text style={listRowStyles.metricText}>{trip.engagement?.commentCount ?? 0}</Text>
+          </View>
+          <Pressable style={listRowStyles.metricBtn} onPress={handleSave} hitSlop={4}>
+            <Ionicons
+              name={savedByMe ? 'bookmark' : 'bookmark-outline'}
+              size={14}
+              color={savedByMe ? theme.colors.primary : theme.colors.textSecondary}
+            />
+            <Text style={listRowStyles.metricText}>{saveCount}</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
+const listRowStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: H_PAD,
+    paddingVertical: 10,
+  },
+  imageWrap: {
+    width: 90,
+    height: 116,
+    borderRadius: 12,
+    overflow: 'hidden',
+    flexShrink: 0,
+  },
+  content: {
+    flex: 1,
+    paddingVertical: 2,
+    gap: 5,
+  },
+  title: {
+    fontFamily: font.bold,
+    fontSize: 14,
+    lineHeight: 19,
+    color: theme.colors.primaryDark,
+  },
+  metaText: {
+    fontFamily: font.regular,
+    fontSize: 11,
+    color: theme.colors.textSecondary,
+  },
+  metricsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 2,
+  },
+  metricBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  metricItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  metricText: {
+    fontFamily: font.medium,
+    fontSize: 13,
+    color: theme.colors.textSecondary,
+  },
+});
+
 // ── Screen ────────────────────────────────────────────────────────────────────
 
 export default function UserProfileScreen() {
@@ -267,6 +430,7 @@ export default function UserProfileScreen() {
 
   const [isFollowPending, setIsFollowPending] = useState(false);
   const [followModal, setFollowModal] = useState<'followers' | 'following' | null>(null);
+  const [journeyLayout, setJourneyLayout] = useState<'grid' | 'list'>('grid');
 
   const targetUserId = typeof userId === 'string' ? userId : null;
 
@@ -394,7 +558,7 @@ export default function UserProfileScreen() {
             avatarUrl={profileLoading ? null : profile?.avatarUrl}
             displayName={profile?.displayName}
             size={AVATAR_SIZE}
-            ringSize={AVATAR_RING}
+            variant="profile"
           />
         </View>
 
@@ -473,13 +637,19 @@ export default function UserProfileScreen() {
         {/* ── Journeys section header ── */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Journeys</Text>
-          {/* Non-functional grid toggle, matches own-profile */}
-          <Pressable hitSlop={8}>
-            <Ionicons name="grid-outline" size={20} color={theme.colors.textSecondary} />
+          <Pressable
+            hitSlop={8}
+            onPress={() => setJourneyLayout((l) => (l === 'grid' ? 'list' : 'grid'))}
+          >
+            <Ionicons
+              name={journeyLayout === 'grid' ? 'list-outline' : 'grid-outline'}
+              size={20}
+              color={theme.colors.textSecondary}
+            />
           </Pressable>
         </View>
 
-        {/* ── Trip grid ── */}
+        {/* ── Trip grid / list ── */}
         {tripsLoading ? (
           <View style={styles.stateCenter}>
             <ActivityIndicator size="small" color={theme.colors.primary} />
@@ -497,16 +667,31 @@ export default function UserProfileScreen() {
             </Pressable>
           </View>
         ) : trips.length > 0 ? (
-          <View style={styles.grid}>
-            {trips.map((trip) => (
-              <TripCard
-                key={trip.id}
-                trip={trip}
-                cardWidth={cardWidth}
-                onPress={() => router.push(`/public-trip/${trip.id}` as any)}
-              />
-            ))}
-          </View>
+          journeyLayout === 'grid' ? (
+            <View style={styles.grid}>
+              {trips.map((trip) => (
+                <TripCard
+                  key={trip.id}
+                  trip={trip}
+                  cardWidth={cardWidth}
+                  onPress={() => router.push(`/public-trip/${trip.id}` as any)}
+                />
+              ))}
+            </View>
+          ) : (
+            <View style={styles.list}>
+              {trips.map((trip, index) => (
+                <View key={trip.id}>
+                  {index > 0 && <View style={styles.listDivider} />}
+                  <JourneyListRow
+                    trip={trip}
+                    token={token}
+                    onPress={() => router.push(`/public-trip/${trip.id}` as any)}
+                  />
+                </View>
+              ))}
+            </View>
+          )
         ) : (
           <View style={styles.emptyState}>
             <View style={styles.stateIconWrap}>
@@ -687,13 +872,21 @@ const styles = StyleSheet.create({
     color: theme.colors.primaryDark,
   },
 
-  // ── Grid ──────────────────────────────────────────────────────────────────
+  // ── Grid / list ───────────────────────────────────────────────────────────
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     paddingHorizontal: H_PAD,
     gap: CARD_GAP,
     marginBottom: 8,
+  },
+  list: {
+    marginBottom: 8,
+  },
+  listDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: theme.colors.border,
+    marginHorizontal: H_PAD,
   },
 
   // ── States ────────────────────────────────────────────────────────────────

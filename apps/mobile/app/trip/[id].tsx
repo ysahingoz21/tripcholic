@@ -46,6 +46,7 @@ import {
   buildTripReturnTarget,
   getTripRouteSource,
 } from "@/utils/tripNavigation";
+import { addRecentlyViewedTrip } from "@/services/recentlyViewedTrips";
 import TripStopsMap from "../../components/trip/TripStopsMap";
 import TripDescriptionSection from "../../components/ui/TripDescriptionSection";
 
@@ -390,7 +391,7 @@ function PageHeader({ onBack }: { onBack: () => void }) {
             displayName={user?.displayName}
             email={user?.email}
             size={32}
-            ringSize={0}
+            variant="header"
           />
         </View>
       </View>
@@ -816,6 +817,18 @@ export default function OwnerTripDetailScreen() {
       setComments([]);
       const data = await getTrip(token, id);
       setTripDetail(data);
+      void addRecentlyViewedTrip({
+        id: data.trip.id,
+        title: data.trip.title,
+        preview: data.preview,
+        categories: data.trip.categories,
+        creatorName: user?.displayName ?? null,
+        creatorAvatarUrl: user?.avatarUrl ?? null,
+        isOwnTrip: true,
+        optimizedAt: data.optimization.optimizedAt,
+        engagement: { likeCount: 0, commentCount: 0, saveCount: 0, likedByMe: false, savedByMe: false },
+        viewedAt: new Date().toISOString(),
+      });
       if (data.trip.visibility === "PUBLIC") {
         setIsPublicTrip(true);
         try {

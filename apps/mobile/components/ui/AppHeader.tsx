@@ -48,7 +48,7 @@ export default function AppHeader() {
                 displayName={user?.displayName}
                 email={user?.email}
                 size={32}
-                ringSize={0}
+                variant="header"
               />
             </Pressable>
           </View>

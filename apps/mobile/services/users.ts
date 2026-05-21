@@ -29,6 +29,14 @@ export type FollowListItem = {
   isFollowedByMe: boolean;
 };
 
+export type UserSearchResult = {
+  id: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+  followerCount: number;
+  isFollowedByMe: boolean;
+};
+
 export type PublicUserProfile = {
   id: string;
   displayName: string | null;
@@ -162,6 +170,21 @@ export async function removeFollower(
     },
   );
   return parseApiResponse<{ followerCount: number }>(response, 'Failed to remove follower');
+}
+
+export async function searchUsers(
+  q: string,
+  token?: string | null,
+): Promise<UserSearchResult[]> {
+  const params = new URLSearchParams({ q });
+  const headers: Record<string, string> = token
+    ? { Authorization: `Bearer ${token}` }
+    : {};
+  const response = await fetch(`${API_BASE_URL}/users/search?${params.toString()}`, {
+    method: 'GET',
+    headers,
+  });
+  return parseApiResponse<UserSearchResult[]>(response, 'Failed to search travelers');
 }
 
 export async function updateProfile(
