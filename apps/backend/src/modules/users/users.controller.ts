@@ -1,9 +1,11 @@
 import {
+  Body,
   Controller,
   Delete,
   ForbiddenException,
   Get,
   Param,
+  Patch,
   Post,
   Req,
   UseGuards,
@@ -22,6 +24,7 @@ import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
 import { type AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { CreatorFollowResponseDto } from './dto/creator-follow-response.dto';
 import { CurrentUserResponseDto } from './dto/current-user-response.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 import { UsersService } from './users.service';
 
 type AuthenticatedRequest = Request & {
@@ -52,6 +55,22 @@ export class UsersController {
   @ApiNotFoundResponse({ description: 'Authenticated user no longer exists.' })
   async getMe(@Req() req: AuthenticatedRequest) {
     return this.usersService.getCurrentUser(req.user.id);
+  }
+
+  @Patch('me')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({
+    summary: 'Update current user profile',
+    description: 'Updates display name, bio, avatar, cover, travel vibes, and favorite categories.',
+  })
+  @ApiOkResponse({
+    description: 'Updated user profile.',
+    type: CurrentUserResponseDto,
+  })
+  @ApiUnauthorizedResponse({ description: 'Missing, invalid, or expired Bearer token.' })
+  async updateMe(@Req() req: AuthenticatedRequest, @Body() dto: UpdateUserDto) {
+    return this.usersService.updateCurrentUser(req.user.id, dto);
   }
 
   @Get(':id')

@@ -781,6 +781,7 @@ function ExploreContent({
                 categories={trip.categories}
                 preview={trip.preview}
                 creatorName={trip.creator.displayName}
+                creatorAvatarUrl={trip.creator.avatarUrl}
                 dateLabel={formatOptimizedDate(trip.optimizedAt)}
                 token={token}
                 onPress={() => onTripPress(trip.id)}
@@ -887,6 +888,7 @@ function ForYouContent({
                 categories={trip.categories}
                 preview={trip.preview}
                 creatorName={trip.creator.displayName}
+                creatorAvatarUrl={trip.creator.avatarUrl}
                 dateLabel={formatOptimizedDate(trip.optimizedAt)}
                 token={token}
                 onPress={() => onTripPress(trip.id)}

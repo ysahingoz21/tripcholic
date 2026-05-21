@@ -1,4 +1,5 @@
 import { API_BASE_URL } from '../constants/api';
+import type { AuthUser } from './auth';
 
 type ApiSuccessEnvelope<T> = {
   success: true;
@@ -24,15 +25,27 @@ export type CreatorFollowState = {
 export type FollowListItem = {
   id: string;
   displayName: string | null;
+  avatarUrl?: string | null;
   isFollowedByMe: boolean;
 };
 
 export type PublicUserProfile = {
   id: string;
   displayName: string | null;
+  avatarUrl?: string | null;
+  coverImageUrl?: string | null;
   followerCount: number;
   followingCount: number;
   isFollowedByMe: boolean;
+};
+
+export type UpdateProfilePayload = {
+  displayName?: string | null;
+  bio?: string | null;
+  avatarUrl?: string | null;
+  coverImageUrl?: string | null;
+  travelVibes?: string[];
+  favoriteCategories?: string[];
 };
 
 function getErrorMessage(payload: unknown, fallback: string) {
@@ -149,4 +162,16 @@ export async function removeFollower(
     },
   );
   return parseApiResponse<{ followerCount: number }>(response, 'Failed to remove follower');
+}
+
+export async function updateProfile(
+  token: string,
+  payload: UpdateProfilePayload,
+): Promise<AuthUser> {
+  const response = await fetch(`${API_BASE_URL}/users/me`, {
+    method: 'PATCH',
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload),
+  });
+  return parseApiResponse<AuthUser>(response, 'Failed to update profile');
 }

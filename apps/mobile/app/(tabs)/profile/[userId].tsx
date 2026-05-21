@@ -14,6 +14,7 @@ import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Artwork from '@/components/ui/Artwork';
 import FollowListModal from '@/components/ui/FollowListModal';
+import UserAvatar from '@/components/ui/UserAvatar';
 import { theme } from '@/constants/theme';
 import { font, type } from '@/constants/typography';
 import { useAuth } from '@/context/AuthContext';
@@ -42,13 +43,6 @@ function getDisplayName(displayName: string | null | undefined): string {
   return displayName?.trim() || 'Tripcholic Traveler';
 }
 
-function getAvatarLabel(displayName: string | null | undefined): string {
-  const source = displayName?.trim() || 'Traveler';
-  const parts = source.split(/[\s._-]+/).map((p) => p.trim()).filter(Boolean);
-  if (parts.length >= 2) return `${parts[0]![0]}${parts[1]![0]}`.toUpperCase();
-  return source.slice(0, 2).toUpperCase();
-}
-
 function cap(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
@@ -65,15 +59,6 @@ function ProfilePageHeader({
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user } = useAuth();
-
-  const initials = user?.displayName
-    ? user.displayName
-        .split(' ')
-        .map((w) => w[0] ?? '')
-        .join('')
-        .slice(0, 2)
-        .toUpperCase()
-    : (user?.email?.[0]?.toUpperCase() ?? 'T');
 
   return (
     <View style={[hdrStyles.header, { paddingTop: insets.top }]}>
@@ -92,11 +77,17 @@ function ProfilePageHeader({
 
         <View style={[hdrStyles.side, hdrStyles.sideRight]}>
           <Pressable
-            style={({ pressed }) => [hdrStyles.avatar, pressed && { opacity: 0.75 }]}
+            style={({ pressed }) => [hdrStyles.avatarBtn, pressed && { opacity: 0.75 }]}
             onPress={() => router.push('/(tabs)/profile' as any)}
             hitSlop={8}
           >
-            <Text style={hdrStyles.avatarText}>{initials}</Text>
+            <UserAvatar
+              avatarUrl={user?.avatarUrl}
+              displayName={user?.displayName}
+              email={user?.email}
+              size={30}
+              ringSize={0}
+            />
           </Pressable>
         </View>
       </View>
@@ -138,19 +129,11 @@ const hdrStyles = StyleSheet.create({
     letterSpacing: -0.1,
     color: theme.colors.primaryDark,
   },
-  avatar: {
+  avatarBtn: {
     width: 34,
     height: 34,
-    borderRadius: 17,
-    backgroundColor: theme.colors.primaryDark,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  avatarText: {
-    fontFamily: font.bold,
-    fontSize: 13,
-    lineHeight: 15,
-    color: '#FFFFFF',
   },
 });
 
@@ -368,7 +351,6 @@ export default function UserProfileScreen() {
   const cardWidth = Math.floor((screenWidth - H_PAD * 2 - CARD_GAP) / 2);
 
   const displayName = getDisplayName(profile?.displayName);
-  const avatarLabel = getAvatarLabel(profile?.displayName);
 
   const tagline = useMemo(() => {
     if (trips.length === 0) return 'Tripcholic Traveler';
@@ -400,7 +382,7 @@ export default function UserProfileScreen() {
         {/* ── Cover ── */}
         <View style={styles.coverWrap}>
           <Image
-            source={COVER_IMAGE}
+            source={profile?.coverImageUrl ? { uri: profile.coverImageUrl } : COVER_IMAGE}
             style={styles.coverImage}
             contentFit="cover"
           />
@@ -408,13 +390,12 @@ export default function UserProfileScreen() {
 
         {/* ── Avatar ── */}
         <View style={styles.avatarAnchor}>
-          <View style={styles.avatarRing}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>
-                {profileLoading ? '…' : avatarLabel}
-              </Text>
-            </View>
-          </View>
+          <UserAvatar
+            avatarUrl={profileLoading ? null : profile?.avatarUrl}
+            displayName={profile?.displayName}
+            size={AVATAR_SIZE}
+            ringSize={AVATAR_RING}
+          />
         </View>
 
         {/* ── Identity ── */}
@@ -588,28 +569,6 @@ const styles = StyleSheet.create({
   avatarAnchor: {
     alignItems: 'center',
     marginTop: -(AVATAR_TOTAL / 2),
-  },
-  avatarRing: {
-    width: AVATAR_TOTAL,
-    height: AVATAR_TOTAL,
-    borderRadius: AVATAR_TOTAL / 2,
-    backgroundColor: theme.colors.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatar: {
-    width: AVATAR_SIZE,
-    height: AVATAR_SIZE,
-    borderRadius: AVATAR_SIZE / 2,
-    backgroundColor: theme.colors.primaryDark,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: {
-    fontFamily: font.bold,
-    fontSize: 26,
-    color: '#FFFFFF',
-    letterSpacing: 0.5,
   },
 
   // ── Identity ─────────────────────────────────────────────────────────────

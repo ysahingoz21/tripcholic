@@ -39,6 +39,7 @@ type PublicTripListRecord = Prisma.TripGetPayload<{
       select: {
         id: true;
         displayName: true;
+        avatarUrl: true;
       };
     };
     stops: {
@@ -121,6 +122,7 @@ export class PublicTripsService {
           select: {
             id: true,
             displayName: true,
+            avatarUrl: true,
           },
         },
         stops: {
@@ -136,6 +138,7 @@ export class PublicTripsService {
               select: {
                 id: true,
                 displayName: true,
+                avatarUrl: true,
               },
             },
           },
@@ -372,6 +375,7 @@ export class PublicTripsService {
           select: {
             id: true,
             displayName: true,
+            avatarUrl: true,
           },
         },
       },
@@ -408,6 +412,7 @@ export class PublicTripsService {
           select: {
             id: true,
             displayName: true,
+            avatarUrl: true,
           },
         },
       },
@@ -559,7 +564,7 @@ export class PublicTripsService {
             normalizedCollectionFilter === null ? null : normalizedCollectionFilter,
           selectedCollection:
             selectedCollection !== null
-              ? this.toSavedTripCollectionMembership(selectedCollection)
+              ? this.toSavedTripCollectionSummary(selectedCollection, 0)
               : null,
           totalSavedCount: visibleSavedTripIdsInOrder.length,
           ungroupedCount,
@@ -581,6 +586,7 @@ export class PublicTripsService {
               select: {
                 id: true,
                 displayName: true,
+                avatarUrl: true,
               },
             },
             stops: {
@@ -671,7 +677,7 @@ export class PublicTripsService {
         userId: { in: followedUserIds },
       },
       include: {
-        user: { select: { id: true, displayName: true } },
+        user: { select: { id: true, displayName: true, avatarUrl: true } },
         stops: {
           orderBy: { order: 'asc' },
           include: {
@@ -778,13 +784,15 @@ export class PublicTripsService {
     }
 
     const collectionId = randomUUID();
+    const coverImageUrl = payload.coverImageUrl?.trim() || null;
     const createdCollections = (await db.$queryRaw(Prisma.sql`
-      INSERT INTO "saved_trip_collections" ("id", "userId", "name", "createdAt", "updatedAt")
-      VALUES (${collectionId}, ${userId}, ${name}, NOW(), NOW())
-      RETURNING "id", "name", "createdAt", "updatedAt"
+      INSERT INTO "saved_trip_collections" ("id", "userId", "name", "coverImageUrl", "createdAt", "updatedAt")
+      VALUES (${collectionId}, ${userId}, ${name}, ${coverImageUrl}, NOW(), NOW())
+      RETURNING "id", "name", "coverImageUrl", "createdAt", "updatedAt"
     `)) as Array<{
       id: string;
       name: string;
+      coverImageUrl: string | null;
       createdAt: Date;
       updatedAt: Date;
     }>;
@@ -810,19 +818,31 @@ export class PublicTripsService {
 
     await this.findOwnedCollectionOrThrow(db, userId, collectionId);
 
-    const updatedCollections = (await db.$queryRaw(Prisma.sql`
-      UPDATE "saved_trip_collections"
-      SET "name" = ${name}, "updatedAt" = NOW()
-      WHERE "id" = ${collectionId} AND "userId" = ${userId}
-      RETURNING "id", "name", "createdAt", "updatedAt"
-    `)) as Array<{
+    const coverImageUrl = payload.coverImageUrl !== undefined
+      ? (payload.coverImageUrl?.trim() || null)
+      : undefined;
+
+    const updatedCollections = coverImageUrl !== undefined
+      ? (await db.$queryRaw(Prisma.sql`
+          UPDATE "saved_trip_collections"
+          SET "name" = ${name}, "coverImageUrl" = ${coverImageUrl}, "updatedAt" = NOW()
+          WHERE "id" = ${collectionId} AND "userId" = ${userId}
+          RETURNING "id", "name", "coverImageUrl", "createdAt", "updatedAt"
+        `))
+      : (await db.$queryRaw(Prisma.sql`
+          UPDATE "saved_trip_collections"
+          SET "name" = ${name}, "updatedAt" = NOW()
+          WHERE "id" = ${collectionId} AND "userId" = ${userId}
+          RETURNING "id", "name", "coverImageUrl", "createdAt", "updatedAt"
+        `));
+
+    const [collection] = updatedCollections as Array<{
       id: string;
       name: string;
+      coverImageUrl: string | null;
       createdAt: Date;
       updatedAt: Date;
     }>;
-
-    const [collection] = updatedCollections;
 
     return {
       collection: this.toSavedTripCollectionSummary(collection, 0),
@@ -1093,6 +1113,7 @@ export class PublicTripsService {
       categories: trip.categories,
       routeTotalDurationMin: trip.routeTotalDurationMin,
       routeTotalCostTl: trip.routeTotalCostTl,
+      coverImageUrl: trip.coverImageUrl,
       stops: stops.map((stop) => ({
         category: stop.poi.category,
         district: stop.poi.district,
@@ -1128,6 +1149,7 @@ export class PublicTripsService {
         trip.user?.id ?? trip.userId ?? null,
         trip.user?.displayName ?? null,
         creatorFollowSummaryByUserId,
+        trip.user?.avatarUrl ?? null,
       ),
       optimization: {
         optimizedAt: trip.optimizedAt,
@@ -1708,6 +1730,7 @@ export class PublicTripsService {
       categories: trip.categories,
       routeTotalDurationMin: trip.routeTotalDurationMin,
       routeTotalCostTl: trip.routeTotalCostTl,
+      coverImageUrl: (trip as any).coverImageUrl,
       stops: trip.stops.map((stop) => ({
         category: stop.poi.category.toLowerCase(),
         district: stop.poi.district,
@@ -1732,6 +1755,7 @@ export class PublicTripsService {
         trip.user?.id ?? trip.userId ?? null,
         trip.user?.displayName ?? null,
         creatorFollowSummaryByUserId,
+        trip.user?.avatarUrl ?? null,
       ),
     };
   }
@@ -1891,6 +1915,7 @@ export class PublicTripsService {
       categories: trip.categories,
       routeTotalDurationMin: trip.routeTotalDurationMin,
       routeTotalCostTl: trip.routeTotalCostTl,
+      coverImageUrl: (trip as any).coverImageUrl,
       stops: trip.stops.map((stop) => ({
         category: stop.poi.category.toLowerCase(),
         district: stop.poi.district,
@@ -1918,6 +1943,7 @@ export class PublicTripsService {
         trip.user?.id ?? trip.userId ?? null,
         trip.user?.displayName ?? null,
         creatorFollowSummaryByUserId,
+        trip.user?.avatarUrl ?? null,
       ),
       optimization: {
         optimizedAt: trip.optimizedAt,
@@ -1936,6 +1962,7 @@ export class PublicTripsService {
     creatorId: string | null,
     displayName: string | null,
     creatorFollowSummaryByUserId: Map<string, CreatorFollowSummary>,
+    avatarUrl?: string | null,
   ) {
     const followSummary = creatorId
       ? creatorFollowSummaryByUserId.get(creatorId)
@@ -1944,6 +1971,7 @@ export class PublicTripsService {
     return {
       id: creatorId,
       displayName,
+      avatarUrl: avatarUrl ?? null,
       isFollowedByMe: followSummary?.isFollowedByMe ?? false,
       followerCount: followSummary?.followerCount ?? 0,
     };
@@ -2013,13 +2041,14 @@ export class PublicTripsService {
 
   private async listSavedTripCollections(client: any, userId: string) {
     return (await client.$queryRaw(Prisma.sql`
-      SELECT "id", "name", "createdAt", "updatedAt"
+      SELECT "id", "name", "coverImageUrl", "createdAt", "updatedAt"
       FROM "saved_trip_collections"
       WHERE "userId" = ${userId}
       ORDER BY "createdAt" ASC, "name" ASC
     `)) as Array<{
       id: string;
       name: string;
+      coverImageUrl: string | null;
       createdAt: Date;
       updatedAt: Date;
     }>;
@@ -2056,13 +2085,14 @@ export class PublicTripsService {
 
   private async findOwnedCollectionById(client: any, userId: string, collectionId: string) {
     const collections = (await client.$queryRaw(Prisma.sql`
-      SELECT "id", "name", "createdAt", "updatedAt"
+      SELECT "id", "name", "coverImageUrl", "createdAt", "updatedAt"
       FROM "saved_trip_collections"
       WHERE "id" = ${collectionId} AND "userId" = ${userId}
       LIMIT 1
     `)) as Array<{
       id: string;
       name: string;
+      coverImageUrl: string | null;
       createdAt: Date;
       updatedAt: Date;
     }>;
@@ -2091,7 +2121,7 @@ export class PublicTripsService {
     collectionIds: string[],
   ) {
     return (await client.$queryRaw(Prisma.sql`
-      SELECT "id", "name", "createdAt", "updatedAt"
+      SELECT "id", "name", "coverImageUrl", "createdAt", "updatedAt"
       FROM "saved_trip_collections"
       WHERE "userId" = ${userId}
         AND "id" IN (${Prisma.join(collectionIds)})
@@ -2099,6 +2129,7 @@ export class PublicTripsService {
     `)) as Array<{
       id: string;
       name: string;
+      coverImageUrl: string | null;
       createdAt: Date;
       updatedAt: Date;
     }>;
@@ -2107,12 +2138,14 @@ export class PublicTripsService {
   private toSavedTripCollectionSummary(collection: {
     id: string;
     name: string;
+    coverImageUrl?: string | null;
     createdAt: Date;
     updatedAt: Date;
   }, savedTripCount: number) {
     return {
       id: collection.id,
       name: collection.name,
+      coverImageUrl: collection.coverImageUrl ?? null,
       createdAt: collection.createdAt,
       updatedAt: collection.updatedAt,
       savedTripCount,
@@ -2182,6 +2215,7 @@ export class PublicTripsService {
     user?: {
       id: string;
       displayName: string | null;
+      avatarUrl?: string | null;
     } | null;
   }) {
     return {
@@ -2192,6 +2226,7 @@ export class PublicTripsService {
       author: {
         id: comment.user?.id ?? comment.userId,
         displayName: comment.user?.displayName ?? null,
+        avatarUrl: comment.user?.avatarUrl ?? null,
       },
     };
   }

@@ -9,6 +9,9 @@ import {
   type TripVisibility,
   type UpdateTripPayload,
 } from "@/services/trips";
+import { uploadImage } from "@/services/uploads";
+import ChangeCoverButton from "@/components/ui/ChangeCoverButton";
+import * as ImagePicker from "expo-image-picker";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
@@ -247,6 +250,10 @@ export default function EditTripScreen() {
   const [showStartTimePicker, setShowStartTimePicker] = useState(false);
   const [showEndTimePicker, setShowEndTimePicker] = useState(false);
 
+  // Cover image upload state
+  const [pendingCoverUrl, setPendingCoverUrl] = useState<string | null>(null);
+  const [isUploadingCover, setIsUploadingCover] = useState(false);
+
   const tripReturnTarget = buildTripReturnTarget({ source, returnTripId });
   const routeSource = getTripRouteSource(source);
 
@@ -280,6 +287,7 @@ export default function EditTripScreen() {
         setWeather(data.trip.weather ?? "");
         setMaxWalkingDistanceKm(data.trip.walkingToleranceKm);
         setMaxStops(data.trip.maxPois);
+        setPendingCoverUrl(data.trip.coverImageUrl ?? null);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Unable to load trip.");
       } finally {
@@ -343,6 +351,35 @@ export default function EditTripScreen() {
     );
   };
 
+  const handleChangeCover = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert("Permission required", "Allow photo library access to change the cover image.");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: false,
+      quality: 0.9,
+    });
+
+    if (result.canceled || !result.assets[0]) return;
+
+    const asset = result.assets[0];
+    if (!token) return;
+
+    try {
+      setIsUploadingCover(true);
+      const { url } = await uploadImage(token, asset.uri, asset.mimeType ?? "image/jpeg");
+      setPendingCoverUrl(url);
+    } catch (err) {
+      Alert.alert("Upload failed", err instanceof Error ? err.message : "Could not upload image. Please try again.");
+    } finally {
+      setIsUploadingCover(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!token || !id || typeof id !== "string") {
       Alert.alert(
@@ -381,6 +418,7 @@ export default function EditTripScreen() {
       maxStops: maxStops ?? undefined,
       weather: weather || undefined,
       visibility: resolvedVisibility,
+      coverImageUrl: pendingCoverUrl,
     };
 
     try {
@@ -445,7 +483,9 @@ export default function EditTripScreen() {
     );
   }
 
-  const coverImageUrl = tripDetail?.preview.imageUrl?.trim() || null;
+  // pendingCoverUrl is the Cloudinary URL set on upload (or seeded from trip.coverImageUrl).
+  // Fall back to the POI-derived preview image if no cover has been set.
+  const displayCoverUrl = pendingCoverUrl || tripDetail?.preview.imageUrl?.trim() || null;
 
   // ── Main render ────────────────────────────────────────────────────────────
 
@@ -475,9 +515,9 @@ export default function EditTripScreen() {
 
         {/* ── Cover image ────────────────────────────────────────────────── */}
         <View style={styles.coverContainer}>
-          {coverImageUrl ? (
+          {displayCoverUrl ? (
             <Image
-              source={{ uri: coverImageUrl }}
+              source={{ uri: displayCoverUrl }}
               style={styles.coverImage}
               contentFit="cover"
               transition={200}
@@ -491,16 +531,13 @@ export default function EditTripScreen() {
               />
             </View>
           )}
-          {/* Change Cover overlay — placeholder, non-functional */}
-          <View style={styles.changeCoverCenter}>
-            <View style={styles.changeCoverOverlay}>
-              <Ionicons
-                name="image-outline"
-                size={16}
-                color={theme.colors.primaryDark}
-              />
-              <Text style={styles.changeCoverText}>Change Cover</Text>
-            </View>
+          <View style={styles.coverScrim} />
+          <View style={styles.coverOverlay}>
+            <ChangeCoverButton
+              onPress={handleChangeCover}
+              isUploading={isUploadingCover}
+              disabled={isSaving}
+            />
           </View>
         </View>
 
@@ -895,28 +932,14 @@ const styles = StyleSheet.create({
   coverImage: {
     ...StyleSheet.absoluteFillObject,
   },
-  changeCoverCenter: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+  coverScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(11,59,74,0.35)",
+  },
+  coverOverlay: {
+    ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
-  },
-  changeCoverOverlay: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "rgba(255,255,255,0.88)",
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-  changeCoverText: {
-    fontFamily: font.semiBold,
-    fontSize: 13,
-    color: theme.colors.primaryDark,
   },
 
   // Section headers

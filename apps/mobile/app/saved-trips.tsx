@@ -48,7 +48,11 @@ function CollectionStripCard({
       style={({ pressed }) => [stripStyles.card, pressed && { opacity: 0.85 }]}
       onPress={onPress}
     >
-      <Image source={DEFAULT_COLLECTION_COVER} style={stripStyles.cardImage} contentFit="cover" />
+      <Image
+        source={collection.coverImageUrl ? { uri: collection.coverImageUrl } : DEFAULT_COLLECTION_COVER}
+        style={stripStyles.cardImage}
+        contentFit="cover"
+      />
       <View style={stripStyles.cardInfo}>
         <Text style={stripStyles.cardName} numberOfLines={1}>
           {collection.name}

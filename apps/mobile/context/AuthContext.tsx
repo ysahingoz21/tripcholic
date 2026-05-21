@@ -20,6 +20,8 @@ type AuthContextType = {
     displayName?: string
   ) => Promise<void>;
   signOut: () => Promise<void>;
+  refreshUser: () => Promise<void>;
+  setUser: React.Dispatch<React.SetStateAction<AuthUser | null>>;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -94,6 +96,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await clearAuthState();
   };
 
+  const refreshUser = async () => {
+    if (!token) return;
+    try {
+      const currentUser = await getMe(token);
+      setUser(currentUser);
+    } catch { /* silent — stale data is better than crashing */ }
+  };
+
   const value = useMemo(
     () => ({
       user,
@@ -102,6 +112,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signIn,
       signUp,
       signOut,
+      refreshUser,
+      setUser,
     }),
     [user, token, isLoading]
   );
