@@ -241,7 +241,7 @@ const cardStyles = StyleSheet.create({
 export default function ProfileScreen() {
   const router = useRouter();
   const { width: screenWidth } = useWindowDimensions();
-  const { signOut, user, token, isLoading: isAuthLoading } = useAuth();
+  const { signOut, user, token, isLoading: isAuthLoading, setUser } = useAuth();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [trips, setTrips] = useState<TripListItem[]>([]);
   const [isTripsLoading, setIsTripsLoading] = useState(true);
@@ -274,10 +274,11 @@ export default function ProfileScreen() {
     if (!token) return;
     try {
       const me = await getMe(token);
+      setUser(me);
       setFollowerCount(me.followerCount ?? 0);
       setFollowingCount(me.followingCount ?? 0);
     } catch { /* non-critical — counts stay at last known value */ }
-  }, [token]);
+  }, [token, setUser]);
 
   useFocusEffect(useCallback(() => {
     void loadTrips();

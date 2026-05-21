@@ -22,6 +22,20 @@ const FOR_YOU_INTERACTION_WEIGHTS = {
   like: 2,
 } as const;
 
+// Maps lowercase canonical profile category keys (stored in User.favoriteCategories as uppercase)
+// to all raw trip category aliases stored in Trip.categories from the planner wizard.
+// This bridges the two-vocabulary gap: profile uses canonical post-normalized keys,
+// trips store the original pre-normalized aliases (food, culture, history, etc.).
+const CANONICAL_TO_TRIP_CATEGORIES: Record<string, string[]> = {
+  food:          ['food', 'coffee', 'nightlife'],
+  historical:    ['historical', 'history', 'museums', 'culture'],
+  scenic:        ['scenic'],
+  nature:        ['nature'],
+  entertainment: ['entertainment', 'nightlife'],
+  shopping:      ['shopping'],
+  neighborhood:  ['neighborhood', 'culture'],
+};
+
 const FOR_YOU_POSITIVE_FEEDBACK_WEIGHTS = {
   worked_well: 2,
   worth_repeating: 3,
@@ -653,41 +667,129 @@ export class PublicTripsService {
     const client = await this.prisma.getClient();
     const db = client as any;
     const limit = query.limit ?? 20;
-
-    const followedRows = await db.userFollow.findMany({
-      where: { followerId: userId },
-      select: { followingId: true },
-    });
-    const followedUserIds: string[] = followedRows.map(
-      (r: { followingId: string }) => r.followingId,
-    );
-
+    const CATEGORY_POOL_SIZE = 200;
     const emptySignalSummary = { likes: 0, saves: 0, completions: 0, feedbackSubmissions: 0 };
 
-    if (followedUserIds.length === 0) {
+    const [userRow, followedRows] = await Promise.all([
+      db.user.findUnique({ where: { id: userId }, select: { favoriteCategories: true } }),
+      db.userFollow.findMany({ where: { followerId: userId }, select: { followingId: true } }),
+    ]);
+
+    const followedUserIds: string[] = followedRows.map((r: { followingId: string }) => r.followingId);
+    // Normalize to lowercase canonical form (User.favoriteCategories are stored uppercase e.g. 'FOOD').
+    const favoriteCategories: string[] = (userRow?.favoriteCategories ?? []).map((c: string) => c.toLowerCase());
+    // Expand canonical keys to all raw trip category aliases stored in Trip.categories.
+    // e.g. 'historical' → ['historical', 'history', 'museums', 'culture']
+    const tripCategoryExpanded = [
+      ...new Set(favoriteCategories.flatMap((c) => CANONICAL_TO_TRIP_CATEGORIES[c] ?? [c])),
+    ];
+
+    if (followedUserIds.length === 0 && favoriteCategories.length === 0) {
       return {
         items: [],
         meta: { personalizationState: 'no_follows' as const, signalSummary: emptySignalSummary, total: 0 },
       };
     }
 
-    const candidates = (await db.trip.findMany({
-      where: {
-        ...this.buildEligiblePublicTripWhere(),
-        userId: { in: followedUserIds },
+    const tripInclude = {
+      user: { select: { id: true, displayName: true, avatarUrl: true } },
+      stops: {
+        orderBy: { order: 'asc' as const },
+        include: { poi: { select: { category: true, district: true, imageUrl: true, lat: true, lng: true } } },
       },
+    };
+
+    const [followedTrips, categoryTrips] = await Promise.all([
+      followedUserIds.length > 0
+        ? db.trip.findMany({
+            where: { ...this.buildEligiblePublicTripWhere(), userId: { in: followedUserIds } },
+            include: tripInclude,
+            orderBy: { optimizedAt: 'desc' },
+          })
+        : Promise.resolve([]),
+      tripCategoryExpanded.length > 0
+        ? db.trip.findMany({
+            where: { ...this.buildEligiblePublicTripWhere(), categories: { hasSome: tripCategoryExpanded } },
+            include: tripInclude,
+            orderBy: { optimizedAt: 'desc' },
+            take: CATEGORY_POOL_SIZE,
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const followedUserIdSet = new Set(followedUserIds);
+    // Use the expanded trip-alias set for scoring, so trips tagged 'history' or 'culture'
+    // correctly score as category matches when user favorites 'historical'.
+    const tripCategoryMatchSet = new Set(tripCategoryExpanded);
+
+    const tripById = new Map<string, any>();
+    for (const trip of [...followedTrips, ...categoryTrips]) {
+      if (!tripById.has(trip.id)) tripById.set(trip.id, trip);
+    }
+
+    const scoredTrips = Array.from(tripById.values()).map((trip) => {
+      const tripUserId: string = trip.userId ?? trip.user?.id ?? '';
+      const fromFollowed = followedUserIdSet.has(tripUserId);
+      const matchesCategory = (trip.categories as string[]).some((c) => tripCategoryMatchSet.has(c));
+      return { trip, score: (fromFollowed ? 3 : 0) + (matchesCategory ? 2 : 0) };
+    });
+
+    scoredTrips.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      const aTime = a.trip.optimizedAt ? new Date(a.trip.optimizedAt).getTime() : 0;
+      const bTime = b.trip.optimizedAt ? new Date(b.trip.optimizedAt).getTime() : 0;
+      return bTime - aTime;
+    });
+
+    const top = scoredTrips.slice(0, limit).map(({ trip }) => trip) as PublicTripListRecord[];
+
+    const hasFollowedContent = followedUserIds.length > 0 && followedTrips.length > 0;
+    const hasCategoryContent = favoriteCategories.length > 0 && categoryTrips.length > 0;
+    const personalizationState: 'hybrid' | 'following' | 'category_only' | 'no_follows' =
+      hasFollowedContent && hasCategoryContent ? 'hybrid'
+      : hasFollowedContent ? 'following'
+      : hasCategoryContent ? 'category_only'
+      : 'no_follows';
+
+    const creatorFollowSummaryByUserId = await this.getCreatorFollowSummaryByUserId(
+      db,
+      userId,
+      top.map((c) => c.user?.id ?? c.userId ?? null),
+    );
+
+    const mappedItems = top.map((candidate) => ({
+      ...this.toPublicTripListItem(candidate, creatorFollowSummaryByUserId),
+      recommendation: { kind: 'personalized' as const, primaryReason: 'hybrid_feed', matchedTraits: [] as string[] },
+    }));
+
+    const tripIds = mappedItems.map((item) => item.id);
+    const engagementByTripId = await this.getBatchEngagementSnapshots(db, tripIds, userId);
+
+    return {
+      items: mappedItems.map((item) => ({
+        ...item,
+        engagement: engagementByTripId.get(item.id) ?? this.createEmptyEngagement(),
+      })),
+      meta: { personalizationState, signalSummary: emptySignalSummary, total: mappedItems.length },
+    };
+  }
+
+  async findDiscoverTrips(userId: string, query: ListForYouTripsQueryDto) {
+    const client = await this.prisma.getClient();
+    const db = client as any;
+    const limit = query.limit ?? 20;
+    const emptySignalSummary = { likes: 0, saves: 0, completions: 0, feedbackSubmissions: 0 };
+
+    const candidates = (await db.trip.findMany({
+      where: this.buildEligiblePublicTripWhere(),
       include: {
         user: { select: { id: true, displayName: true, avatarUrl: true } },
         stops: {
           orderBy: { order: 'asc' },
-          include: {
-            poi: {
-              select: { category: true, district: true, imageUrl: true, lat: true, lng: true },
-            },
-          },
+          include: { poi: { select: { category: true, district: true, imageUrl: true, lat: true, lng: true } } },
         },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { optimizedAt: 'desc' },
       take: limit,
     })) as PublicTripListRecord[];
 
@@ -699,7 +801,7 @@ export class PublicTripsService {
 
     const mappedItems = candidates.map((candidate) => ({
       ...this.toPublicTripListItem(candidate, creatorFollowSummaryByUserId),
-      recommendation: { kind: 'personalized' as const, primaryReason: 'from_followed_creator', matchedTraits: [] as string[] },
+      recommendation: { kind: 'fallback' as const, primaryReason: 'general_discovery', matchedTraits: [] as string[] },
     }));
 
     const tripIds = mappedItems.map((item) => item.id);
@@ -710,7 +812,7 @@ export class PublicTripsService {
         ...item,
         engagement: engagementByTripId.get(item.id) ?? this.createEmptyEngagement(),
       })),
-      meta: { personalizationState: 'following' as const, signalSummary: emptySignalSummary, total: mappedItems.length },
+      meta: { personalizationState: 'discover' as const, signalSummary: emptySignalSummary, total: mappedItems.length },
     };
   }
 

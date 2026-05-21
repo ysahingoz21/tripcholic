@@ -19,7 +19,7 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import Artwork from "@/components/ui/Artwork";
+import Artwork, { PoiImageCard } from "@/components/ui/Artwork";
 import UserAvatar from "@/components/ui/UserAvatar";
 import { getSortedTripStops } from "@/components/trip/tripMapUtils";
 import { theme } from "@/constants/theme";
@@ -687,15 +687,10 @@ function TimelineItem({ stop, isLast }: { stop: StopData; isLast: boolean }) {
         <Text style={tlStyles.poiName} numberOfLines={2}>
           {poiName}
         </Text>
-        <Image
-          source={
-            imageUrl
-              ? { uri: imageUrl }
-              : require("../../assets/images/placeholders/default-poi.png")
-          }
+        <PoiImageCard
+          imageUrl={imageUrl}
+          category={stop.poi.category}
           style={tlStyles.poiImage}
-          contentFit="cover"
-          transition={150}
         />
         <Text style={tlStyles.description} numberOfLines={3}>
           {description}

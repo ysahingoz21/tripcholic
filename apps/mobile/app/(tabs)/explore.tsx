@@ -827,7 +827,7 @@ function ForYouContent({
   token,
   engagementMap,
 }: ForYouContentProps) {
-  const isNoFollows = data?.meta.personalizationState === 'no_follows';
+  const isNoFollows = data?.meta.personalizationState === 'no_follows' || (items.length === 0 && !data?.meta.personalizationState);
 
   return (
     <>
@@ -865,11 +865,11 @@ function ForYouContent({
             />
           </View>
           <Text style={styles.feedStateTitle}>
-            {isNoFollows ? 'Follow creators to get started' : 'No trips yet'}
+            {isNoFollows ? "Build your For You feed" : "No trips yet"}
           </Text>
           <Text style={styles.feedStateBody}>
             {isNoFollows
-              ? 'For You shows the latest public trips from creators you follow. Discover someone new in Explore, then follow them.'
+              ? "Follow creators or choose Favorite Categories in your profile to see personalized trips here."
               : "The creators you follow haven’t published any public trips yet. Check back soon or discover more in Explore."}
           </Text>
           <Pressable style={styles.feedStateButton} onPress={onSwitchToExplore}>

@@ -9,6 +9,7 @@ type Props = {
   subtitle: string;
   icon?: keyof typeof Ionicons.glyphMap;
   imageUrl?: string | null;
+  category?: string | null;
 };
 
 export default function TimelineItem({
@@ -17,6 +18,7 @@ export default function TimelineItem({
   subtitle,
   icon = 'location',
   imageUrl,
+  category,
 }: Props) {
   return (
     <View style={styles.row}>
@@ -37,6 +39,7 @@ export default function TimelineItem({
           kind="poi"
           variant="thumbnail"
           label={title}
+          category={category}
         />
         <View style={styles.textContent}>
           <Text style={styles.title}>{title}</Text>
