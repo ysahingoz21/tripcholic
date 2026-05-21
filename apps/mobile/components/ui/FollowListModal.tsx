@@ -179,7 +179,7 @@ export default function FollowListModal({
     onClose();
     setTimeout(() => {
       if (userId === currentUserId) {
-        router.push('/(tabs)/profile' as any);
+        router.navigate('/(tabs)/profile' as any);
       } else {
         router.push(`/profile/${userId}` as any);
       }

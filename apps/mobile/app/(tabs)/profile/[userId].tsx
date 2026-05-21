@@ -86,7 +86,7 @@ function ProfilePageHeader({
         <View style={[hdrStyles.side, hdrStyles.sideRight]}>
           <Pressable
             style={({ pressed }) => [hdrStyles.avatarBtn, pressed && { opacity: 0.75 }]}
-            onPress={() => router.push('/(tabs)/profile' as any)}
+            onPress={() => router.navigate('/(tabs)/profile' as any)}
             hitSlop={8}
           >
             <UserAvatar

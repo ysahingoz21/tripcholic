@@ -345,7 +345,7 @@ export default function SavedTripsScreen() {
             </Text>
             <Pressable
               style={styles.feedStateButton}
-              onPress={() => router.replace('/(tabs)/explore')}
+              onPress={() => router.navigate('/(tabs)/explore')}
             >
               <Text style={styles.feedStateButtonText}>Open Explore</Text>
             </Pressable>

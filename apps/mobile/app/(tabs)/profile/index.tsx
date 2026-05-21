@@ -21,6 +21,7 @@ import { theme } from '@/constants/theme';
 import { font, type } from '@/constants/typography';
 import { useAuth } from '@/context/AuthContext';
 import { getTrips, type TripListItem, type TripVisibility } from '@/services/trips';
+import { buildTripDetailParams } from '@/utils/tripNavigation';
 import { likePublicTrip, unlikePublicTrip, savePublicTrip, unsavePublicTrip } from '@/services/publicTrips';
 import { getMe } from '@/services/auth';
 
@@ -608,7 +609,7 @@ export default function ProfileScreen() {
                     trip={trip}
                     cardWidth={cardWidth}
                     showVisibility
-                    onPress={() => router.push(`/trip/${trip.id}` as any)}
+                    onPress={() => router.push(buildTripDetailParams(trip.id, { source: 'profile' }))}
                   />
                 ))}
               </View>
@@ -620,7 +621,7 @@ export default function ProfileScreen() {
                     <JourneyListRow
                       trip={trip}
                       token={token}
-                      onPress={() => router.push(`/trip/${trip.id}` as any)}
+                      onPress={() => router.push(buildTripDetailParams(trip.id, { source: 'profile' }))}
                     />
                   </View>
                 ))}

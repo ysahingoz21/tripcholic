@@ -429,7 +429,7 @@ export default function ExploreScreen() {
               onSearchModeChange={setSearchMode}
               onTravelerPress={(userId) => {
                 if (user?.id === userId) {
-                  router.push('/(tabs)/profile' as any);
+                  router.navigate('/(tabs)/profile' as any);
                 } else {
                   router.push(`/profile/${userId}` as any);
                 }

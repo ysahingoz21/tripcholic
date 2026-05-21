@@ -1197,7 +1197,7 @@ export default function PublicTripDetailScreen() {
           </Text>
           <Pressable
             style={styles.primaryBtn}
-            onPress={() => router.replace("/(tabs)/explore")}
+            onPress={() => router.navigate("/(tabs)/explore")}
           >
             <Text style={styles.primaryBtnText}>Back to Explore</Text>
           </Pressable>
@@ -1377,7 +1377,7 @@ export default function PublicTripDetailScreen() {
                     <Pressable
                       onPress={comment.author.id
                         ? comment.author.id === user?.id
-                          ? () => router.push('/(tabs)/profile' as any)
+                          ? () => router.navigate('/(tabs)/profile' as any)
                           : () => router.push(`/profile/${comment.author.id}` as any)
                         : undefined}
                       disabled={!comment.author.id}
@@ -1393,7 +1393,7 @@ export default function PublicTripDetailScreen() {
                       <Pressable
                         onPress={comment.author.id
                           ? comment.author.id === user?.id
-                            ? () => router.push('/(tabs)/profile' as any)
+                            ? () => router.navigate('/(tabs)/profile' as any)
                             : () => router.push(`/profile/${comment.author.id}` as any)
                           : undefined}
                         disabled={!comment.author.id}
@@ -1624,7 +1624,7 @@ export default function PublicTripDetailScreen() {
         onAuthorPress={(authorId) => {
           setCommentsModalOpen(false);
           if (authorId === user?.id) {
-            router.push('/(tabs)/profile' as any);
+            router.navigate('/(tabs)/profile' as any);
           } else {
             router.push(`/profile/${authorId}` as any);
           }
