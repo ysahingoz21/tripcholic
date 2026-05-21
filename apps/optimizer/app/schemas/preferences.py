@@ -9,7 +9,6 @@ from app.schemas.common import POICategory
 _DEFAULT_END_TIME = "21:00"
 _DEFAULT_BUDGET_TL = 6000.0
 _DEFAULT_WALKING_KM = 3.0
-_DEFAULT_MAX_POIS = 6
 
 
 def _current_time_hhmm() -> str:
@@ -49,10 +48,13 @@ class UserPreferences(BaseModel):
         description="Max walking distance between stops in km. Defaults to 3 km.",
     )
     max_pois: int | None = Field(
-        default=_DEFAULT_MAX_POIS,
+        default=None,
         ge=1,
         le=20,
-        description="Maximum number of stops in the itinerary. Defaults to 6.",
+        description=(
+            "Maximum number of stops in the itinerary. If omitted, the optimizer "
+            "may use up to 20."
+        ),
     )
     weather: str | None = Field(
         default=None,

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PointOfInterest, Prisma } from '@prisma/client';
 import { OptimizerService } from '../optimizer/optimizer.service';
 import {
@@ -39,6 +39,9 @@ const DEFAULT_OPTIMIZER_TIME_END = '21:00';
 const DEFAULT_OPTIMIZER_WALKING_TOLERANCE_KM = 3.0;
 const DEFAULT_OPTIMIZER_BUDGET_TL = 6000;
 const MAX_CANDIDATE_POIS = 20;
+const TRIP_TIME_ZONE = 'Europe/Istanbul';
+const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_24H_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 // When the destination doesn't match any known district (typo, freeform input,
 // etc.) we fall back to a geographic radius around the city centre so the user
 // still gets a route. Anchor is Sultanahmet (Istanbul historic centre).
@@ -53,8 +56,6 @@ const AREA_RADIUS_EXPANSION_TIERS_KM = [1.5, 3];
 const DISTRICT_RADIUS_EXPANSION_TIERS_KM = [3, 5];
 const EMPTY_RESULT_RADIUS_EXPANSION_TIERS_KM = [5, 8, 12];
 const KNOWN_DESTINATION_FALLBACK_RADIUS_TIERS_KM = [5, 8];
-const DEFAULT_MAX_STOPS = 4;
-const MAX_DEFAULT_STOPS = 6;
 
 const DISTRICT_FALLBACK_GROUPS: Record<string, string[]> = {
   Şişli: ['Şişli', 'Beyoğlu', 'Beşiktaş'],
@@ -84,6 +85,8 @@ type DestinationAlias = {
   fallbackDistricts?: string[];
   fallbackRadiusTiersKm?: number[];
 };
+
+type DestinationRelevance = 'primary' | 'nearby' | 'fallback';
 
 const DESTINATION_ALIASES: DestinationAlias[] = [
   {
@@ -323,6 +326,11 @@ export class TripsService {
 
   async create(userId: string, payload: CreateTripDto) {
     const client = await this.prisma.getClient();
+    const schedule = this.validateTripScheduleForWrite(
+      payload.date,
+      payload.startTime,
+      payload.endTime,
+    );
 
     const trip = await client.trip.create({
       data: {
@@ -330,7 +338,7 @@ export class TripsService {
         title: payload.title,
         destination: payload.destination,
         description: payload.description ?? null,
-        date: new Date(payload.date),
+        date: this.dateOnlyToUtcDate(schedule.date),
         timeStart: payload.startTime ?? null,
         timeEnd: payload.endTime ?? null,
         budgetTl: payload.budgetTl ?? null,
@@ -489,7 +497,18 @@ export class TripsService {
   async update(userId: string, id: string, payload: UpdateTripDto) {
     const client = await this.prisma.getClient();
 
-    await this.getOwnedTripOrThrow(client, userId, id);
+    const existingTrip = await this.getOwnedTripOrThrow(client, userId, id);
+    const isScheduleUpdate =
+      payload.date !== undefined ||
+      payload.startTime !== undefined ||
+      payload.endTime !== undefined;
+    const schedule = isScheduleUpdate
+      ? this.validateTripScheduleForWrite(
+          payload.date ?? this.dateToDateOnly(existingTrip.date),
+          payload.startTime ?? existingTrip.timeStart ?? undefined,
+          payload.endTime ?? existingTrip.timeEnd ?? undefined,
+        )
+      : null;
 
     await client.trip.update({
       where: { id },
@@ -501,7 +520,9 @@ export class TripsService {
         ...(payload.description !== undefined && {
           description: payload.description,
         }),
-        ...(payload.date !== undefined && { date: new Date(payload.date) }),
+        ...(payload.date !== undefined && {
+          date: this.dateOnlyToUtcDate(schedule!.date),
+        }),
         ...(payload.startTime !== undefined && {
           timeStart: payload.startTime,
         }),
@@ -546,6 +567,11 @@ export class TripsService {
     const client = await this.prisma.getClient();
 
     const trip = await this.getOwnedTripOrThrow(client, userId, id);
+    const schedule = this.resolveTripScheduleForOptimization(
+      trip.date,
+      trip.timeStart,
+      trip.timeEnd,
+    );
     const optimizerCategories = this.normalizeTripCategories(trip.categories);
     const dbCategories = this.toDbCategories(optimizerCategories);
     const affordableLevels = trip.budgetTl
@@ -575,17 +601,12 @@ export class TripsService {
       ],
     });
 
-    const effectiveMaxPois = this.resolveMaxPois(
-      trip.maxPois,
-      trip.categories,
-      trip.timeStart,
-      trip.timeEnd,
-    );
+    const effectiveMaxPois = this.resolveMaxPois(trip.maxPois);
     const targetCandidateCount = Math.max(
       effectiveMaxPois,
       this.targetCandidateCountForTimeWindow(
-        trip.timeStart ?? DEFAULT_OPTIMIZER_TIME_START,
-        trip.timeEnd ?? DEFAULT_OPTIMIZER_TIME_END,
+        schedule.timeStart,
+        schedule.timeEnd,
       ),
     );
     const destinationCandidates = await this.selectCandidatesForDestination(
@@ -604,9 +625,21 @@ export class TripsService {
       destinationAnchorPool,
       trip.destination,
     );
+    const primaryDestinationPoiIds = this.resolvePrimaryDestinationPoiIds(
+      pois,
+      trip.destination,
+      destinationAnchorPool,
+    );
 
     const candidatePois = pois.map((poi) =>
-      this.mapPoiToOptimizerCandidate(poi),
+      this.mapPoiToOptimizerCandidate(
+        poi,
+        this.destinationRelevanceForPoi(
+          poi,
+          primaryDestinationPoiIds,
+          destinationAnchor,
+        ),
+      ),
     );
     const effectiveBudgetTl = this.resolveOptimizerBudgetTl(
       trip.budgetTl,
@@ -614,11 +647,11 @@ export class TripsService {
     );
     const optimizerRequest: OptimizerOptimizeRequest = {
       trip_id: trip.id,
-      date: trip.date.toISOString().split('T')[0],
+      date: schedule.date,
       preferences: {
         categories: optimizerCategories,
-        time_start: trip.timeStart ?? DEFAULT_OPTIMIZER_TIME_START,
-        time_end: trip.timeEnd ?? DEFAULT_OPTIMIZER_TIME_END,
+        time_start: schedule.timeStart,
+        time_end: schedule.timeEnd,
         budget_tl: effectiveBudgetTl,
         walking_tolerance_km:
           trip.walkingToleranceKm ?? DEFAULT_OPTIMIZER_WALKING_TOLERANCE_KM,
@@ -815,34 +848,229 @@ export class TripsService {
     return DEFAULT_OPTIMIZER_BUDGET_TL;
   }
 
-  private resolveMaxPois(
-    explicitMaxPois: number | null,
-    selectedCategories: string[],
-    timeStart: string | null,
-    timeEnd: string | null,
-  ): number {
+  private resolveMaxPois(explicitMaxPois: number | null): number {
     if (explicitMaxPois !== null) {
-      return explicitMaxPois;
+      return Math.max(1, Math.min(MAX_CANDIDATE_POIS, explicitMaxPois));
     }
 
-    const selectedCategoryCount = new Set(
-      selectedCategories
-        .map((category) => category.trim().toLowerCase())
-        .filter(Boolean),
-    ).size;
-    const categoryDrivenMax =
-      selectedCategoryCount > 0
-        ? Math.min(MAX_DEFAULT_STOPS, Math.max(3, selectedCategoryCount + 1))
-        : DEFAULT_MAX_STOPS;
-    const timeDrivenMax = this.targetCandidateCountForTimeWindow(
-      timeStart ?? DEFAULT_OPTIMIZER_TIME_START,
-      timeEnd ?? DEFAULT_OPTIMIZER_TIME_END,
-    );
+    return MAX_CANDIDATE_POIS;
+  }
 
-    return Math.max(
-      1,
-      Math.min(MAX_DEFAULT_STOPS, Math.max(categoryDrivenMax, timeDrivenMax)),
+  private validateTripScheduleForWrite(
+    dateValue: string,
+    startTime?: string,
+    endTime?: string,
+  ): { date: string } {
+    const date = this.parseDateOnly(dateValue);
+    const today = this.todayInTripTimeZone();
+
+    if (date < today) {
+      throw new BadRequestException('Trip date cannot be in the past.');
+    }
+
+    const startMin = this.parseOptionalTime(startTime, 'startTime');
+    const endMin = this.parseOptionalTime(endTime, 'endTime');
+    const defaultStartMin = this.timeToMinutes(DEFAULT_OPTIMIZER_TIME_START);
+    const defaultEndMin = this.timeToMinutes(DEFAULT_OPTIMIZER_TIME_END);
+    const nowMin = date === today ? this.nowMinutesInTripTimeZone() : null;
+
+    if (nowMin !== null && startMin !== null) {
+      if (startMin < nowMin) {
+        throw new BadRequestException(
+          'Start time cannot be earlier than the current time for today.',
+        );
+      }
+    }
+
+    const effectiveStartMin =
+      startMin ??
+      (nowMin !== null
+        ? Math.max(defaultStartMin, nowMin)
+        : defaultStartMin);
+    const effectiveEndMin =
+      endMin !== null
+        ? this.resolveWindowEndMinute(effectiveStartMin, endMin)
+        : effectiveStartMin >= defaultEndMin
+          ? 23 * 60 + 59
+          : defaultEndMin;
+
+    if (effectiveEndMin <= effectiveStartMin) {
+      throw new BadRequestException(
+        'Start and end time cannot be the same.',
+      );
+    }
+
+    return { date };
+  }
+
+  private resolveTripScheduleForOptimization(
+    tripDate: Date,
+    storedStartTime: string | null,
+    storedEndTime: string | null,
+  ): { date: string; timeStart: string; timeEnd: string } {
+    const date = this.parseDateOnly(this.dateToDateOnly(tripDate));
+    const today = this.todayInTripTimeZone();
+
+    if (date < today) {
+      throw new BadRequestException(
+        'Cannot optimize a trip scheduled for a past date.',
+      );
+    }
+
+    const explicitStartMin = this.parseOptionalTime(
+      storedStartTime ?? undefined,
+      'startTime',
     );
+    this.parseOptionalTime(storedEndTime ?? undefined, 'endTime');
+
+    if (date === today && explicitStartMin !== null) {
+      const nowMin = this.nowMinutesInTripTimeZone();
+      if (explicitStartMin < nowMin) {
+        throw new BadRequestException(
+          'Cannot optimize a trip whose start time is already in the past.',
+        );
+      }
+    }
+
+    const timeStart = this.resolveOptimizerTimeStart(date, storedStartTime);
+    const timeEnd = this.resolveOptimizerTimeEnd(storedEndTime, timeStart);
+    const startMin = this.timeToMinutes(timeStart);
+    const endMin = this.resolveWindowEndMinute(
+      startMin,
+      this.timeToMinutes(timeEnd),
+    );
+    if (endMin <= startMin) {
+      throw new BadRequestException(
+        'Trip start and end time cannot be the same.',
+      );
+    }
+
+    return { date, timeStart, timeEnd };
+  }
+
+  private resolveOptimizerTimeStart(
+    date: string,
+    storedStartTime: string | null,
+  ): string {
+    if (storedStartTime) {
+      return storedStartTime;
+    }
+
+    if (date !== this.todayInTripTimeZone()) {
+      return DEFAULT_OPTIMIZER_TIME_START;
+    }
+
+    const defaultStartMin = this.timeToMinutes(DEFAULT_OPTIMIZER_TIME_START);
+    const nowMin = this.nowMinutesInTripTimeZone();
+    return this.minutesToTime(Math.max(defaultStartMin, nowMin));
+  }
+
+  private resolveOptimizerTimeEnd(
+    storedEndTime: string | null,
+    timeStart: string,
+  ): string {
+    if (storedEndTime) {
+      return storedEndTime;
+    }
+
+    if (
+      this.timeToMinutes(timeStart) >=
+      this.timeToMinutes(DEFAULT_OPTIMIZER_TIME_END)
+    ) {
+      return '23:59';
+    }
+
+    return DEFAULT_OPTIMIZER_TIME_END;
+  }
+
+  private parseDateOnly(value: string): string {
+    if (!DATE_ONLY_PATTERN.test(value)) {
+      throw new BadRequestException('Trip date must use YYYY-MM-DD format.');
+    }
+
+    const [year, month, day] = value.split('-').map(Number);
+    const parsed = new Date(Date.UTC(year, month - 1, day));
+    if (
+      parsed.getUTCFullYear() !== year ||
+      parsed.getUTCMonth() !== month - 1 ||
+      parsed.getUTCDate() !== day
+    ) {
+      throw new BadRequestException('Trip date is not a valid calendar date.');
+    }
+
+    return value;
+  }
+
+  private parseOptionalTime(
+    value: string | undefined,
+    fieldName: string,
+  ): number | null {
+    if (value === undefined || value === '') {
+      return null;
+    }
+
+    if (!TIME_24H_PATTERN.test(value)) {
+      throw new BadRequestException(
+        `${fieldName} must use valid 24-hour HH:mm format.`,
+      );
+    }
+
+    return this.timeToMinutes(value);
+  }
+
+  private dateOnlyToUtcDate(date: string): Date {
+    return new Date(`${date}T00:00:00.000Z`);
+  }
+
+  private dateToDateOnly(date: Date): string {
+    return date.toISOString().split('T')[0];
+  }
+
+  private todayInTripTimeZone(): string {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: TRIP_TIME_ZONE,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(new Date());
+
+    const year = parts.find((part) => part.type === 'year')?.value;
+    const month = parts.find((part) => part.type === 'month')?.value;
+    const day = parts.find((part) => part.type === 'day')?.value;
+    return `${year}-${month}-${day}`;
+  }
+
+  private nowMinutesInTripTimeZone(): number {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: TRIP_TIME_ZONE,
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(new Date());
+
+    const hour = Number(parts.find((part) => part.type === 'hour')?.value);
+    const minute = Number(parts.find((part) => part.type === 'minute')?.value);
+    return hour * 60 + minute;
+  }
+
+  private timeToMinutes(time: string): number {
+    const [hour, minute] = time.split(':').map(Number);
+    return hour * 60 + minute;
+  }
+
+  private resolveWindowEndMinute(startMin: number, endMin: number): number {
+    if (endMin === startMin) {
+      return endMin;
+    }
+
+    return endMin < startMin ? endMin + 24 * 60 : endMin;
+  }
+
+  private minutesToTime(totalMinutes: number): string {
+    const clamped = Math.max(0, Math.min(23 * 60 + 59, totalMinutes));
+    const hour = Math.floor(clamped / 60);
+    const minute = clamped % 60;
+    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
   }
 
   private targetCandidateCountForTimeWindow(
@@ -1147,6 +1375,93 @@ export class TripsService {
     return this.centroidOf(destinationMatches);
   }
 
+  private resolvePrimaryDestinationPoiIds(
+    pool: PointOfInterest[],
+    destination: string | null,
+    destinationAnchorPool: PointOfInterest[],
+  ): Set<string> {
+    const selectedIds = new Set<string>();
+    const needle = this.normalizeSearchText(destination);
+    if (!needle || pool.length === 0) {
+      return selectedIds;
+    }
+
+    const addWithinRadius = (
+      anchor: { lat: number; lng: number },
+      radiusKm: number,
+    ) => {
+      for (const poi of pool) {
+        if (haversineKm(anchor, { lat: poi.lat, lng: poi.lng }) <= radiusKm) {
+          selectedIds.add(poi.id);
+        }
+      }
+    };
+
+    const knownDestination = this.resolveKnownDestination(needle);
+    if (knownDestination) {
+      for (const poi of pool) {
+        if (this.poiMatchesKnownDestination(poi, knownDestination)) {
+          selectedIds.add(poi.id);
+        }
+      }
+      addWithinRadius(
+        knownDestination.anchor,
+        knownDestination.radiusTiersKm[0] ?? AREA_RADIUS_EXPANSION_TIERS_KM[0],
+      );
+      return selectedIds;
+    }
+
+    const districtMatches = pool.filter((poi) =>
+      this.poiMatchesDestinationDistrict(poi, needle),
+    );
+    if (districtMatches.length > 0) {
+      for (const poi of districtMatches) {
+        selectedIds.add(poi.id);
+      }
+      return selectedIds;
+    }
+
+    const areaMatches = pool.filter((poi) =>
+      this.poiMatchesDestinationArea(poi, needle),
+    );
+    if (areaMatches.length > 0) {
+      for (const poi of areaMatches) {
+        selectedIds.add(poi.id);
+      }
+      addWithinRadius(
+        this.centroidOf(areaMatches),
+        AREA_RADIUS_EXPANSION_TIERS_KM[0],
+      );
+      return selectedIds;
+    }
+
+    const anchorOnlyMatches = destinationAnchorPool.filter(
+      (poi) =>
+        this.poiMatchesDestinationDistrict(poi, needle) ||
+        this.poiMatchesDestinationArea(poi, needle),
+    );
+    if (anchorOnlyMatches.length > 0) {
+      addWithinRadius(
+        this.centroidOf(anchorOnlyMatches),
+        AREA_RADIUS_EXPANSION_TIERS_KM[0],
+      );
+    }
+
+    return selectedIds;
+  }
+
+  private destinationRelevanceForPoi(
+    poi: PointOfInterest,
+    primaryDestinationPoiIds: Set<string>,
+    destinationAnchor: { lat: number; lng: number } | null,
+  ): DestinationRelevance {
+    if (primaryDestinationPoiIds.has(poi.id)) {
+      return 'primary';
+    }
+
+    return destinationAnchor ? 'nearby' : 'fallback';
+  }
+
   private resolveKnownDestination(
     normalizedNeedle: string,
   ): DestinationAlias | null {
@@ -1232,7 +1547,10 @@ export class TripsService {
     return { lat: sum.lat / pois.length, lng: sum.lng / pois.length };
   }
 
-  private mapPoiToOptimizerCandidate(poi: PointOfInterest) {
+  private mapPoiToOptimizerCandidate(
+    poi: PointOfInterest,
+    destinationRelevance: DestinationRelevance,
+  ) {
     return {
       poi_id: poi.id,
       name: poi.name,
@@ -1250,6 +1568,7 @@ export class TripsService {
         max_tl: poi.estimatedMaxCostTl ?? poi.estimatedMinCostTl ?? 500,
       },
       visit_duration_minutes: poi.avgDurationMin,
+      destination_relevance: destinationRelevance,
     };
   }
 
