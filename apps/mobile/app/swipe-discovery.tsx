@@ -746,7 +746,7 @@ export default function SwipeDiscoveryScreen() {
             <Text style={styles.primaryCtaText}>Try again</Text>
           </Pressable>
           <Pressable
-            onPress={() => router.replace('/(tabs)/explore' as any)}
+            onPress={() => router.navigate('/(tabs)/explore' as any)}
             style={styles.ghostCta}
           >
             <Text style={styles.ghostCtaText}>Back to Explore</Text>
@@ -778,7 +778,7 @@ export default function SwipeDiscoveryScreen() {
             <Text style={styles.primaryCtaText}>Reload deck</Text>
           </Pressable>
           <Pressable
-            onPress={() => router.replace('/(tabs)/explore' as any)}
+            onPress={() => router.navigate('/(tabs)/explore' as any)}
             style={styles.ghostCta}
           >
             <Text style={styles.ghostCtaText}>Back to Explore</Text>

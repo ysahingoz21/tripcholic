@@ -40,7 +40,7 @@ export default function AppHeader() {
           <View style={[styles.side, styles.sideRight]}>
             <Pressable
               style={({ pressed }) => [pressed && { opacity: 0.75 }]}
-              onPress={() => router.push('/(tabs)/profile')}
+              onPress={() => router.navigate('/(tabs)/profile')}
               hitSlop={8}
             >
               <UserAvatar

@@ -145,33 +145,23 @@ export default function ExploreTripCard({
       {/* Depth scrim from bottom */}
       <View style={styles.cardScrim} />
 
-      {/* ── Top row: creator block + 3-dots menu ── */}
-      <View style={styles.cardTopRow}>
-        <Pressable
-          style={styles.creatorBlock}
-          onPress={onCreatorPress}
-          disabled={!onCreatorPress}
-          hitSlop={4}
-        >
-          <UserAvatar
-            avatarUrl={creatorAvatarUrl}
-            displayName={creatorName}
-            size={28}
-            ringSize={0}
-          />
-          <Text style={styles.creatorName} numberOfLines={1}>
-            {formatCreator(creatorName)}
-          </Text>
-        </Pressable>
-
-        <View style={styles.menuButton}>
-          <Ionicons
-            name="ellipsis-horizontal"
-            size={16}
-            color="rgba(255,255,255,0.9)"
-          />
-        </View>
-      </View>
+      {/* ── Top row: creator block ── */}
+      <Pressable
+        style={styles.creatorBlock}
+        onPress={onCreatorPress}
+        disabled={!onCreatorPress}
+        hitSlop={4}
+      >
+        <UserAvatar
+          avatarUrl={creatorAvatarUrl}
+          displayName={creatorName}
+          size={28}
+          ringSize={0}
+        />
+        <Text style={styles.creatorName} numberOfLines={1}>
+          {formatCreator(creatorName)}
+        </Text>
+      </Pressable>
 
       {/* ── Bottom content panel ── */}
       <View style={styles.cardBottom}>
@@ -301,19 +291,11 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(11,36,48,0.62)",
   },
 
-  // ── Top row ──
-  cardTopRow: {
+  // Creator block
+  creatorBlock: {
     position: "absolute",
     top: 14,
     left: 14,
-    right: 14,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-
-  // Creator block
-  creatorBlock: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
@@ -323,27 +305,13 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.18)",
     paddingHorizontal: 12,
     paddingVertical: 9,
-    maxWidth: 220,
-    flexShrink: 1,
+    maxWidth: 280,
   },
   creatorName: {
     fontFamily: font.semiBold,
     fontSize: 13,
     color: "rgba(255,255,255,0.92)",
     flexShrink: 1,
-  },
-
-  // 3-dots menu button
-  menuButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: "rgba(0,0,0,0.38)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
   },
 
   // ── Bottom content ──

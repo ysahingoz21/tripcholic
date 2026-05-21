@@ -58,7 +58,8 @@ export default function AppDrawer({ visible, onClose }: Props) {
 
   function navigate(path: string) {
     onClose();
-    setTimeout(() => router.push(path as any), 180);
+    const isTab = path.startsWith('/(tabs)');
+    setTimeout(() => isTab ? router.navigate(path as any) : router.push(path as any), 180);
   }
 
   async function handleSignOut() {

@@ -1,5 +1,6 @@
 import { getSortedTripStops } from '@/components/trip/tripMapUtils';
 import Artwork, { PoiImageCard } from '@/components/ui/Artwork';
+import { buildTripDetailParams } from '@/utils/tripNavigation';
 import { theme } from '@/constants/theme';
 import { font } from '@/constants/typography';
 import { useAuth } from '@/context/AuthContext';
@@ -327,7 +328,7 @@ export default function ResultsScreen() {
   loadWeather();
 }, []);
 
-  const handleGoHome = () => router.replace('/(tabs)');
+  const handleGoHome = () => router.navigate('/(tabs)');
 
   // These must be unconditional — computed from tripDetail when available.
   const sortedStops = useMemo(
@@ -658,13 +659,18 @@ export default function ResultsScreen() {
               styles.openTripBtn,
               pressed && { opacity: 0.88 },
             ]}
-            onPress={() =>
-              router.push(
-                trip.visibility === 'PUBLIC'
-                  ? (`/public-trip/${trip.id}` as any)
-                  : (`/trip/${trip.id}` as any),
-              )
-            }
+            onPress={() => {
+              if (trip.visibility === 'PUBLIC') {
+                router.push(`/public-trip/${trip.id}` as any);
+              } else {
+                router.push(
+                  buildTripDetailParams(trip.id, {
+                    source: 'results',
+                    returnTripId: typeof tripId === 'string' ? tripId : trip.id,
+                  }),
+                );
+              }
+            }}
           >
             <Ionicons name="compass-outline" size={18} color="#FFFFFF" />
             <Text style={styles.openTripBtnText}>Open trip</Text>
@@ -677,7 +683,7 @@ export default function ResultsScreen() {
                 styles.secondaryBtn,
                 pressed && { opacity: 0.82 },
               ]}
-              onPress={() => router.replace('/(tabs)/trips')}
+              onPress={() => router.navigate('/(tabs)/trips')}
             >
               <Ionicons
                 name="map-outline"

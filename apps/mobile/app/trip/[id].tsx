@@ -937,7 +937,7 @@ export default function OwnerTripDetailScreen() {
           </Text>
           <Pressable
             style={styles.primaryBtn}
-            onPress={() => router.replace(returnTarget.href)}
+            onPress={() => router.navigate(returnTarget.href)}
           >
             <Text style={styles.primaryBtnText}>{returnTarget.label}</Text>
           </Pressable>

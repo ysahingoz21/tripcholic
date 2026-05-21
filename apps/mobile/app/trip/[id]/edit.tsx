@@ -343,7 +343,7 @@ export default function EditTripScreen() {
     }
     // Fallback for deep-linked entry with no back stack
     const tripId = tripDetail?.trip.id ?? (typeof id === "string" ? id : "");
-    router.replace(
+    router.navigate(
       buildTripDetailParams(tripId, {
         ...(routeSource ? { source: routeSource } : {}),
         ...(typeof returnTripId === "string" ? { returnTripId } : {}),
