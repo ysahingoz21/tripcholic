@@ -16,18 +16,18 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import AppHeader from '@/components/ui/AppHeader';
 import Artwork from '@/components/ui/Artwork';
 import FollowListModal from '@/components/ui/FollowListModal';
-import UserAvatar from '@/components/ui/UserAvatar';
+import UserAvatar, { PROFILE_AVATAR_FRAME_INSET } from '@/components/ui/UserAvatar';
 import { theme } from '@/constants/theme';
 import { font, type } from '@/constants/typography';
 import { useAuth } from '@/context/AuthContext';
 import { getTrips, type TripListItem, type TripVisibility } from '@/services/trips';
+import { likePublicTrip, unlikePublicTrip, savePublicTrip, unsavePublicTrip } from '@/services/publicTrips';
 import { getMe } from '@/services/auth';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const COVER_HEIGHT = 180;
 const AVATAR_SIZE = 80;
-const AVATAR_RING = 4;
 const H_PAD = 20;
 const CARD_GAP = 12;
 
@@ -236,6 +236,176 @@ const cardStyles = StyleSheet.create({
   },
 });
 
+// ── Journey list row ──────────────────────────────────────────────────────────
+
+function JourneyListRow({
+  trip,
+  token,
+  onPress,
+}: {
+  trip: TripListItem;
+  token: string | null;
+  onPress: () => void;
+}) {
+  const [likedByMe, setLikedByMe] = useState(trip.engagement?.likedByMe ?? false);
+  const [likeCount, setLikeCount] = useState(trip.engagement?.likeCount ?? 0);
+  const [savedByMe, setSavedByMe] = useState(trip.engagement?.savedByMe ?? false);
+  const [saveCount, setSaveCount] = useState(trip.engagement?.saveCount ?? 0);
+  const [likePending, setLikePending] = useState(false);
+  const [savePending, setSavePending] = useState(false);
+
+  const imageUrl = trip.preview?.imageUrl?.trim() || null;
+  const isPrivate = trip.visibility === 'PRIVATE';
+  const vis = VIS_CONFIG[trip.visibility];
+
+  const handleLike = async () => {
+    if (!token || likePending || isPrivate) return;
+    setLikePending(true);
+    const wasLiked = likedByMe;
+    setLikedByMe(!wasLiked);
+    setLikeCount((c) => (wasLiked ? c - 1 : c + 1));
+    try {
+      if (wasLiked) await unlikePublicTrip(trip.id, token);
+      else await likePublicTrip(trip.id, token);
+    } catch {
+      setLikedByMe(wasLiked);
+      setLikeCount((c) => (wasLiked ? c + 1 : c - 1));
+    } finally {
+      setLikePending(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!token || savePending || isPrivate) return;
+    setSavePending(true);
+    const wasSaved = savedByMe;
+    setSavedByMe(!wasSaved);
+    setSaveCount((c) => (wasSaved ? c - 1 : c + 1));
+    try {
+      if (wasSaved) await unsavePublicTrip(trip.id, token);
+      else await savePublicTrip(trip.id, token);
+    } catch {
+      setSavedByMe(wasSaved);
+      setSaveCount((c) => (wasSaved ? c + 1 : c - 1));
+    } finally {
+      setSavePending(false);
+    }
+  };
+
+  const categoryLine = trip.categories.length > 0
+    ? trip.categories.map(cap).slice(0, 3).join(', ')
+    : null;
+
+  return (
+    <Pressable
+      style={({ pressed }) => [listRowStyles.row, pressed && { opacity: 0.92 }]}
+      onPress={onPress}
+    >
+      <View style={listRowStyles.imageWrap}>
+        <Artwork imageUrl={imageUrl} kind="trip" variant="cover" />
+      </View>
+      <View style={listRowStyles.content}>
+        <Text style={listRowStyles.title} numberOfLines={2}>{trip.title}</Text>
+        <View style={listRowStyles.metaRow}>
+          <Ionicons name={vis.icon as any} size={11} color={vis.color} />
+          <Text style={[listRowStyles.metaText, { color: vis.color }]}>{vis.label}</Text>
+          <Text style={listRowStyles.metaDot}> · </Text>
+          <Text style={listRowStyles.metaText}>{formatShortDate(trip.date)}</Text>
+        </View>
+        {categoryLine ? (
+          <Text style={listRowStyles.metaText} numberOfLines={1}>{categoryLine}</Text>
+        ) : null}
+        {!isPrivate && (
+          <View style={listRowStyles.metricsRow}>
+            <Pressable style={listRowStyles.metricBtn} onPress={handleLike} hitSlop={4}>
+              <Ionicons
+                name={likedByMe ? 'heart' : 'heart-outline'}
+                size={14}
+                color={likedByMe ? '#EF4444' : theme.colors.textSecondary}
+              />
+              <Text style={listRowStyles.metricText}>{likeCount}</Text>
+            </Pressable>
+            <View style={listRowStyles.metricItem}>
+              <Ionicons name="chatbubble-outline" size={14} color={theme.colors.textSecondary} />
+              <Text style={listRowStyles.metricText}>{trip.engagement?.commentCount ?? 0}</Text>
+            </View>
+            <Pressable style={listRowStyles.metricBtn} onPress={handleSave} hitSlop={4}>
+              <Ionicons
+                name={savedByMe ? 'bookmark' : 'bookmark-outline'}
+                size={14}
+                color={savedByMe ? theme.colors.primary : theme.colors.textSecondary}
+              />
+              <Text style={listRowStyles.metricText}>{saveCount}</Text>
+            </Pressable>
+          </View>
+        )}
+      </View>
+    </Pressable>
+  );
+}
+
+const listRowStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: H_PAD,
+    paddingVertical: 10,
+  },
+  imageWrap: {
+    width: 90,
+    height: 116,
+    borderRadius: 12,
+    overflow: 'hidden',
+    flexShrink: 0,
+  },
+  content: {
+    flex: 1,
+    paddingVertical: 2,
+    gap: 5,
+  },
+  title: {
+    fontFamily: font.bold,
+    fontSize: 14,
+    lineHeight: 19,
+    color: theme.colors.primaryDark,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  metaText: {
+    fontFamily: font.regular,
+    fontSize: 11,
+    color: theme.colors.textSecondary,
+  },
+  metaDot: {
+    fontFamily: font.regular,
+    fontSize: 11,
+    color: theme.colors.textSecondary,
+  },
+  metricsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 2,
+  },
+  metricBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  metricItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  metricText: {
+    fontFamily: font.medium,
+    fontSize: 13,
+    color: theme.colors.textSecondary,
+  },
+});
+
 // ── Screen ────────────────────────────────────────────────────────────────────
 
 export default function ProfileScreen() {
@@ -243,6 +413,7 @@ export default function ProfileScreen() {
   const { width: screenWidth } = useWindowDimensions();
   const { signOut, user, token, isLoading: isAuthLoading, setUser } = useAuth();
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [journeyLayout, setJourneyLayout] = useState<'grid' | 'list'>('grid');
   const [trips, setTrips] = useState<TripListItem[]>([]);
   const [isTripsLoading, setIsTripsLoading] = useState(true);
   const [tripsError, setTripsError] = useState<string | null>(null);
@@ -334,7 +505,7 @@ export default function ProfileScreen() {
               displayName={user?.displayName}
               email={email}
               size={AVATAR_SIZE}
-              ringSize={AVATAR_RING}
+              variant="profile"
             />
           </View>
 
@@ -399,12 +570,19 @@ export default function ProfileScreen() {
           {/* ── Journeys section header ── */}
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Journeys</Text>
-            <Pressable hitSlop={8}>
-              <Ionicons name="grid-outline" size={20} color={theme.colors.textSecondary} />
+            <Pressable
+              hitSlop={8}
+              onPress={() => setJourneyLayout((l) => (l === 'grid' ? 'list' : 'grid'))}
+            >
+              <Ionicons
+                name={journeyLayout === 'grid' ? 'list-outline' : 'grid-outline'}
+                size={20}
+                color={theme.colors.textSecondary}
+              />
             </Pressable>
           </View>
 
-          {/* ── Journey grid ── */}
+          {/* ── Journey grid / list ── */}
           {isTripsLoading ? (
             <View style={styles.stateCenter}>
               <ActivityIndicator size="small" color={theme.colors.primary} />
@@ -422,17 +600,32 @@ export default function ProfileScreen() {
               </Pressable>
             </View>
           ) : journeyTrips.length > 0 ? (
-            <View style={styles.grid}>
-              {journeyTrips.map((trip) => (
-                <JourneyCard
-                  key={trip.id}
-                  trip={trip}
-                  cardWidth={cardWidth}
-                  showVisibility
-                  onPress={() => router.push(`/trip/${trip.id}` as any)}
-                />
-              ))}
-            </View>
+            journeyLayout === 'grid' ? (
+              <View style={styles.grid}>
+                {journeyTrips.map((trip) => (
+                  <JourneyCard
+                    key={trip.id}
+                    trip={trip}
+                    cardWidth={cardWidth}
+                    showVisibility
+                    onPress={() => router.push(`/trip/${trip.id}` as any)}
+                  />
+                ))}
+              </View>
+            ) : (
+              <View style={styles.list}>
+                {journeyTrips.map((trip, index) => (
+                  <View key={trip.id}>
+                    {index > 0 && <View style={styles.listDivider} />}
+                    <JourneyListRow
+                      trip={trip}
+                      token={token}
+                      onPress={() => router.push(`/trip/${trip.id}` as any)}
+                    />
+                  </View>
+                ))}
+              </View>
+            )
           ) : (
             <View style={styles.emptyState}>
               <View style={styles.stateIconWrap}>
@@ -484,7 +677,7 @@ export default function ProfileScreen() {
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
-const AVATAR_TOTAL = AVATAR_SIZE + AVATAR_RING * 2;
+const AVATAR_TOTAL = AVATAR_SIZE + PROFILE_AVATAR_FRAME_INSET * 2;
 
 const styles = StyleSheet.create({
   root: {
@@ -645,13 +838,21 @@ const styles = StyleSheet.create({
     color: theme.colors.primaryDark,
   },
 
-  // ── Journey grid ──────────────────────────────────────────────────────────
+  // ── Journey grid / list ───────────────────────────────────────────────────
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     paddingHorizontal: H_PAD,
     gap: CARD_GAP,
     marginBottom: 8,
+  },
+  list: {
+    marginBottom: 8,
+  },
+  listDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: theme.colors.border,
+    marginHorizontal: H_PAD,
   },
 
   // ── States: loading / error / empty ──────────────────────────────────────

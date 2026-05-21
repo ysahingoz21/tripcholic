@@ -581,6 +581,21 @@ export async function renameSavedTripCollection(
   );
 }
 
+export async function getSavedTripCollectionSummaries(token: string, limit = 4) {
+  const response = await fetch(
+    `${API_BASE_URL}/public-trips/saved/collections?limit=${limit}`,
+    {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` },
+    }
+  );
+
+  return parseApiResponse<SavedTripCollectionSummary[]>(
+    response,
+    'Failed to load collection summaries'
+  );
+}
+
 export async function deleteSavedTripCollection(token: string, collectionId: string) {
   const response = await fetch(
     `${API_BASE_URL}/public-trips/saved/collections/${collectionId}`,

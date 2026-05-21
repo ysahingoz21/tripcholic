@@ -41,6 +41,17 @@ type AuthenticatedRequest = Request & {
 export class PublicTripsController {
   constructor(private readonly publicTripsService: PublicTripsService) {}
 
+  @Get('saved/collections')
+  @ApiOperation({ summary: 'List saved trip collection summaries for the current user' })
+  @ApiOkResponse({ description: 'Saved trip collection summaries returned successfully.' })
+  findSavedCollections(
+    @Req() req: AuthenticatedRequest,
+    @Query('limit') limit?: string,
+  ) {
+    const parsed = limit ? parseInt(limit, 10) : 4;
+    return this.publicTripsService.findSavedTripCollectionSummaries(req.user.id, isNaN(parsed) ? 4 : parsed);
+  }
+
   @Get('saved')
   @ApiOperation({ summary: 'List saved public trips for the current user' })
   @ApiOkResponse({ description: 'Saved public trips returned successfully.' })

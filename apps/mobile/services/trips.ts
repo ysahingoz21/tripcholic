@@ -318,6 +318,21 @@ export async function getTrips(token: string) {
   return parseApiResponse<TripListItem[]>(response, 'Failed to load trips');
 }
 
+export async function getTrendingTrips(
+  token?: string | null,
+  limit = 8,
+): Promise<{ items: ExploreTripItem[]; meta: { fallback: boolean } }> {
+  const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+  const response = await fetch(`${API_BASE_URL}/trips/trending?limit=${limit}`, {
+    method: 'GET',
+    headers,
+  });
+  return parseApiResponse<{ items: ExploreTripItem[]; meta: { fallback: boolean } }>(
+    response,
+    'Failed to load trending trips',
+  );
+}
+
 export async function getExploreTrips(query: ExploreTripsQuery = {}, token?: string) {
   const searchParams = new URLSearchParams();
 

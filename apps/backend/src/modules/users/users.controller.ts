@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -71,6 +72,20 @@ export class UsersController {
   @ApiUnauthorizedResponse({ description: 'Missing, invalid, or expired Bearer token.' })
   async updateMe(@Req() req: AuthenticatedRequest, @Body() dto: UpdateUserDto) {
     return this.usersService.updateCurrentUser(req.user.id, dto);
+  }
+
+  @Get('search')
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiOperation({
+    summary: 'Search users by display name',
+    description: 'Returns minimal public user data. isFollowedByMe requires a valid Bearer token.',
+  })
+  @ApiOkResponse({ description: 'Matched users.' })
+  async searchUsers(
+    @Query('q') q: string,
+    @Req() req: MaybeAuthenticatedRequest,
+  ) {
+    return this.usersService.searchUsers(req.user?.id ?? null, q ?? '');
   }
 
   @Get(':id')

@@ -21,9 +21,14 @@ import {
   type ExploreTripsResponse,
   type ExploreWeather,
 } from '@/services/trips';
+import {
+  searchUsers,
+  type UserSearchResult,
+} from '@/services/users';
+import UserAvatar from '@/components/ui/UserAvatar';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -41,6 +46,7 @@ const H_PAD = 20;
 // ── Types ───────────────────────────────────────────────────────────────────
 
 type ExploreMode = 'explore' | 'for-you' | 'swipe';
+type SearchMode = 'trips' | 'travelers';
 type BudgetFilter = 'any' | 'under-2000' | '2000-6000' | '6000-plus';
 type ExploreSortMode = 'default' | 'title-az' | 'title-za' | 'budget-low' | 'budget-high';
 
@@ -125,9 +131,12 @@ function promptStillMatchesState(
 
 export default function ExploreScreen() {
   const router = useRouter();
-  const { token, isLoading: isAuthLoading } = useAuth();
+  const { token, user, isLoading: isAuthLoading } = useAuth();
+
+  const { category: categoryParam } = useLocalSearchParams<{ category?: string }>();
 
   const [mode, setMode] = useState<ExploreMode>('explore');
+  const [searchMode, setSearchMode] = useState<SearchMode>('trips');
 
   // ── Explore state ──
   const [searchInput, setSearchInput] = useState('');
@@ -180,6 +189,15 @@ export default function ExploreScreen() {
       setActivePromptId(null);
     }
   }, [activePrompt, selectedBudgetQuery, selectedCategory, selectedWeather]);
+
+  // Apply category from navigation params (e.g. Home page chip → Explore)
+  useEffect(() => {
+    if (categoryParam && typeof categoryParam === 'string') {
+      setMode('explore');
+      setSearchMode('trips');
+      setSelectedCategory(categoryParam.toLowerCase());
+    }
+  }, [categoryParam]);
 
   // ── Data loaders ──
   const loadExploreTrips = useCallback(async () => {
@@ -338,11 +356,13 @@ export default function ExploreScreen() {
   const forYouItems = forYouData?.items ?? [];
 
   const hasActiveFilters =
-    !!activePromptId ||
-    !!selectedCategory ||
-    selectedBudget !== 'any' ||
-    !!searchInput.trim() ||
-    exploreSortIdx !== 0;
+    searchMode === 'travelers'
+      ? !!searchInput.trim()
+      : (!!activePromptId ||
+         !!selectedCategory ||
+         selectedBudget !== 'any' ||
+         !!searchInput.trim() ||
+         exploreSortIdx !== 0);
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -405,6 +425,15 @@ export default function ExploreScreen() {
               onSwitchToSwipe={() => setMode('swipe')}
               token={token}
               engagementMap={engagementMap}
+              searchMode={searchMode}
+              onSearchModeChange={setSearchMode}
+              onTravelerPress={(userId) => {
+                if (user?.id === userId) {
+                  router.push('/(tabs)/profile' as any);
+                } else {
+                  router.push(`/profile/${userId}` as any);
+                }
+              }}
             />
           ) : (
             <ForYouContent
@@ -476,6 +505,9 @@ type ExploreContentProps = {
   onSwitchToSwipe: () => void;
   token: string | null;
   engagementMap: Map<string, PublicTripEngagement>;
+  searchMode: SearchMode;
+  onSearchModeChange: (mode: SearchMode) => void;
+  onTravelerPress: (userId: string) => void;
 };
 
 function ExploreContent({
@@ -503,6 +535,9 @@ function ExploreContent({
   onSwitchToSwipe,
   token,
   engagementMap,
+  searchMode,
+  onSearchModeChange,
+  onTravelerPress,
 }: ExploreContentProps) {
   const currentSort = EXPLORE_SORT_MODES[sortModeIdx];
   const currentBudget = BUDGET_OPTIONS.find((b) => b.value === selectedBudget)!;
@@ -542,8 +577,8 @@ function ExploreContent({
 
   return (
     <>
-      {/* ── Swipe mode CTA ── */}
-      <Pressable style={styles.swipeCta} onPress={onSwitchToSwipe}>
+      {/* ── Swipe mode CTA — trips mode only ── */}
+      {searchMode === 'trips' && <Pressable style={styles.swipeCta} onPress={onSwitchToSwipe}>
         <View style={styles.swipeCtaIcon}>
           <Ionicons name="swap-horizontal" size={18} color={theme.colors.primary} />
         </View>
@@ -558,7 +593,7 @@ function ExploreContent({
           size={15}
           color={theme.colors.textSecondary}
         />
-      </Pressable>
+      </Pressable>}
 
       {/* ── Search bar ── */}
       <View style={styles.searchRow}>
@@ -570,7 +605,7 @@ function ExploreContent({
           />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search trips, creators…"
+            placeholder={searchMode === 'travelers' ? 'Search travelers…' : 'Search trips or travelers…'}
             placeholderTextColor={theme.colors.textSecondary}
             value={searchInput}
             onChangeText={onSearchChange}
@@ -599,6 +634,12 @@ function ExploreContent({
           </Pressable>
         )}
       </View>
+
+      {/* ── Search mode tabs (Trips / Travelers) ── */}
+      <SearchModeTabs mode={searchMode} onModeChange={onSearchModeChange} />
+
+      {/* ── Trips-only filters ── */}
+      {searchMode === 'trips' && <>
 
       {/* ── Mood prompts ── */}
       <ScrollView
@@ -731,8 +772,16 @@ function ExploreContent({
         </View>
       )}
 
+      </>}
+
       {/* ── Results ── */}
-      {isLoading ? (
+      {searchMode === 'travelers' ? (
+        <TravelersContent
+          query={searchInput}
+          token={token}
+          onUserPress={onTravelerPress}
+        />
+      ) : isLoading ? (
         <View style={styles.feedState}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
           <Text style={styles.feedStateBody}>Loading trips…</Text>
@@ -904,6 +953,176 @@ function ForYouContent({
         </View>
       )}
     </>
+  );
+}
+
+// ── Search mode tabs (Trips / Travelers) ─────────────────────────────────────
+
+function SearchModeTabs({
+  mode,
+  onModeChange,
+}: {
+  mode: SearchMode;
+  onModeChange: (m: SearchMode) => void;
+}) {
+  return (
+    <View style={styles.searchModeTabs}>
+      <Pressable
+        style={[styles.searchModeTab, mode === 'trips' && styles.searchModeTabActive]}
+        onPress={() => onModeChange('trips')}
+      >
+        <Ionicons
+          name="map-outline"
+          size={14}
+          color={mode === 'trips' ? '#FFFFFF' : theme.colors.textSecondary}
+        />
+        <Text style={[styles.searchModeTabText, mode === 'trips' && styles.searchModeTabTextActive]}>
+          Trips
+        </Text>
+      </Pressable>
+      <Pressable
+        style={[styles.searchModeTab, mode === 'travelers' && styles.searchModeTabActive]}
+        onPress={() => onModeChange('travelers')}
+      >
+        <Ionicons
+          name="people-outline"
+          size={14}
+          color={mode === 'travelers' ? '#FFFFFF' : theme.colors.textSecondary}
+        />
+        <Text style={[styles.searchModeTabText, mode === 'travelers' && styles.searchModeTabTextActive]}>
+          Travelers
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
+// ── Traveler row ───────────────────────────────────────────────────────────────
+
+function TravelerRow({
+  user,
+  onPress,
+}: {
+  user: UserSearchResult;
+  onPress: () => void;
+}) {
+  const name = user.displayName?.trim() || 'Tripcholic Traveler';
+  const followerLabel =
+    user.followerCount === 1 ? '1 follower' : `${user.followerCount} followers`;
+
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.travelerRow, pressed && { opacity: 0.75 }]}
+      onPress={onPress}
+    >
+      <UserAvatar
+        avatarUrl={user.avatarUrl}
+        displayName={user.displayName}
+        size={44}
+        ringSize={0}
+      />
+      <View style={styles.travelerInfo}>
+        <Text style={styles.travelerName} numberOfLines={1}>{name}</Text>
+        <Text style={styles.travelerFollowers}>{followerLabel}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={16} color={theme.colors.textSecondary} />
+    </Pressable>
+  );
+}
+
+// ── Travelers content ──────────────────────────────────────────────────────────
+
+function TravelersContent({
+  query,
+  token,
+  onUserPress,
+}: {
+  query: string;
+  token: string | null;
+  onUserPress: (userId: string) => void;
+}) {
+  const [users, setUsers] = useState<UserSearchResult[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (!q) {
+      setUsers([]);
+      setIsLoading(false);
+      setError(null);
+      return;
+    }
+    setIsLoading(true);
+    setError(null);
+    const timeout = setTimeout(() => {
+      searchUsers(q, token)
+        .then((results) => {
+          setUsers(results);
+          setIsLoading(false);
+        })
+        .catch(() => {
+          setError('Could not load travelers. Try again.');
+          setUsers([]);
+          setIsLoading(false);
+        });
+    }, 280);
+    return () => clearTimeout(timeout);
+  }, [query, token]);
+
+  if (!query.trim()) {
+    return (
+      <View style={styles.feedState}>
+        <View style={styles.stateIconWrap}>
+          <Ionicons name="people-outline" size={28} color={theme.colors.primary} />
+        </View>
+        <Text style={styles.feedStateTitle}>Find Travelers</Text>
+        <Text style={styles.feedStateBody}>
+          Search by name to discover other Tripcholic travelers.
+        </Text>
+      </View>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <View style={styles.feedState}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+        <Text style={styles.feedStateBody}>Searching travelers…</Text>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.feedState}>
+        <View style={styles.stateIconWrap}>
+          <Ionicons name="alert-circle-outline" size={28} color={theme.colors.primary} />
+        </View>
+        <Text style={styles.feedStateTitle}>Something went wrong</Text>
+        <Text style={styles.feedStateBody}>{error}</Text>
+      </View>
+    );
+  }
+
+  if (users.length === 0) {
+    return (
+      <View style={styles.feedState}>
+        <View style={styles.stateIconWrap}>
+          <Ionicons name="person-outline" size={28} color={theme.colors.primary} />
+        </View>
+        <Text style={styles.feedStateTitle}>No travelers found</Text>
+        <Text style={styles.feedStateBody}>Try a different name.</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.travelerList}>
+      {users.map((u) => (
+        <TravelerRow key={u.id} user={u} onPress={() => onUserPress(u.id)} />
+      ))}
+    </View>
   );
 }
 
@@ -1135,6 +1354,69 @@ const styles = StyleSheet.create({
   // ── Feed list ──
   feedList: {
     gap: 20,
+  },
+
+  // ── Search mode tabs ──
+  searchModeTabs: {
+    flexDirection: 'row',
+    backgroundColor: '#E8ECEE',
+    borderRadius: 10,
+    padding: 3,
+    marginBottom: 14,
+  },
+  searchModeTab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  searchModeTabActive: {
+    backgroundColor: theme.colors.primary,
+    shadowColor: theme.colors.primary,
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  searchModeTabText: {
+    fontFamily: font.semiBold,
+    fontSize: 13,
+    color: theme.colors.textSecondary,
+  },
+  searchModeTabTextActive: {
+    color: '#FFFFFF',
+  },
+
+  // ── Traveler list ──
+  travelerList: {
+    gap: 8,
+  },
+  travelerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: theme.colors.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    padding: 12,
+  },
+  travelerInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  travelerName: {
+    fontFamily: font.semiBold,
+    fontSize: 15,
+    color: theme.colors.primaryDark,
+  },
+  travelerFollowers: {
+    fontFamily: font.regular,
+    fontSize: 13,
+    color: theme.colors.textSecondary,
   },
 
   // ── For You specifics ──

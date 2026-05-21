@@ -48,6 +48,16 @@ export class TripsController {
     return this.tripsService.findExploreTrips(query, userId);
   }
 
+  @Get('trending')
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiOperation({ summary: 'List trending public trips for this week' })
+  @ApiOkResponse({ description: 'Trending trips returned successfully.' })
+  findTrending(@Req() req: MaybeAuthenticatedRequest, @Query('limit') limit?: string) {
+    const userId = req.user?.id ?? null;
+    const parsed = limit ? parseInt(limit, 10) : 8;
+    return this.tripsService.findTrendingTrips(userId, isNaN(parsed) ? 8 : parsed);
+  }
+
   @Post()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('bearer')

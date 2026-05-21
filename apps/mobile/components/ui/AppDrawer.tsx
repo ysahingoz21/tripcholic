@@ -87,7 +87,7 @@ export default function AppDrawer({ visible, onClose }: Props) {
             displayName={user?.displayName}
             email={user?.email}
             size={56}
-            ringSize={0}
+            variant="drawer"
           />
           <Text style={styles.displayName} numberOfLines={2}>{displayName}</Text>
         </View>

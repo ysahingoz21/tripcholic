@@ -2141,6 +2141,34 @@ export class PublicTripsService {
     return summaryByUserId;
   }
 
+  async findSavedTripCollectionSummaries(userId: string, limit = 4) {
+    const client = await this.prisma.getClient();
+    const rows = (await client.$queryRaw(Prisma.sql`
+      SELECT
+        c."id",
+        c."name",
+        c."coverImageUrl",
+        c."createdAt",
+        c."updatedAt",
+        COUNT(sci."savedTripId")::int AS "savedTripCount"
+      FROM "saved_trip_collections" c
+      LEFT JOIN "saved_trip_collection_items" sci ON sci."collectionId" = c."id"
+      WHERE c."userId" = ${userId}
+      GROUP BY c."id"
+      ORDER BY c."createdAt" DESC
+      LIMIT ${limit}
+    `)) as Array<{
+      id: string;
+      name: string;
+      coverImageUrl: string | null;
+      createdAt: Date;
+      updatedAt: Date;
+      savedTripCount: number;
+    }>;
+
+    return rows.map((row) => this.toSavedTripCollectionSummary(row, row.savedTripCount));
+  }
+
   private async listSavedTripCollections(client: any, userId: string) {
     return (await client.$queryRaw(Prisma.sql`
       SELECT "id", "name", "coverImageUrl", "createdAt", "updatedAt"

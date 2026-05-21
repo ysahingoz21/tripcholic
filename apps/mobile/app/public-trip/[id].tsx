@@ -41,6 +41,7 @@ import {
   type PublicTripEngagement,
 } from "@/services/publicTrips";
 import { followUser, unfollowUser } from "@/services/users";
+import { addRecentlyViewedTrip } from "@/services/recentlyViewedTrips";
 import TripStopsMap from "../../components/trip/TripStopsMap";
 import TripDescriptionSection from "../../components/ui/TripDescriptionSection";
 
@@ -113,7 +114,7 @@ function PageHeader({ onBack }: { onBack: () => void }) {
             displayName={user?.displayName}
             email={user?.email}
             size={32}
-            ringSize={0}
+            variant="header"
           />
         </View>
       </View>
@@ -927,6 +928,24 @@ export default function PublicTripDetailScreen() {
       setTripDetail(detail);
       setComments(detail.comments);
       setEngagement(detail.engagement);
+      void addRecentlyViewedTrip({
+        id: detail.trip.id,
+        title: detail.trip.title,
+        preview: detail.preview,
+        categories: detail.trip.categories,
+        creatorName: detail.creator.displayName ?? null,
+        creatorAvatarUrl: detail.creator.avatarUrl ?? null,
+        isOwnTrip: false,
+        optimizedAt: detail.optimization.optimizedAt,
+        engagement: {
+          likeCount: detail.engagement.likeCount,
+          commentCount: detail.engagement.commentCount,
+          saveCount: detail.engagement.saveCount,
+          likedByMe: detail.engagement.likedByMe,
+          savedByMe: detail.engagement.savedByMe,
+        },
+        viewedAt: new Date().toISOString(),
+      });
       setSelectedFeedbackSignals(detail.feedback.mine);
     } catch (loadError) {
       setTripDetail(null);
