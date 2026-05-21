@@ -232,7 +232,7 @@ export type ForYouTripItem = {
 export type ForYouTripsResponse = {
   items: ForYouTripItem[];
   meta: {
-    personalizationState: 'personalized' | 'cold_start' | 'following' | 'no_follows';
+    personalizationState: 'personalized' | 'cold_start' | 'following' | 'no_follows' | 'hybrid' | 'category_only' | 'discover';
     signalSummary: ForYouSignalSummary;
     total: number;
   };
@@ -497,6 +497,26 @@ export async function getForYouPublicTrips(token: string, limit = 20) {
   return parseApiResponse<ForYouTripsResponse>(
     response,
     'Failed to load personalized public trips'
+  );
+}
+
+export async function getDiscoverPublicTrips(token: string, limit = 20) {
+  const searchParams = new URLSearchParams();
+  searchParams.set('limit', String(limit));
+
+  const response = await fetch(
+    `${API_BASE_URL}/public-trips/discover?${searchParams.toString()}`,
+    {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  return parseApiResponse<ForYouTripsResponse>(
+    response,
+    'Failed to load discovery trips'
   );
 }
 

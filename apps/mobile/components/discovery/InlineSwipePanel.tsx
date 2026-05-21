@@ -25,7 +25,7 @@ import UserAvatar from "@/components/ui/UserAvatar";
 import { theme } from "@/constants/theme";
 import { font } from "@/constants/typography";
 import {
-  getForYouPublicTrips,
+  getDiscoverPublicTrips,
   getPublicTrip,
   savePublicTrip,
   type ForYouTripItem,
@@ -120,7 +120,7 @@ export default function InlineSwipePanel({ token, isAuthLoading }: Props) {
       if (isAuthLoading) return;
       if (!token) {
         setDeckItems([]);
-        setScreenError("Sign in to access personalized swipe discovery.");
+        setScreenError("Sign in to swipe through public trips.");
         setIsLoading(false);
         setIsRefilling(false);
         setHasReachedEnd(true);
@@ -131,7 +131,7 @@ export default function InlineSwipePanel({ token, isAuthLoading }: Props) {
         else setIsRefilling(true);
         setScreenError(null);
         setActionError(null);
-        const data = await getForYouPublicTrips(token, INITIAL_FETCH_LIMIT);
+        const data = await getDiscoverPublicTrips(token, INITIAL_FETCH_LIMIT);
         if (mode === "replace") {
           const freshItems = getUniqueNewItems(
             data.items,
@@ -774,7 +774,7 @@ function StopItem({
       {/* POI card */}
       <View style={stopStyles.card}>
         <View style={stopStyles.poiImageWrap}>
-          <Artwork imageUrl={poiImageUrl} kind="poi" variant="cover" />
+          <Artwork imageUrl={poiImageUrl} kind="poi" variant="cover" category={stop.poi.category} />
         </View>
 
         <View style={stopStyles.poiContent}>

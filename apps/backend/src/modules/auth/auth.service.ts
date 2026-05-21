@@ -97,6 +97,11 @@ export class AuthService {
         displayName: true,
         email: true,
         passwordHash: true,
+        avatarUrl: true,
+        coverImageUrl: true,
+        bio: true,
+        travelVibes: true,
+        favoriteCategories: true,
         createdAt: true,
       },
     });
@@ -141,6 +146,11 @@ export class AuthService {
         id: user.id,
         displayName: user.displayName,
         email: user.email,
+        avatarUrl: user.avatarUrl ?? null,
+        coverImageUrl: user.coverImageUrl ?? null,
+        bio: user.bio ?? null,
+        travelVibes: user.travelVibes,
+        favoriteCategories: user.favoriteCategories,
         createdAt: user.createdAt,
       },
     };

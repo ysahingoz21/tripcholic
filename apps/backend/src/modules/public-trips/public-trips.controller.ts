@@ -61,6 +61,16 @@ export class PublicTripsController {
     return this.publicTripsService.findForYouTrips(req.user.id, query);
   }
 
+  @Get('discover')
+  @ApiOperation({ summary: 'List general discovery public trips for Swipe' })
+  @ApiOkResponse({ description: 'Discovery public trips returned successfully.' })
+  findDiscover(
+    @Req() req: AuthenticatedRequest,
+    @Query() query: ListForYouTripsQueryDto,
+  ) {
+    return this.publicTripsService.findDiscoverTrips(req.user.id, query);
+  }
+
   @Post('saved/collections')
   @ApiOperation({ summary: 'Create a saved trip collection for the current user' })
   @ApiBody({ type: CreateSavedTripCollectionDto })

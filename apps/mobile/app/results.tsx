@@ -1,5 +1,5 @@
 import { getSortedTripStops } from '@/components/trip/tripMapUtils';
-import Artwork from '@/components/ui/Artwork';
+import Artwork, { PoiImageCard } from '@/components/ui/Artwork';
 import { theme } from '@/constants/theme';
 import { font } from '@/constants/typography';
 import { useAuth } from '@/context/AuthContext';
@@ -182,15 +182,10 @@ function NewTimelineItem({
           {poiName}
         </Text>
 
-        <Image
-          source={
-            imageUrl
-              ? { uri: imageUrl }
-              : require('../assets/images/placeholders/default-poi.png')
-          }
+        <PoiImageCard
+          imageUrl={imageUrl}
+          category={stop.poi.category}
           style={tlStyles.poiImage}
-          contentFit="cover"
-          transition={150}
         />
 
         <Text style={tlStyles.description} numberOfLines={3}>
