@@ -41,6 +41,7 @@ export type TripDetailResponse = {
     walkingToleranceKm: number | null;
     maxPois: number | null;
     status: string;
+    creationMode: string;
     visibility: TripVisibility;
     coverImageUrl: string | null;
     createdAt: string;
@@ -108,6 +109,7 @@ export type TripListItem = {
   walkingToleranceKm: number | null;
   maxPois: number | null;
   status: string;
+  creationMode: string;
   visibility: TripVisibility;
   routeName: string | null;
   routeTotalDistanceKm: number | null;
@@ -330,6 +332,34 @@ export async function getTrendingTrips(
   return parseApiResponse<{ items: ExploreTripItem[]; meta: { fallback: boolean } }>(
     response,
     'Failed to load trending trips',
+  );
+}
+
+export type CreateManualTripPayload = {
+  title: string;
+  date: string;
+  startTime?: string;
+  endTime?: string;
+  visibility?: TripVisibility;
+  stops: Array<{
+    poiId: string;
+    arrivalTime: string;
+    departureTime: string;
+  }>;
+};
+
+export async function createManualTrip(
+  token: string,
+  payload: CreateManualTripPayload,
+) {
+  const response = await fetch(`${API_BASE_URL}/trips/manual`, {
+    method: 'POST',
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(payload),
+  });
+  return parseApiResponse<TripDetailResponse>(
+    response,
+    'Failed to create manual trip',
   );
 }
 

@@ -21,6 +21,7 @@ import { type Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
 import { type AuthenticatedUser } from '../auth/types/authenticated-user.type';
+import { CreateManualTripDto } from './dto/create-manual-trip.dto';
 import { CreateTripDto } from './dto/create-trip.dto';
 import { ExploreTripsQueryDto } from './dto/explore-trips-query.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
@@ -56,6 +57,16 @@ export class TripsController {
     const userId = req.user?.id ?? null;
     const parsed = limit ? parseInt(limit, 10) : 8;
     return this.tripsService.findTrendingTrips(userId, isNaN(parsed) ? 8 : parsed);
+  }
+
+  @Post('manual')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({ summary: 'Create a manual trip with ordered stops' })
+  @ApiBody({ type: CreateManualTripDto })
+  @ApiOkResponse({ description: 'Manual trip created successfully.' })
+  createManual(@Req() req: AuthenticatedRequest, @Body() body: CreateManualTripDto) {
+    return this.tripsService.createManual(req.user.id, body);
   }
 
   @Post()

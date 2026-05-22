@@ -7,6 +7,7 @@ import {
 } from '../optimizer/optimizer.types';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTripDto } from './dto/create-trip.dto';
+import { CreateManualTripDto } from './dto/create-manual-trip.dto';
 import { ExploreTripsQueryDto } from './dto/explore-trips-query.dto';
 import { buildTripPreview, type TripPreview } from './trip-preview';
 import { UpdateTripDto } from './dto/update-trip.dto';
@@ -350,6 +351,87 @@ export class TripsService {
         maxPois: payload.maxStops ?? null,
         visibility: payload.visibility ?? 'PRIVATE',
       },
+    });
+
+    return this.findOne(userId, trip.id);
+  }
+
+  async createManual(userId: string, payload: CreateManualTripDto) {
+    const client = await this.prisma.getClient();
+
+    const uniquePoiIds = [...new Set(payload.stops.map((s) => s.poiId))];
+    const pois = await client.pointOfInterest.findMany({
+      where: { id: { in: uniquePoiIds } },
+    });
+
+    if (pois.length < uniquePoiIds.length) {
+      throw new NotFoundException('One or more selected POIs not found');
+    }
+
+    const poiById = new Map(pois.map((p) => [p.id, p]));
+
+    const totalCostTl = payload.stops.reduce((sum, stop) => {
+      const poi = poiById.get(stop.poiId);
+      return sum + (poi?.estimatedMinCostTl ?? 0);
+    }, 0);
+
+    const categories = [...new Set(pois.map((p) => p.category.toLowerCase()))];
+
+    // Approximate duration from first arrival to last departure
+    const parseMin = (hhmm: string) => {
+      const [h, m] = hhmm.split(':').map(Number);
+      return h * 60 + m;
+    };
+    const firstArrival = payload.stops[0]?.arrivalTime;
+    const lastDeparture = payload.stops[payload.stops.length - 1]?.departureTime;
+    const routeDurationMin =
+      firstArrival && lastDeparture
+        ? parseMin(lastDeparture) - parseMin(firstArrival)
+        : null;
+
+    const routeDistanceKm = payload.stops.reduce((sum, stop, i) => {
+      if (i === 0) return sum;
+      const prev = poiById.get(payload.stops[i - 1].poiId);
+      const curr = poiById.get(stop.poiId);
+      if (!prev || !curr) return sum;
+      return sum + haversineKm({ lat: prev.lat, lng: prev.lng }, { lat: curr.lat, lng: curr.lng });
+    }, 0);
+
+    const trip = await client.$transaction(async (tx) => {
+      const created = await tx.trip.create({
+        data: {
+          userId,
+          title: payload.title,
+          date: new Date(payload.date),
+          timeStart: payload.startTime ?? null,
+          timeEnd: payload.endTime ?? null,
+          visibility: payload.visibility ?? 'PRIVATE',
+          status: 'OPTIMIZED',
+          creationMode: 'MANUAL',
+          categories,
+          routeTotalCostTl: totalCostTl > 0 ? totalCostTl : null,
+          routeTotalDurationMin: routeDurationMin && routeDurationMin > 0 ? routeDurationMin : null,
+          routeTotalDistanceKm: routeDistanceKm > 0 ? routeDistanceKm : null,
+          optimizedAt: new Date(),
+        },
+      });
+
+      await tx.tripStop.createMany({
+        data: payload.stops.map((stop, index) => {
+          const poi = poiById.get(stop.poiId)!;
+          return {
+            tripId: created.id,
+            poiId: stop.poiId,
+            order: index + 1,
+            title: poi.name,
+            arrivalTime: stop.arrivalTime,
+            departureTime: stop.departureTime,
+            estimatedCostTl: poi.estimatedMinCostTl ?? 0,
+          };
+        }),
+      });
+
+      return created;
     });
 
     return this.findOne(userId, trip.id);
@@ -1900,6 +1982,7 @@ export class TripsService {
       walkingToleranceKm: trip.walkingToleranceKm,
       maxPois: trip.maxPois,
       status: trip.status,
+      creationMode: trip.creationMode as string,
       visibility: trip.visibility,
       routeName: trip.routeName,
       routeTotalDistanceKm: trip.routeTotalDistanceKm,
@@ -2019,6 +2102,7 @@ export class TripsService {
         walkingToleranceKm: trip.walkingToleranceKm,
         maxPois: trip.maxPois,
         status: trip.status,
+        creationMode: trip.creationMode as string,
         visibility: trip.visibility,
         coverImageUrl: trip.coverImageUrl ?? null,
         createdAt: trip.createdAt,

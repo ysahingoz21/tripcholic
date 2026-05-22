@@ -42,6 +42,7 @@ import {
 } from "@/services/publicTrips";
 import { followUser, unfollowUser } from "@/services/users";
 import { addRecentlyViewedTrip } from "@/services/recentlyViewedTrips";
+import { formatDistanceKm } from "@/utils/format";
 import TripStopsMap from "../../components/trip/TripStopsMap";
 import TripDescriptionSection from "../../components/ui/TripDescriptionSection";
 
@@ -1286,9 +1287,7 @@ export default function PublicTripDetailScreen() {
                   icon: "walk-outline" as const,
                   label: "Distance",
                   value:
-                    tripDetail.optimization.routeTotalDistanceKm !== null
-                      ? `${tripDetail.optimization.routeTotalDistanceKm} km`
-                      : "—",
+                    formatDistanceKm(tripDetail.optimization.routeTotalDistanceKm),
                 },
               ] as const
             ).map(({ icon, label, value }) => (
