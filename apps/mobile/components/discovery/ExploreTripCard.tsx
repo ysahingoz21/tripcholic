@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import Artwork from "@/components/ui/Artwork";
+import UserAvatar from "@/components/ui/UserAvatar";
 import { theme } from "@/constants/theme";
 import { font } from "@/constants/typography";
 import {
@@ -19,22 +20,18 @@ type Props = {
   categories: string[];
   preview: TripPreview;
   creatorName: string | null;
+  creatorAvatarUrl?: string | null;
   dateLabel?: string;
   token: string | null;
   onPress: () => void;
+  onCreatorPress?: () => void;
   initialLiked?: boolean;
   initialSaved?: boolean;
   initialLikeCount?: number;
   initialSaveCount?: number;
+  initialCommentCount?: number;
   hideDistrictLabel?: boolean;
 };
-
-function getInitials(name: string | null): string {
-  if (!name?.trim()) return "T";
-  const parts = name.trim().split(/\s+/);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return name[0].toUpperCase();
-}
 
 function formatCreator(name: string | null) {
   return name?.trim() || "Tripcholic traveler";
@@ -50,13 +47,16 @@ export default function ExploreTripCard({
   categories,
   preview,
   creatorName,
+  creatorAvatarUrl,
   dateLabel,
   token,
   onPress,
+  onCreatorPress,
   initialLiked = false,
   initialSaved = false,
   initialLikeCount = 0,
   initialSaveCount = 0,
+  initialCommentCount = 0,
   hideDistrictLabel = false,
 }: Props) {
   const imageUrl = preview.imageUrl?.trim() || null;
@@ -67,11 +67,13 @@ export default function ExploreTripCard({
   const [saved, setSaved] = useState(initialSaved);
   const [likeCount, setLikeCount] = useState(initialLikeCount);
   const [saveCount, setSaveCount] = useState(initialSaveCount);
+  const [commentCount, setCommentCount] = useState(initialCommentCount);
 
   useEffect(() => { setLiked(initialLiked); }, [initialLiked]);
   useEffect(() => { setSaved(initialSaved); }, [initialSaved]);
   useEffect(() => { setLikeCount(initialLikeCount); }, [initialLikeCount]);
   useEffect(() => { setSaveCount(initialSaveCount); }, [initialSaveCount]);
+  useEffect(() => { setCommentCount(initialCommentCount); }, [initialCommentCount]);
 
   const handleLike = async () => {
     if (!token) {
@@ -143,27 +145,23 @@ export default function ExploreTripCard({
       {/* Depth scrim from bottom */}
       <View style={styles.cardScrim} />
 
-      {/* ── Top row: creator block + 3-dots menu ── */}
-      <View style={styles.cardTopRow}>
-        <View style={styles.creatorBlock}>
-          <View style={styles.creatorAvatar}>
-            <Text style={styles.creatorAvatarText}>
-              {getInitials(creatorName)}
-            </Text>
-          </View>
-          <Text style={styles.creatorName} numberOfLines={1}>
-            {formatCreator(creatorName)}
-          </Text>
-        </View>
-
-        <View style={styles.menuButton}>
-          <Ionicons
-            name="ellipsis-horizontal"
-            size={16}
-            color="rgba(255,255,255,0.9)"
-          />
-        </View>
-      </View>
+      {/* ── Top row: creator block ── */}
+      <Pressable
+        style={styles.creatorBlock}
+        onPress={onCreatorPress}
+        disabled={!onCreatorPress}
+        hitSlop={4}
+      >
+        <UserAvatar
+          avatarUrl={creatorAvatarUrl}
+          displayName={creatorName}
+          size={28}
+          ringSize={0}
+        />
+        <Text style={styles.creatorName} numberOfLines={1}>
+          {formatCreator(creatorName)}
+        </Text>
+      </Pressable>
 
       {/* ── Bottom content panel ── */}
       <View style={styles.cardBottom}>
@@ -238,7 +236,7 @@ export default function ExploreTripCard({
               hitSlop={8}
             >
               <Ionicons name="chatbubble-outline" size={18} color="#FFFFFF" />
-              <Text style={styles.engagementCount}>0</Text>
+              <Text style={styles.engagementCount}>{commentCount}</Text>
             </Pressable>
             <Pressable
               style={styles.engagementItem}
@@ -293,19 +291,11 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(11,36,48,0.62)",
   },
 
-  // ── Top row ──
-  cardTopRow: {
+  // Creator block
+  creatorBlock: {
     position: "absolute",
     top: 14,
     left: 14,
-    right: 14,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-
-  // Creator block
-  creatorBlock: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
@@ -315,42 +305,13 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.18)",
     paddingHorizontal: 12,
     paddingVertical: 9,
-    maxWidth: 220,
-    flexShrink: 1,
-  },
-  creatorAvatar: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: theme.colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
-  creatorAvatarText: {
-    fontFamily: font.bold,
-    fontSize: 10,
-    color: "#FFFFFF",
-    letterSpacing: 0.3,
+    maxWidth: 280,
   },
   creatorName: {
     fontFamily: font.semiBold,
     fontSize: 13,
     color: "rgba(255,255,255,0.92)",
     flexShrink: 1,
-  },
-
-  // 3-dots menu button
-  menuButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: "rgba(0,0,0,0.38)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
   },
 
   // ── Bottom content ──

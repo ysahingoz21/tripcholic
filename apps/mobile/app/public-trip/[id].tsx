@@ -18,7 +18,8 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import Artwork from "@/components/ui/Artwork";
+import Artwork, { PoiImageCard } from "@/components/ui/Artwork";
+import UserAvatar from "@/components/ui/UserAvatar";
 import { getSortedTripStops } from "@/components/trip/tripMapUtils";
 import { theme } from "@/constants/theme";
 import { font } from "@/constants/typography";
@@ -40,18 +41,11 @@ import {
   type PublicTripEngagement,
 } from "@/services/publicTrips";
 import { followUser, unfollowUser } from "@/services/users";
+import { addRecentlyViewedTrip } from "@/services/recentlyViewedTrips";
 import TripStopsMap from "../../components/trip/TripStopsMap";
+import TripDescriptionSection from "../../components/ui/TripDescriptionSection";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function getInitials(name: string | null): string {
-  if (!name?.trim()) return "T";
-  const parts = name.trim().split(/\s+/);
-  if (parts.length >= 2) {
-    return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase();
-  }
-  return (name[0] ?? "T").toUpperCase();
-}
 
 function formatCreatorName(displayName: string | null) {
   return displayName?.trim() || "Tripcholic traveler";
@@ -89,14 +83,6 @@ function PageHeader({ onBack }: { onBack: () => void }) {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
 
-  const initials = user?.displayName
-    ? user.displayName
-        .split(" ")
-        .map((w) => w[0] ?? "")
-        .join("")
-        .slice(0, 2)
-        .toUpperCase()
-    : (user?.email?.[0]?.toUpperCase() ?? "T");
 
   return (
     <View style={[hdrStyles.header, { paddingTop: insets.top }]}>
@@ -123,9 +109,13 @@ function PageHeader({ onBack }: { onBack: () => void }) {
         </Text>
 
         <View style={[hdrStyles.side, hdrStyles.sideRight]}>
-          <View style={hdrStyles.avatar}>
-            <Text style={hdrStyles.avatarText}>{initials}</Text>
-          </View>
+          <UserAvatar
+            avatarUrl={user?.avatarUrl}
+            displayName={user?.displayName}
+            email={user?.email}
+            size={32}
+            variant="header"
+          />
         </View>
       </View>
     </View>
@@ -164,14 +154,6 @@ const hdrStyles = StyleSheet.create({
     letterSpacing: 3,
     color: theme.colors.primaryDark,
   },
-  avatar: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: theme.colors.primaryDark,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   avatarText: {
     fontFamily: font.bold,
     fontSize: 13,
@@ -188,6 +170,7 @@ type HeroProps = {
   isFollowPending: boolean;
   onToggleFollow: () => void;
   isOwnTrip: boolean;
+  onCreatorPress?: () => void;
 };
 
 function HeroSection({
@@ -196,6 +179,7 @@ function HeroSection({
   isFollowPending,
   onToggleFollow,
   isOwnTrip,
+  onCreatorPress,
 }: HeroProps) {
   const imageUrl = detail.preview.imageUrl?.trim() || null;
 
@@ -208,7 +192,6 @@ function HeroSection({
   ).map(capFirst);
 
   const creatorName = formatCreatorName(detail.creator.displayName);
-  const creatorInitials = getInitials(detail.creator.displayName);
 
   return (
     <View style={heroStyles.container}>
@@ -246,10 +229,17 @@ function HeroSection({
 
         {/* Creator bar (follow inside) + trip date pill on the right */}
         <View style={heroStyles.creatorRow}>
-          <View style={heroStyles.creatorBar}>
-            <View style={heroStyles.creatorAvatar}>
-              <Text style={heroStyles.creatorInitials}>{creatorInitials}</Text>
-            </View>
+          <Pressable
+            style={heroStyles.creatorBar}
+            onPress={onCreatorPress}
+            disabled={!onCreatorPress}
+          >
+            <UserAvatar
+              avatarUrl={detail.creator.avatarUrl}
+              displayName={detail.creator.displayName}
+              size={30}
+              ringSize={0}
+            />
             <View style={heroStyles.creatorInfo}>
               <Text style={heroStyles.creatorName} numberOfLines={1}>
                 {creatorName}
@@ -289,7 +279,7 @@ function HeroSection({
                 </Text>
               </Pressable>
             ) : null}
-          </View>
+          </Pressable>
 
           <View style={heroStyles.datePill}>
             <Text style={heroStyles.datePillText}>
@@ -379,21 +369,6 @@ const heroStyles = StyleSheet.create({
     paddingVertical: 8,
     minWidth: 0,
   },
-  creatorAvatar: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: theme.colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
-  creatorInitials: {
-    fontFamily: font.bold,
-    fontSize: 11,
-    color: "#FFFFFF",
-    letterSpacing: 0.3,
-  },
   creatorInfo: {
     flex: 1,
     gap: 1,
@@ -468,10 +443,12 @@ type CommentsModalProps = {
   commentCount: number;
   tripId: string;
   token: string | null;
+  currentUserId?: string | null;
   onCommentCreated: (
     comments: PublicTripComment[],
     engagement: PublicTripEngagement,
   ) => void;
+  onAuthorPress?: (authorId: string) => void;
 };
 
 function CommentsModal({
@@ -481,7 +458,9 @@ function CommentsModal({
   commentCount,
   tripId,
   token,
+  currentUserId,
   onCommentCreated,
+  onAuthorPress,
 }: CommentsModalProps) {
   const [input, setInput] = useState("");
   const [isPending, setIsPending] = useState(false);
@@ -558,16 +537,27 @@ function CommentsModal({
             ) : (
               comments.map((comment) => (
                 <View key={comment.id} style={modalStyles.commentRow}>
-                  <View style={modalStyles.commentAvatar}>
-                    <Text style={modalStyles.commentAvatarText}>
-                      {getInitials(comment.author.displayName)}
-                    </Text>
-                  </View>
+                  <Pressable
+                    onPress={comment.author.id && onAuthorPress ? () => onAuthorPress(comment.author.id!) : undefined}
+                    disabled={!comment.author.id || !onAuthorPress}
+                  >
+                    <UserAvatar
+                      avatarUrl={comment.author.avatarUrl}
+                      displayName={comment.author.displayName}
+                      size={36}
+                      ringSize={0}
+                    />
+                  </Pressable>
                   <View style={modalStyles.commentCard}>
                     <View style={modalStyles.commentMeta}>
-                      <Text style={modalStyles.commentAuthor}>
-                        {formatCreatorName(comment.author.displayName)}
-                      </Text>
+                      <Pressable
+                        onPress={comment.author.id && onAuthorPress ? () => onAuthorPress(comment.author.id!) : undefined}
+                        disabled={!comment.author.id || !onAuthorPress}
+                      >
+                        <Text style={modalStyles.commentAuthor}>
+                          {formatCreatorName(comment.author.displayName)}
+                        </Text>
+                      </Pressable>
                       <Text style={modalStyles.commentDate}>
                         {formatCommentDate(comment.createdAt)}
                       </Text>
@@ -675,21 +665,6 @@ const modalStyles = StyleSheet.create({
     alignItems: "flex-start",
     gap: 12,
     paddingVertical: 7,
-  },
-  commentAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: theme.colors.primaryDark,
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-    marginTop: 2,
-  },
-  commentAvatarText: {
-    fontFamily: font.bold,
-    fontSize: 12,
-    color: "#FFFFFF",
   },
   commentCard: {
     flex: 1,
@@ -812,15 +787,10 @@ function NewTimelineItem({
           {poiName}
         </Text>
 
-        <Image
-          source={
-            imageUrl
-              ? { uri: imageUrl }
-              : require("../../assets/images/placeholders/default-poi.png")
-          }
+        <PoiImageCard
+          imageUrl={imageUrl}
+          category={stop.poi.category}
           style={tlStyles.poiImage}
-          contentFit="cover"
-          transition={150}
         />
 
         <Text style={tlStyles.description} numberOfLines={3}>
@@ -958,6 +928,24 @@ export default function PublicTripDetailScreen() {
       setTripDetail(detail);
       setComments(detail.comments);
       setEngagement(detail.engagement);
+      void addRecentlyViewedTrip({
+        id: detail.trip.id,
+        title: detail.trip.title,
+        preview: detail.preview,
+        categories: detail.trip.categories,
+        creatorName: detail.creator.displayName ?? null,
+        creatorAvatarUrl: detail.creator.avatarUrl ?? null,
+        isOwnTrip: false,
+        optimizedAt: detail.optimization.optimizedAt,
+        engagement: {
+          likeCount: detail.engagement.likeCount,
+          commentCount: detail.engagement.commentCount,
+          saveCount: detail.engagement.saveCount,
+          likedByMe: detail.engagement.likedByMe,
+          savedByMe: detail.engagement.savedByMe,
+        },
+        viewedAt: new Date().toISOString(),
+      });
       setSelectedFeedbackSignals(detail.feedback.mine);
     } catch (loadError) {
       setTripDetail(null);
@@ -1209,7 +1197,7 @@ export default function PublicTripDetailScreen() {
           </Text>
           <Pressable
             style={styles.primaryBtn}
-            onPress={() => router.replace("/(tabs)/explore")}
+            onPress={() => router.navigate("/(tabs)/explore")}
           >
             <Text style={styles.primaryBtnText}>Back to Explore</Text>
           </Pressable>
@@ -1239,6 +1227,7 @@ export default function PublicTripDetailScreen() {
           isFollowPending={isFollowPending}
           onToggleFollow={() => void handleToggleFollow()}
           isOwnTrip={isOwnCreatorTrip}
+          onCreatorPress={!isOwnCreatorTrip && creatorId ? () => router.push(`/profile/${creatorId}` as any) : undefined}
         />
 
         {/* Edit Trip button — owner only, between hero and details */}
@@ -1385,15 +1374,34 @@ export default function PublicTripDetailScreen() {
             {recentComments.length > 0
               ? recentComments.map((comment) => (
                   <View key={comment.id} style={styles.commentRow}>
-                    <View style={styles.commentAvatar}>
-                      <Text style={styles.commentAvatarText}>
-                        {getInitials(comment.author.displayName)}
-                      </Text>
-                    </View>
+                    <Pressable
+                      onPress={comment.author.id
+                        ? comment.author.id === user?.id
+                          ? () => router.navigate('/(tabs)/profile' as any)
+                          : () => router.push(`/profile/${comment.author.id}` as any)
+                        : undefined}
+                      disabled={!comment.author.id}
+                    >
+                      <UserAvatar
+                        avatarUrl={comment.author.avatarUrl}
+                        displayName={comment.author.displayName}
+                        size={32}
+                        ringSize={0}
+                      />
+                    </Pressable>
                     <View style={styles.commentCard}>
-                      <Text style={styles.commentAuthor}>
-                        {formatCreatorName(comment.author.displayName)}
-                      </Text>
+                      <Pressable
+                        onPress={comment.author.id
+                          ? comment.author.id === user?.id
+                            ? () => router.navigate('/(tabs)/profile' as any)
+                            : () => router.push(`/profile/${comment.author.id}` as any)
+                          : undefined}
+                        disabled={!comment.author.id}
+                      >
+                        <Text style={styles.commentAuthor}>
+                          {formatCreatorName(comment.author.displayName)}
+                        </Text>
+                      </Pressable>
                       <Text style={styles.commentBody} numberOfLines={3}>
                         {comment.body}
                       </Text>
@@ -1509,6 +1517,13 @@ export default function PublicTripDetailScreen() {
           </Pressable>
         </View>
 
+        {/* Trip Description */}
+        {tripDetail.trip.description?.trim() ? (
+          <View style={styles.content}>
+            <TripDescriptionSection description={tripDetail.trip.description} />
+          </View>
+        ) : null}
+
         {/* 9. Trip stop map — full-width, no horizontal padding */}
         <View style={styles.mapSection}>
           <TripStopsMap stops={tripDetail.stops} />
@@ -1601,9 +1616,18 @@ export default function PublicTripDetailScreen() {
         commentCount={engagement.commentCount}
         tripId={tripIdStr}
         token={token}
+        currentUserId={user?.id ?? null}
         onCommentCreated={(newComments, newEngagement) => {
           setComments(newComments);
           setEngagement(newEngagement);
+        }}
+        onAuthorPress={(authorId) => {
+          setCommentsModalOpen(false);
+          if (authorId === user?.id) {
+            router.navigate('/(tabs)/profile' as any);
+          } else {
+            router.push(`/profile/${authorId}` as any);
+          }
         }}
       />
     </SafeAreaView>
@@ -1868,20 +1892,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
     gap: 10,
-  },
-  commentAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: theme.colors.primaryDark,
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
-  commentAvatarText: {
-    fontFamily: font.bold,
-    fontSize: 11,
-    color: "#FFFFFF",
   },
   commentCard: {
     flex: 1,

@@ -48,7 +48,11 @@ function CollectionStripCard({
       style={({ pressed }) => [stripStyles.card, pressed && { opacity: 0.85 }]}
       onPress={onPress}
     >
-      <Image source={DEFAULT_COLLECTION_COVER} style={stripStyles.cardImage} contentFit="cover" />
+      <Image
+        source={collection.coverImageUrl ? { uri: collection.coverImageUrl } : DEFAULT_COLLECTION_COVER}
+        style={stripStyles.cardImage}
+        contentFit="cover"
+      />
       <View style={stripStyles.cardInfo}>
         <Text style={stripStyles.cardName} numberOfLines={1}>
           {collection.name}
@@ -134,7 +138,7 @@ export default function SavedTripsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
-  const { token, isLoading: isAuthLoading } = useAuth();
+  const { token, user, isLoading: isAuthLoading } = useAuth();
 
   const cardWidth = Math.floor((screenWidth - H_PAD * 2 - CARD_GAP) / 2);
 
@@ -312,7 +316,15 @@ export default function SavedTripsScreen() {
                     savedByMe={item.engagement.savedByMe}
                     token={token}
                     cardWidth={cardWidth}
-                    onPress={() => router.push(`/public-trip/${item.trip.id}` as any)}
+                    onPress={() => {
+                      const isOwnTrip =
+                        item.creator.id !== null && item.creator.id === user?.id;
+                      router.push(
+                        isOwnTrip
+                          ? (`/trip/${item.trip.id}` as any)
+                          : (`/public-trip/${item.trip.id}` as any),
+                      );
+                    }}
                     savedTripId={item.savedTripId}
                     currentCollectionIds={item.collections.map((c) => c.id)}
                     onUnsave={() => handleUnsave(item.savedTripId)}
@@ -333,7 +345,7 @@ export default function SavedTripsScreen() {
             </Text>
             <Pressable
               style={styles.feedStateButton}
-              onPress={() => router.replace('/(tabs)/explore')}
+              onPress={() => router.navigate('/(tabs)/explore')}
             >
               <Text style={styles.feedStateButtonText}>Open Explore</Text>
             </Pressable>

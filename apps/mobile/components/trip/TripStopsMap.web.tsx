@@ -10,6 +10,7 @@ export default function TripStopsMap({
   stops,
   height = DEFAULT_MAP_HEIGHT,
   title = 'Trip Stop Map',
+  hideTitle = false,
   emptyTitle = 'Map unavailable on web',
   emptySubtitle = 'Use mobile to view the interactive route map for this trip.',
   testID,
@@ -18,7 +19,7 @@ export default function TripStopsMap({
 
   return (
     <View style={styles.card} testID={testID}>
-      <Text style={styles.title}>{title}</Text>
+      {!hideTitle && <Text style={styles.title}>{title}</Text>}
       <View style={[styles.fallbackPanel, { minHeight: height }]}>
         {markers.length === 0 ? (
           <>

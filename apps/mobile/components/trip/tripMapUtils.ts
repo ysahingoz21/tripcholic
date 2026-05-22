@@ -15,6 +15,7 @@ export type TripStopsMapProps = {
   stops: TripStop[];
   height?: number;
   title?: string;
+  hideTitle?: boolean;
   emptyTitle?: string;
   emptySubtitle?: string;
   testID?: string;

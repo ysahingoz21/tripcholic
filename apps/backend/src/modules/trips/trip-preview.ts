@@ -26,12 +26,14 @@ export function buildTripPreview(input: {
   routeTotalDurationMin: number | null;
   routeTotalCostTl: number | null;
   stops: PreviewStop[];
+  coverImageUrl?: string | null;
 }): TripPreview {
   const stopCount = input.stops.length;
   const districtLabel = resolveTopDistrict(input.stops);
-  const imageUrl =
+  const poiImageUrl =
     input.stops.find((stop) => typeof stop.imageUrl === 'string' && stop.imageUrl.trim())
       ?.imageUrl ?? null;
+  const imageUrl = input.coverImageUrl?.trim() || poiImageUrl;
   const primaryCategory = resolvePrimaryCategory(
     input.categories,
     input.stops.map((stop) => stop.category),

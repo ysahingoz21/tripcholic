@@ -22,6 +22,20 @@ const FOR_YOU_INTERACTION_WEIGHTS = {
   like: 2,
 } as const;
 
+// Maps lowercase canonical profile category keys (stored in User.favoriteCategories as uppercase)
+// to all raw trip category aliases stored in Trip.categories from the planner wizard.
+// This bridges the two-vocabulary gap: profile uses canonical post-normalized keys,
+// trips store the original pre-normalized aliases (food, culture, history, etc.).
+const CANONICAL_TO_TRIP_CATEGORIES: Record<string, string[]> = {
+  food:          ['food', 'coffee', 'nightlife'],
+  historical:    ['historical', 'history', 'museums', 'culture'],
+  scenic:        ['scenic'],
+  nature:        ['nature'],
+  entertainment: ['entertainment', 'nightlife'],
+  shopping:      ['shopping'],
+  neighborhood:  ['neighborhood', 'culture'],
+};
+
 const FOR_YOU_POSITIVE_FEEDBACK_WEIGHTS = {
   worked_well: 2,
   worth_repeating: 3,
@@ -39,6 +53,7 @@ type PublicTripListRecord = Prisma.TripGetPayload<{
       select: {
         id: true;
         displayName: true;
+        avatarUrl: true;
       };
     };
     stops: {
@@ -121,6 +136,7 @@ export class PublicTripsService {
           select: {
             id: true,
             displayName: true,
+            avatarUrl: true,
           },
         },
         stops: {
@@ -136,6 +152,7 @@ export class PublicTripsService {
               select: {
                 id: true,
                 displayName: true,
+                avatarUrl: true,
               },
             },
           },
@@ -372,6 +389,7 @@ export class PublicTripsService {
           select: {
             id: true,
             displayName: true,
+            avatarUrl: true,
           },
         },
       },
@@ -408,6 +426,7 @@ export class PublicTripsService {
           select: {
             id: true,
             displayName: true,
+            avatarUrl: true,
           },
         },
       },
@@ -559,7 +578,7 @@ export class PublicTripsService {
             normalizedCollectionFilter === null ? null : normalizedCollectionFilter,
           selectedCollection:
             selectedCollection !== null
-              ? this.toSavedTripCollectionMembership(selectedCollection)
+              ? this.toSavedTripCollectionSummary(selectedCollection, 0)
               : null,
           totalSavedCount: visibleSavedTripIdsInOrder.length,
           ungroupedCount,
@@ -581,6 +600,7 @@ export class PublicTripsService {
               select: {
                 id: true,
                 displayName: true,
+                avatarUrl: true,
               },
             },
             stops: {
@@ -647,89 +667,204 @@ export class PublicTripsService {
     const client = await this.prisma.getClient();
     const db = client as any;
     const limit = query.limit ?? 20;
-    const tasteProfile = await this.buildForYouTasteProfile(db, userId);
-    const excludedTripIds = [...tasteProfile.excludedTripIds];
+    const CATEGORY_POOL_SIZE = 200;
+    const emptySignalSummary = { likes: 0, saves: 0, completions: 0, feedbackSubmissions: 0 };
 
-    const candidates = (await db.trip.findMany({
-      where: {
-        ...this.buildEligiblePublicTripWhere(),
-        NOT: [{ userId }, ...(excludedTripIds.length > 0 ? [{ id: { in: excludedTripIds } }] : [])],
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            displayName: true,
-          },
-        },
-        stops: {
-          orderBy: { order: 'asc' },
-          include: {
-            poi: {
-              select: {
-                category: true,
-                district: true,
-                imageUrl: true,
-                lat: true,
-                lng: true,
-              },
-            },
-          },
-        },
-      },
-    })) as PublicTripListRecord[];
+    const [userRow, followedRows] = await Promise.all([
+      db.user.findUnique({ where: { id: userId }, select: { favoriteCategories: true } }),
+      db.userFollow.findMany({ where: { followerId: userId }, select: { followingId: true } }),
+    ]);
 
-    const popularityByTripId = await this.getCandidatePopularityByTripId(
-      db,
-      candidates.map((candidate) => candidate.id),
-    );
-    const scoredItems = candidates.map((candidate) => {
-      const recommendation =
-        tasteProfile.personalizationState === 'personalized'
-          ? this.buildPersonalizedRecommendation(candidate, tasteProfile)
-          : null;
-      const popularity = popularityByTripId.get(candidate.id) ?? {
-        saves: 0,
-        completions: 0,
-        likes: 0,
-      };
+    const followedUserIds: string[] = followedRows.map((r: { followingId: string }) => r.followingId);
+    // Normalize to lowercase canonical form (User.favoriteCategories are stored uppercase e.g. 'FOOD').
+    const favoriteCategories: string[] = (userRow?.favoriteCategories ?? []).map((c: string) => c.toLowerCase());
+    // Expand canonical keys to all raw trip category aliases stored in Trip.categories.
+    // e.g. 'historical' → ['historical', 'history', 'museums', 'culture']
+    const tripCategoryExpanded = [
+      ...new Set(favoriteCategories.flatMap((c) => CANONICAL_TO_TRIP_CATEGORIES[c] ?? [c])),
+    ];
 
+    if (followedUserIds.length === 0 && favoriteCategories.length === 0) {
       return {
-        trip: candidate,
-        recommendation:
-          recommendation ?? this.buildFallbackRecommendation(candidate, popularity),
-        sortScore:
-          recommendation?.sortScore ??
-          this.buildFallbackSortScore(candidate, popularity),
+        items: [],
+        meta: { personalizationState: 'no_follows' as const, signalSummary: emptySignalSummary, total: 0 },
       };
+    }
+
+    const tripInclude = {
+      user: { select: { id: true, displayName: true, avatarUrl: true } },
+      stops: {
+        orderBy: { order: 'asc' as const },
+        include: { poi: { select: { category: true, district: true, imageUrl: true, lat: true, lng: true } } },
+      },
+    };
+
+    const [followedTrips, categoryTrips] = await Promise.all([
+      followedUserIds.length > 0
+        ? db.trip.findMany({
+            where: { ...this.buildEligiblePublicTripWhere(), userId: { in: followedUserIds } },
+            include: tripInclude,
+            orderBy: { optimizedAt: 'desc' },
+          })
+        : Promise.resolve([]),
+      tripCategoryExpanded.length > 0
+        ? db.trip.findMany({
+            where: { ...this.buildEligiblePublicTripWhere(), categories: { hasSome: tripCategoryExpanded } },
+            include: tripInclude,
+            orderBy: { optimizedAt: 'desc' },
+            take: CATEGORY_POOL_SIZE,
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const followedUserIdSet = new Set(followedUserIds);
+    // Use the expanded trip-alias set for scoring, so trips tagged 'history' or 'culture'
+    // correctly score as category matches when user favorites 'historical'.
+    const tripCategoryMatchSet = new Set(tripCategoryExpanded);
+
+    const tripById = new Map<string, any>();
+    for (const trip of [...followedTrips, ...categoryTrips]) {
+      if (!tripById.has(trip.id)) tripById.set(trip.id, trip);
+    }
+
+    const scoredTrips = Array.from(tripById.values()).map((trip) => {
+      const tripUserId: string = trip.userId ?? trip.user?.id ?? '';
+      const fromFollowed = followedUserIdSet.has(tripUserId);
+      const matchesCategory = (trip.categories as string[]).some((c) => tripCategoryMatchSet.has(c));
+      return { trip, score: (fromFollowed ? 3 : 0) + (matchesCategory ? 2 : 0) };
     });
 
-    const items = scoredItems
-      .sort((left, right) =>
-        right.sortScore - left.sortScore ||
-        this.compareNullableDates(right.trip.optimizedAt, left.trip.optimizedAt) ||
-        this.compareNullableDates(right.trip.createdAt, left.trip.createdAt) ||
-        left.trip.id.localeCompare(right.trip.id),
-      )
-      .slice(0, limit);
+    scoredTrips.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      const aTime = a.trip.optimizedAt ? new Date(a.trip.optimizedAt).getTime() : 0;
+      const bTime = b.trip.optimizedAt ? new Date(b.trip.optimizedAt).getTime() : 0;
+      return bTime - aTime;
+    });
+
+    const top = scoredTrips.slice(0, limit).map(({ trip }) => trip) as PublicTripListRecord[];
+
+    const hasFollowedContent = followedUserIds.length > 0 && followedTrips.length > 0;
+    const hasCategoryContent = favoriteCategories.length > 0 && categoryTrips.length > 0;
+    const personalizationState: 'hybrid' | 'following' | 'category_only' | 'no_follows' =
+      hasFollowedContent && hasCategoryContent ? 'hybrid'
+      : hasFollowedContent ? 'following'
+      : hasCategoryContent ? 'category_only'
+      : 'no_follows';
+
     const creatorFollowSummaryByUserId = await this.getCreatorFollowSummaryByUserId(
       db,
       userId,
-      items.map((item) => item.trip.user?.id ?? item.trip.userId ?? null),
+      top.map((c) => c.user?.id ?? c.userId ?? null),
     );
-    const mappedItems = items.map((item) => ({
-        ...this.toPublicTripListItem(item.trip, creatorFollowSummaryByUserId),
-        recommendation: item.recommendation.payload,
-      }));
+
+    const mappedItems = top.map((candidate) => ({
+      ...this.toPublicTripListItem(candidate, creatorFollowSummaryByUserId),
+      recommendation: { kind: 'personalized' as const, primaryReason: 'hybrid_feed', matchedTraits: [] as string[] },
+    }));
+
+    const tripIds = mappedItems.map((item) => item.id);
+    const engagementByTripId = await this.getBatchEngagementSnapshots(db, tripIds, userId);
 
     return {
-      items: mappedItems,
-      meta: {
-        personalizationState: tasteProfile.personalizationState,
-        signalSummary: tasteProfile.signalSummary,
-        total: mappedItems.length,
-      },
+      items: mappedItems.map((item) => ({
+        ...item,
+        engagement: engagementByTripId.get(item.id) ?? this.createEmptyEngagement(),
+      })),
+      meta: { personalizationState, signalSummary: emptySignalSummary, total: mappedItems.length },
     };
+  }
+
+  async findDiscoverTrips(userId: string, query: ListForYouTripsQueryDto) {
+    const client = await this.prisma.getClient();
+    const db = client as any;
+    const limit = query.limit ?? 20;
+    const emptySignalSummary = { likes: 0, saves: 0, completions: 0, feedbackSubmissions: 0 };
+
+    const candidates = (await db.trip.findMany({
+      where: this.buildEligiblePublicTripWhere(),
+      include: {
+        user: { select: { id: true, displayName: true, avatarUrl: true } },
+        stops: {
+          orderBy: { order: 'asc' },
+          include: { poi: { select: { category: true, district: true, imageUrl: true, lat: true, lng: true } } },
+        },
+      },
+      orderBy: { optimizedAt: 'desc' },
+      take: limit,
+    })) as PublicTripListRecord[];
+
+    const creatorFollowSummaryByUserId = await this.getCreatorFollowSummaryByUserId(
+      db,
+      userId,
+      candidates.map((c) => c.user?.id ?? c.userId ?? null),
+    );
+
+    const mappedItems = candidates.map((candidate) => ({
+      ...this.toPublicTripListItem(candidate, creatorFollowSummaryByUserId),
+      recommendation: { kind: 'fallback' as const, primaryReason: 'general_discovery', matchedTraits: [] as string[] },
+    }));
+
+    const tripIds = mappedItems.map((item) => item.id);
+    const engagementByTripId = await this.getBatchEngagementSnapshots(db, tripIds, userId);
+
+    return {
+      items: mappedItems.map((item) => ({
+        ...item,
+        engagement: engagementByTripId.get(item.id) ?? this.createEmptyEngagement(),
+      })),
+      meta: { personalizationState: 'discover' as const, signalSummary: emptySignalSummary, total: mappedItems.length },
+    };
+  }
+
+  private async getBatchEngagementSnapshots(
+    client: any,
+    tripIds: string[],
+    userId: string,
+  ) {
+    if (tripIds.length === 0) {
+      return new Map<string, ReturnType<typeof this.createEmptyEngagement>>();
+    }
+
+    const [likes, comments, saves, completions, myLikes, mySaves, myCompletions] = await Promise.all([
+      client.tripLike.findMany({ where: { tripId: { in: tripIds } }, select: { tripId: true } }),
+      client.tripComment.findMany({ where: { tripId: { in: tripIds } }, select: { tripId: true } }),
+      client.savedTrip.findMany({ where: { tripId: { in: tripIds } }, select: { tripId: true } }),
+      client.tripCompletion.findMany({ where: { tripId: { in: tripIds } }, select: { tripId: true } }),
+      client.tripLike.findMany({ where: { tripId: { in: tripIds }, userId }, select: { tripId: true } }),
+      client.savedTrip.findMany({ where: { tripId: { in: tripIds }, userId }, select: { tripId: true } }),
+      client.tripCompletion.findMany({ where: { tripId: { in: tripIds }, userId }, select: { tripId: true } }),
+    ]);
+
+    const countBy = (rows: Array<{ tripId: string }>) => {
+      const map = new Map<string, number>();
+      for (const { tripId } of rows) {
+        map.set(tripId, (map.get(tripId) ?? 0) + 1);
+      }
+      return map;
+    };
+
+    const likeCountMap = countBy(likes);
+    const commentCountMap = countBy(comments);
+    const saveCountMap = countBy(saves);
+    const completionCountMap = countBy(completions);
+    const likedSet = new Set<string>((myLikes as Array<{ tripId: string }>).map((r) => r.tripId));
+    const savedSet = new Set<string>((mySaves as Array<{ tripId: string }>).map((r) => r.tripId));
+    const completedSet = new Set<string>((myCompletions as Array<{ tripId: string }>).map((r) => r.tripId));
+
+    return new Map(
+      tripIds.map((tripId) => [
+        tripId,
+        {
+          likeCount: likeCountMap.get(tripId) ?? 0,
+          commentCount: commentCountMap.get(tripId) ?? 0,
+          saveCount: saveCountMap.get(tripId) ?? 0,
+          completionCount: completionCountMap.get(tripId) ?? 0,
+          likedByMe: likedSet.has(tripId),
+          savedByMe: savedSet.has(tripId),
+          completedByMe: completedSet.has(tripId),
+        },
+      ]),
+    );
   }
 
   async createSavedTripCollection(
@@ -751,13 +886,15 @@ export class PublicTripsService {
     }
 
     const collectionId = randomUUID();
+    const coverImageUrl = payload.coverImageUrl?.trim() || null;
     const createdCollections = (await db.$queryRaw(Prisma.sql`
-      INSERT INTO "saved_trip_collections" ("id", "userId", "name", "createdAt", "updatedAt")
-      VALUES (${collectionId}, ${userId}, ${name}, NOW(), NOW())
-      RETURNING "id", "name", "createdAt", "updatedAt"
+      INSERT INTO "saved_trip_collections" ("id", "userId", "name", "coverImageUrl", "createdAt", "updatedAt")
+      VALUES (${collectionId}, ${userId}, ${name}, ${coverImageUrl}, NOW(), NOW())
+      RETURNING "id", "name", "coverImageUrl", "createdAt", "updatedAt"
     `)) as Array<{
       id: string;
       name: string;
+      coverImageUrl: string | null;
       createdAt: Date;
       updatedAt: Date;
     }>;
@@ -783,19 +920,31 @@ export class PublicTripsService {
 
     await this.findOwnedCollectionOrThrow(db, userId, collectionId);
 
-    const updatedCollections = (await db.$queryRaw(Prisma.sql`
-      UPDATE "saved_trip_collections"
-      SET "name" = ${name}, "updatedAt" = NOW()
-      WHERE "id" = ${collectionId} AND "userId" = ${userId}
-      RETURNING "id", "name", "createdAt", "updatedAt"
-    `)) as Array<{
+    const coverImageUrl = payload.coverImageUrl !== undefined
+      ? (payload.coverImageUrl?.trim() || null)
+      : undefined;
+
+    const updatedCollections = coverImageUrl !== undefined
+      ? (await db.$queryRaw(Prisma.sql`
+          UPDATE "saved_trip_collections"
+          SET "name" = ${name}, "coverImageUrl" = ${coverImageUrl}, "updatedAt" = NOW()
+          WHERE "id" = ${collectionId} AND "userId" = ${userId}
+          RETURNING "id", "name", "coverImageUrl", "createdAt", "updatedAt"
+        `))
+      : (await db.$queryRaw(Prisma.sql`
+          UPDATE "saved_trip_collections"
+          SET "name" = ${name}, "updatedAt" = NOW()
+          WHERE "id" = ${collectionId} AND "userId" = ${userId}
+          RETURNING "id", "name", "coverImageUrl", "createdAt", "updatedAt"
+        `));
+
+    const [collection] = updatedCollections as Array<{
       id: string;
       name: string;
+      coverImageUrl: string | null;
       createdAt: Date;
       updatedAt: Date;
     }>;
-
-    const [collection] = updatedCollections;
 
     return {
       collection: this.toSavedTripCollectionSummary(collection, 0),
@@ -1066,6 +1215,7 @@ export class PublicTripsService {
       categories: trip.categories,
       routeTotalDurationMin: trip.routeTotalDurationMin,
       routeTotalCostTl: trip.routeTotalCostTl,
+      coverImageUrl: trip.coverImageUrl,
       stops: stops.map((stop) => ({
         category: stop.poi.category,
         district: stop.poi.district,
@@ -1101,6 +1251,7 @@ export class PublicTripsService {
         trip.user?.id ?? trip.userId ?? null,
         trip.user?.displayName ?? null,
         creatorFollowSummaryByUserId,
+        trip.user?.avatarUrl ?? null,
       ),
       optimization: {
         optimizedAt: trip.optimizedAt,
@@ -1681,6 +1832,7 @@ export class PublicTripsService {
       categories: trip.categories,
       routeTotalDurationMin: trip.routeTotalDurationMin,
       routeTotalCostTl: trip.routeTotalCostTl,
+      coverImageUrl: (trip as any).coverImageUrl,
       stops: trip.stops.map((stop) => ({
         category: stop.poi.category.toLowerCase(),
         district: stop.poi.district,
@@ -1705,6 +1857,7 @@ export class PublicTripsService {
         trip.user?.id ?? trip.userId ?? null,
         trip.user?.displayName ?? null,
         creatorFollowSummaryByUserId,
+        trip.user?.avatarUrl ?? null,
       ),
     };
   }
@@ -1864,6 +2017,7 @@ export class PublicTripsService {
       categories: trip.categories,
       routeTotalDurationMin: trip.routeTotalDurationMin,
       routeTotalCostTl: trip.routeTotalCostTl,
+      coverImageUrl: (trip as any).coverImageUrl,
       stops: trip.stops.map((stop) => ({
         category: stop.poi.category.toLowerCase(),
         district: stop.poi.district,
@@ -1891,6 +2045,7 @@ export class PublicTripsService {
         trip.user?.id ?? trip.userId ?? null,
         trip.user?.displayName ?? null,
         creatorFollowSummaryByUserId,
+        trip.user?.avatarUrl ?? null,
       ),
       optimization: {
         optimizedAt: trip.optimizedAt,
@@ -1909,6 +2064,7 @@ export class PublicTripsService {
     creatorId: string | null,
     displayName: string | null,
     creatorFollowSummaryByUserId: Map<string, CreatorFollowSummary>,
+    avatarUrl?: string | null,
   ) {
     const followSummary = creatorId
       ? creatorFollowSummaryByUserId.get(creatorId)
@@ -1917,6 +2073,7 @@ export class PublicTripsService {
     return {
       id: creatorId,
       displayName,
+      avatarUrl: avatarUrl ?? null,
       isFollowedByMe: followSummary?.isFollowedByMe ?? false,
       followerCount: followSummary?.followerCount ?? 0,
     };
@@ -1984,15 +2141,44 @@ export class PublicTripsService {
     return summaryByUserId;
   }
 
+  async findSavedTripCollectionSummaries(userId: string, limit = 4) {
+    const client = await this.prisma.getClient();
+    const rows = (await client.$queryRaw(Prisma.sql`
+      SELECT
+        c."id",
+        c."name",
+        c."coverImageUrl",
+        c."createdAt",
+        c."updatedAt",
+        COUNT(sci."savedTripId")::int AS "savedTripCount"
+      FROM "saved_trip_collections" c
+      LEFT JOIN "saved_trip_collection_items" sci ON sci."collectionId" = c."id"
+      WHERE c."userId" = ${userId}
+      GROUP BY c."id"
+      ORDER BY c."createdAt" DESC
+      LIMIT ${limit}
+    `)) as Array<{
+      id: string;
+      name: string;
+      coverImageUrl: string | null;
+      createdAt: Date;
+      updatedAt: Date;
+      savedTripCount: number;
+    }>;
+
+    return rows.map((row) => this.toSavedTripCollectionSummary(row, row.savedTripCount));
+  }
+
   private async listSavedTripCollections(client: any, userId: string) {
     return (await client.$queryRaw(Prisma.sql`
-      SELECT "id", "name", "createdAt", "updatedAt"
+      SELECT "id", "name", "coverImageUrl", "createdAt", "updatedAt"
       FROM "saved_trip_collections"
       WHERE "userId" = ${userId}
       ORDER BY "createdAt" ASC, "name" ASC
     `)) as Array<{
       id: string;
       name: string;
+      coverImageUrl: string | null;
       createdAt: Date;
       updatedAt: Date;
     }>;
@@ -2029,13 +2215,14 @@ export class PublicTripsService {
 
   private async findOwnedCollectionById(client: any, userId: string, collectionId: string) {
     const collections = (await client.$queryRaw(Prisma.sql`
-      SELECT "id", "name", "createdAt", "updatedAt"
+      SELECT "id", "name", "coverImageUrl", "createdAt", "updatedAt"
       FROM "saved_trip_collections"
       WHERE "id" = ${collectionId} AND "userId" = ${userId}
       LIMIT 1
     `)) as Array<{
       id: string;
       name: string;
+      coverImageUrl: string | null;
       createdAt: Date;
       updatedAt: Date;
     }>;
@@ -2064,7 +2251,7 @@ export class PublicTripsService {
     collectionIds: string[],
   ) {
     return (await client.$queryRaw(Prisma.sql`
-      SELECT "id", "name", "createdAt", "updatedAt"
+      SELECT "id", "name", "coverImageUrl", "createdAt", "updatedAt"
       FROM "saved_trip_collections"
       WHERE "userId" = ${userId}
         AND "id" IN (${Prisma.join(collectionIds)})
@@ -2072,6 +2259,7 @@ export class PublicTripsService {
     `)) as Array<{
       id: string;
       name: string;
+      coverImageUrl: string | null;
       createdAt: Date;
       updatedAt: Date;
     }>;
@@ -2080,12 +2268,14 @@ export class PublicTripsService {
   private toSavedTripCollectionSummary(collection: {
     id: string;
     name: string;
+    coverImageUrl?: string | null;
     createdAt: Date;
     updatedAt: Date;
   }, savedTripCount: number) {
     return {
       id: collection.id,
       name: collection.name,
+      coverImageUrl: collection.coverImageUrl ?? null,
       createdAt: collection.createdAt,
       updatedAt: collection.updatedAt,
       savedTripCount,
@@ -2155,6 +2345,7 @@ export class PublicTripsService {
     user?: {
       id: string;
       displayName: string | null;
+      avatarUrl?: string | null;
     } | null;
   }) {
     return {
@@ -2165,6 +2356,7 @@ export class PublicTripsService {
       author: {
         id: comment.user?.id ?? comment.userId,
         displayName: comment.user?.displayName ?? null,
+        avatarUrl: comment.user?.avatarUrl ?? null,
       },
     };
   }

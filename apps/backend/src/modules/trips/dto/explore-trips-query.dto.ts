@@ -5,6 +5,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   MaxLength,
   Min,
@@ -58,4 +59,12 @@ export class ExploreTripsQueryDto {
   @Min(1)
   @Max(50)
   limit?: number;
+
+  @ApiPropertyOptional({
+    example: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
+    description: 'Filter results to a specific creator by user ID.',
+  })
+  @IsOptional()
+  @IsUUID()
+  creatorId?: string;
 }

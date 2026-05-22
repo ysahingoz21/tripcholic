@@ -19,6 +19,7 @@ import {
 } from '@nestjs/swagger';
 import { type Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
 import { type AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { CreateTripDto } from './dto/create-trip.dto';
 import { ExploreTripsQueryDto } from './dto/explore-trips-query.dto';
@@ -29,16 +30,32 @@ type AuthenticatedRequest = Request & {
   user: AuthenticatedUser;
 };
 
+type MaybeAuthenticatedRequest = Request & {
+  user?: AuthenticatedUser | null;
+};
+
 @ApiTags('trips')
 @Controller('trips')
 export class TripsController {
   constructor(private readonly tripsService: TripsService) {}
 
   @Get('explore')
+  @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: 'List discoverable public trips for Explore' })
   @ApiOkResponse({ description: 'Explore trip list returned successfully.' })
-  findExplore(@Query() query: ExploreTripsQueryDto) {
-    return this.tripsService.findExploreTrips(query);
+  findExplore(@Req() req: MaybeAuthenticatedRequest, @Query() query: ExploreTripsQueryDto) {
+    const userId = req.user?.id ?? null;
+    return this.tripsService.findExploreTrips(query, userId);
+  }
+
+  @Get('trending')
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiOperation({ summary: 'List trending public trips for this week' })
+  @ApiOkResponse({ description: 'Trending trips returned successfully.' })
+  findTrending(@Req() req: MaybeAuthenticatedRequest, @Query('limit') limit?: string) {
+    const userId = req.user?.id ?? null;
+    const parsed = limit ? parseInt(limit, 10) : 8;
+    return this.tripsService.findTrendingTrips(userId, isNaN(parsed) ? 8 : parsed);
   }
 
   @Post()

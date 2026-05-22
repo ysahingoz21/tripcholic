@@ -8,6 +8,7 @@ import { PoisModule } from './modules/pois/pois.module';
 import { PrismaModule } from './modules/prisma/prisma.module';
 import { PublicTripsModule } from './modules/public-trips/public-trips.module';
 import { TripsModule } from './modules/trips/trips.module';
+import { UploadsModule } from './modules/uploads/uploads.module';
 import { UsersModule } from './modules/users/users.module';
 import { WeatherModule } from './modules/weather/weather.module';
 
@@ -24,6 +25,7 @@ import { WeatherModule } from './modules/weather/weather.module';
     PoisModule,
     OptimizerModule,
     WeatherModule,
+    UploadsModule,
   ],
 })
 export class AppModule {}

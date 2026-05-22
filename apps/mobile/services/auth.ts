@@ -16,8 +16,15 @@ export type AuthUser = {
   id: string;
   displayName: string | null;
   email: string;
+  avatarUrl?: string | null;
+  coverImageUrl?: string | null;
+  bio?: string | null;
+  travelVibes?: string[];
+  favoriteCategories?: string[];
   createdAt: string;
   updatedAt?: string;
+  followerCount?: number;
+  followingCount?: number;
 };
 
 type LoginResponseData = {

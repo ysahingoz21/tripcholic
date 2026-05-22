@@ -1,3 +1,17 @@
+import { getSortedTripStops } from '@/components/trip/tripMapUtils';
+import Artwork, { PoiImageCard } from '@/components/ui/Artwork';
+import { buildTripDetailParams } from '@/utils/tripNavigation';
+import { theme } from '@/constants/theme';
+import { font } from '@/constants/typography';
+import { useAuth } from '@/context/AuthContext';
+import { getTrip, type TripDetailResponse } from '@/services/trips';
+import {
+  getIstanbulWeather,
+  type WeatherSummary,
+} from '@/services/weather';
+import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -7,23 +21,10 @@ import {
   Text,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
-import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   SafeAreaView,
   useSafeAreaInsets,
 } from 'react-native-safe-area-context';
-import {
-  getIstanbulWeather,
-  type WeatherSummary,
-} from '@/services/weather';
-import Artwork from '@/components/ui/Artwork';
-import { getSortedTripStops } from '@/components/trip/tripMapUtils';
-import { theme } from '@/constants/theme';
-import { font } from '@/constants/typography';
-import { useAuth } from '@/context/AuthContext';
-import { getTrip, type TripDetailResponse } from '@/services/trips';
 import TripStopsMap from '../components/trip/TripStopsMap';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -182,15 +183,10 @@ function NewTimelineItem({
           {poiName}
         </Text>
 
-        <Image
-          source={
-            imageUrl
-              ? { uri: imageUrl }
-              : require('../assets/images/placeholders/default-poi.png')
-          }
+        <PoiImageCard
+          imageUrl={imageUrl}
+          category={stop.poi.category}
           style={tlStyles.poiImage}
-          contentFit="cover"
-          transition={150}
         />
 
         <Text style={tlStyles.description} numberOfLines={3}>
@@ -332,7 +328,7 @@ export default function ResultsScreen() {
   loadWeather();
 }, []);
 
-  const handleGoHome = () => router.replace('/(tabs)');
+  const handleGoHome = () => router.navigate('/(tabs)');
 
   // These must be unconditional — computed from tripDetail when available.
   const sortedStops = useMemo(
@@ -531,7 +527,7 @@ export default function ResultsScreen() {
       </Text>
     </View>
   </View>
-) : null}
+  ) : null}
       
         {/* 4 ── Categories ────────────────────────────────────────────────── */}
         {categories.length > 0 && (
@@ -607,9 +603,7 @@ export default function ResultsScreen() {
               <Text style={styles.sectionTitle}>Trip Stop Map</Text>
             </View>
           </View>
-          <View style={styles.mapWrapper}>
-            <TripStopsMap stops={stops} />
-          </View>
+          <TripStopsMap stops={stops} hideTitle />
         </View>
 
         {/* 7 ── Timeline ──────────────────────────────────────────────────── */}
@@ -665,13 +659,18 @@ export default function ResultsScreen() {
               styles.openTripBtn,
               pressed && { opacity: 0.88 },
             ]}
-            onPress={() =>
-              router.push(
-                trip.visibility === 'PUBLIC'
-                  ? (`/public-trip/${trip.id}` as any)
-                  : (`/trip/${trip.id}` as any),
-              )
-            }
+            onPress={() => {
+              if (trip.visibility === 'PUBLIC') {
+                router.push(`/public-trip/${trip.id}` as any);
+              } else {
+                router.push(
+                  buildTripDetailParams(trip.id, {
+                    source: 'results',
+                    returnTripId: typeof tripId === 'string' ? tripId : trip.id,
+                  }),
+                );
+              }
+            }}
           >
             <Ionicons name="compass-outline" size={18} color="#FFFFFF" />
             <Text style={styles.openTripBtnText}>Open trip</Text>
@@ -684,7 +683,7 @@ export default function ResultsScreen() {
                 styles.secondaryBtn,
                 pressed && { opacity: 0.82 },
               ]}
-              onPress={() => router.replace('/(tabs)/trips')}
+              onPress={() => router.navigate('/(tabs)/trips')}
             >
               <Ionicons
                 name="map-outline"
@@ -962,14 +961,6 @@ const styles = StyleSheet.create({
   infoSep: {
     height: 1,
     backgroundColor: '#F1F5F9',
-  },
-
-  // ── Map wrapper ──
-  mapWrapper: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#E8ECF0',
   },
 
   // ── Generic card (explanation) ──

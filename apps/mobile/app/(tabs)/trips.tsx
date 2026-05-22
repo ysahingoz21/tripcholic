@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -7,66 +7,66 @@ import {
   Text,
   TextInput,
   View,
-} from 'react-native';
-import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import Artwork from '@/components/ui/Artwork';
-import { theme } from '@/constants/theme';
-import { type, font } from '@/constants/typography';
-import { useAuth } from '@/context/AuthContext';
+} from "react-native";
+import { useRouter } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
+import { Ionicons } from "@expo/vector-icons";
+import { Image } from "expo-image";
+import { SafeAreaView } from "react-native-safe-area-context";
+import Artwork from "@/components/ui/Artwork";
+import { theme } from "@/constants/theme";
+import { type, font } from "@/constants/typography";
+import { useAuth } from "@/context/AuthContext";
 import {
   getTrips,
   type TripListItem,
   type TripVisibility,
-} from '@/services/trips';
+} from "@/services/trips";
 
 const H_PAD = 20;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type SortMode =
-  | 'date-desc'
-  | 'date-asc'
-  | 'title-az'
-  | 'title-za'
-  | 'budget-asc'
-  | 'budget-desc';
+  | "date-desc"
+  | "date-asc"
+  | "title-az"
+  | "title-za"
+  | "budget-asc"
+  | "budget-desc";
 
-type BudgetFilter = 'any' | 'low' | 'mid' | 'high';
+type BudgetFilter = "any" | "low" | "mid" | "high";
 
 const SORT_MODES: { mode: SortMode; label: string }[] = [
-  { mode: 'date-desc', label: 'Newest first' },
-  { mode: 'date-asc', label: 'Oldest first' },
-  { mode: 'title-az', label: 'Title A→Z' },
-  { mode: 'title-za', label: 'Title Z→A' },
-  { mode: 'budget-asc', label: 'Budget: Low' },
-  { mode: 'budget-desc', label: 'Budget: High' },
+  { mode: "date-desc", label: "Newest first" },
+  { mode: "date-asc", label: "Oldest first" },
+  { mode: "title-az", label: "Title A→Z" },
+  { mode: "title-za", label: "Title Z→A" },
+  { mode: "budget-asc", label: "Budget: Low" },
+  { mode: "budget-desc", label: "Budget: High" },
 ];
 
 const BUDGET_FILTERS: { filter: BudgetFilter; label: string }[] = [
-  { filter: 'any', label: 'Any budget' },
-  { filter: 'low', label: '< 500 ₺' },
-  { filter: 'mid', label: '500–2K ₺' },
-  { filter: 'high', label: '> 2K ₺' },
+  { filter: "any", label: "Any budget" },
+  { filter: "low", label: "< 500 ₺" },
+  { filter: "mid", label: "500–2K ₺" },
+  { filter: "high", label: "> 2K ₺" },
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatShortDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
+  return new Date(dateStr).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
   });
 }
 
 type VisibilityConfig = { label: string; icon: string };
 
 function getVisibilityConfig(v: TripVisibility): VisibilityConfig {
-  if (v === 'PUBLIC') return { label: 'Public', icon: 'earth-outline' };
-  return { label: 'Private', icon: 'lock-closed-outline' };
+  if (v === "PUBLIC") return { label: "Public", icon: "earth-outline" };
+  return { label: "Private", icon: "lock-closed-outline" };
 }
 
 function formatCategory(cat: string | null | undefined) {
@@ -88,12 +88,12 @@ function TripCard({ trip, onPress }: TripCardProps) {
 
   const categoryLine = Array.from(
     new Set(
-      [trip.preview?.primaryCategory, ...trip.categories].filter(Boolean)
-    )
+      [trip.preview?.primaryCategory, ...trip.categories].filter(Boolean),
+    ),
   )
     .map((c) => formatCategory(c))
     .filter(Boolean)
-    .join(', ');
+    .join(", ");
 
   return (
     <Pressable
@@ -150,7 +150,7 @@ function TripCard({ trip, onPress }: TripCardProps) {
                 color="rgba(255,255,255,0.8)"
               />
               <Text style={styles.cardMetaText}>
-                {stopCount} {stopCount === 1 ? 'stop' : 'stops'}
+                {stopCount} {stopCount === 1 ? "stop" : "stops"}
               </Text>
             </>
           )}
@@ -176,9 +176,9 @@ export default function TripsScreen() {
   const [error, setError] = useState<string | null>(null);
 
   // Search / filter / sort state
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [budgetFilter, setBudgetFilter] = useState<BudgetFilter>('any');
+  const [budgetFilter, setBudgetFilter] = useState<BudgetFilter>("any");
   const [sortModeIdx, setSortModeIdx] = useState(0);
 
   const currentSort = SORT_MODES[sortModeIdx];
@@ -187,7 +187,7 @@ export default function TripsScreen() {
   const loadTrips = useCallback(async () => {
     if (isAuthLoading) return;
     if (!token) {
-      setError('Authentication required. Please sign in again.');
+      setError("Authentication required. Please sign in again.");
       setTrips([]);
       setIsLoading(false);
       return;
@@ -201,7 +201,7 @@ export default function TripsScreen() {
       setError(
         loadError instanceof Error
           ? loadError.message
-          : 'Unable to load your trips.'
+          : "Unable to load your trips.",
       );
       setTrips([]);
     } finally {
@@ -212,7 +212,7 @@ export default function TripsScreen() {
   useFocusEffect(
     useCallback(() => {
       void loadTrips();
-    }, [loadTrips])
+    }, [loadTrips]),
   );
 
   // Derive unique categories from loaded trips
@@ -238,15 +238,15 @@ export default function TripsScreen() {
       result = result.filter(
         (t) =>
           t.categories.includes(selectedCategory) ||
-          t.preview?.primaryCategory === selectedCategory
+          t.preview?.primaryCategory === selectedCategory,
       );
     }
 
-    if (budgetFilter !== 'any') {
+    if (budgetFilter !== "any") {
       result = result.filter((t) => {
         const b = t.budgetTl ?? 0;
-        if (budgetFilter === 'low') return b < 500;
-        if (budgetFilter === 'mid') return b >= 500 && b <= 2000;
+        if (budgetFilter === "low") return b < 500;
+        if (budgetFilter === "mid") return b >= 500 && b <= 2000;
         return b > 2000;
       });
     }
@@ -254,17 +254,17 @@ export default function TripsScreen() {
     const sorted = [...result];
     sorted.sort((a, b) => {
       switch (currentSort.mode) {
-        case 'date-desc':
+        case "date-desc":
           return new Date(b.date).getTime() - new Date(a.date).getTime();
-        case 'date-asc':
+        case "date-asc":
           return new Date(a.date).getTime() - new Date(b.date).getTime();
-        case 'title-az':
+        case "title-az":
           return a.title.localeCompare(b.title);
-        case 'title-za':
+        case "title-za":
           return b.title.localeCompare(a.title);
-        case 'budget-asc':
+        case "budget-asc":
           return (a.budgetTl ?? 0) - (b.budgetTl ?? 0);
-        case 'budget-desc':
+        case "budget-desc":
           return (b.budgetTl ?? 0) - (a.budgetTl ?? 0);
       }
     });
@@ -284,7 +284,7 @@ export default function TripsScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['left', 'right']}>
+    <SafeAreaView style={styles.safe} edges={["left", "right"]}>
       <View style={styles.container}>
         <ScrollView
           style={styles.scroll}
@@ -323,7 +323,7 @@ export default function TripsScreen() {
                   returnKeyType="search"
                 />
                 {searchQuery.length > 0 && (
-                  <Pressable onPress={() => setSearchQuery('')} hitSlop={8}>
+                  <Pressable onPress={() => setSearchQuery("")} hitSlop={8}>
                     <Ionicons
                       name="close-circle"
                       size={16}
@@ -350,7 +350,8 @@ export default function TripsScreen() {
                     <Text
                       style={[
                         styles.filterChipText,
-                        selectedCategory === null && styles.filterChipTextActive,
+                        selectedCategory === null &&
+                          styles.filterChipTextActive,
                       ]}
                     >
                       All
@@ -365,7 +366,7 @@ export default function TripsScreen() {
                       ]}
                       onPress={() =>
                         setSelectedCategory(
-                          selectedCategory === cat ? null : cat
+                          selectedCategory === cat ? null : cat,
                         )
                       }
                     >
@@ -398,7 +399,7 @@ export default function TripsScreen() {
                 <Pressable
                   style={[
                     styles.controlPill,
-                    budgetFilter !== 'any' && styles.controlPillActive,
+                    budgetFilter !== "any" && styles.controlPillActive,
                   ]}
                   onPress={cycleBudgetFilter}
                 >
@@ -406,15 +407,15 @@ export default function TripsScreen() {
                     name="wallet-outline"
                     size={14}
                     color={
-                      budgetFilter !== 'any'
-                        ? '#FFFFFF'
+                      budgetFilter !== "any"
+                        ? "#FFFFFF"
                         : theme.colors.primaryDark
                     }
                   />
                   <Text
                     style={[
                       styles.controlPillText,
-                      budgetFilter !== 'any' && styles.controlPillTextActive,
+                      budgetFilter !== "any" && styles.controlPillTextActive,
                     ]}
                   >
                     {currentBudget.label}
@@ -462,9 +463,11 @@ export default function TripsScreen() {
               </Text>
               <Pressable
                 style={styles.actionButton}
-                onPress={() => router.push('/(tabs)/planner')}
+                onPress={() => router.push("/(tabs)/planner")}
               >
-                <Text style={styles.actionButtonText}>Plan your first trip</Text>
+                <Text style={styles.actionButtonText}>
+                  Plan your first trip
+                </Text>
               </Pressable>
             </View>
           ) : filteredTrips.length === 0 ? (
@@ -495,7 +498,7 @@ export default function TripsScreen() {
         {/* ─── Floating action button ─── */}
         <Pressable
           style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
-          onPress={() => router.push('/(tabs)/planner')}
+          onPress={() => router.push("/(tabs)/planner")}
         >
           <Ionicons name="add" size={28} color="#fff" />
         </Pressable>
@@ -526,11 +529,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: H_PAD,
     paddingTop: 28,
     paddingBottom: 32,
-    alignItems: 'center',
+    alignItems: "center",
   },
   eyebrowRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
     marginBottom: 14,
   },
@@ -547,13 +550,13 @@ const styles = StyleSheet.create({
   heroTitle: {
     ...type.displayLg,
     color: theme.colors.primaryDark,
-    textAlign: 'center',
+    textAlign: "center",
     marginBottom: 12,
   },
   heroSubtitle: {
     ...type.bodyLg,
     color: theme.colors.textSecondary,
-    textAlign: 'center',
+    textAlign: "center",
     maxWidth: 280,
   },
 
@@ -564,8 +567,8 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: theme.colors.surface,
     borderRadius: 14,
     borderWidth: 1,
@@ -602,16 +605,16 @@ const styles = StyleSheet.create({
     color: theme.colors.primaryDark,
   },
   filterChipTextActive: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
   },
   controlRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 8,
-    flexWrap: 'wrap',
+    flexWrap: "wrap",
   },
   controlPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
     backgroundColor: theme.colors.surface,
     borderRadius: 9999,
@@ -630,7 +633,7 @@ const styles = StyleSheet.create({
     color: theme.colors.primaryDark,
   },
   controlPillTextActive: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
   },
 
   // ── Trip list ──
@@ -643,7 +646,7 @@ const styles = StyleSheet.create({
   card: {
     height: 272,
     borderRadius: 24,
-    overflow: 'hidden',
+    overflow: "hidden",
     shadowColor: theme.colors.primaryDark,
     shadowOpacity: 0.18,
     shadowRadius: 16,
@@ -655,26 +658,26 @@ const styles = StyleSheet.create({
   },
   cardImageWrap: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#DFF7F6',
+    backgroundColor: "#DFF7F6",
   },
   cardOverlay: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-    height: '36%',
-    backgroundColor: 'rgba(11,36,48,0.62)',
+    height: "50%",
+    backgroundColor: "rgba(11,36,48,0.62)",
   },
   cardTop: {
-    position: 'absolute',
+    position: "absolute",
     top: 14,
     right: 14,
   },
   visBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 4,
-    backgroundColor: 'rgba(255,255,255,0.95)',
+    backgroundColor: "rgba(255,255,255,0.95)",
     borderRadius: 9999,
     paddingHorizontal: 10,
     paddingVertical: 5,
@@ -686,7 +689,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.1,
   },
   cardBottom: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
@@ -698,36 +701,36 @@ const styles = StyleSheet.create({
     fontFamily: font.bold,
     fontSize: 18,
     lineHeight: 23,
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     letterSpacing: -0.2,
   },
   cardMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 5,
   },
   cardMetaText: {
     fontFamily: font.medium,
     fontSize: 13,
-    color: 'rgba(255,255,255,0.85)',
+    color: "rgba(255,255,255,0.85)",
   },
   cardMetaDot: {
     fontFamily: font.regular,
     fontSize: 13,
-    color: 'rgba(255,255,255,0.6)',
+    color: "rgba(255,255,255,0.6)",
   },
   cardCategoryLine: {
     fontFamily: font.regular,
     fontSize: 11,
-    color: 'rgba(255,255,255,0.55)',
+    color: "rgba(255,255,255,0.55)",
     letterSpacing: 0.1,
   },
 
   // ── States ──
   centeredArea: {
     minHeight: 280,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: 40,
     gap: 10,
   },
@@ -740,21 +743,21 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: '#DFF7F6',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#DFF7F6",
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: 8,
   },
   stateTitle: {
     fontFamily: font.bold,
     fontSize: 18,
     color: theme.colors.primaryDark,
-    textAlign: 'center',
+    textAlign: "center",
   },
   stateBody: {
     ...type.bodySm,
     color: theme.colors.textSecondary,
-    textAlign: 'center',
+    textAlign: "center",
     marginBottom: 8,
   },
   actionButton: {
@@ -767,20 +770,20 @@ const styles = StyleSheet.create({
   actionButtonText: {
     fontFamily: font.semiBold,
     fontSize: 15,
-    color: '#FFFFFF',
+    color: "#FFFFFF",
   },
 
   // ── FAB ──
   fab: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 24,
     right: 20,
     width: 56,
     height: 56,
     borderRadius: 28,
     backgroundColor: theme.colors.primaryDark,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     shadowColor: theme.colors.primaryDark,
     shadowOpacity: 0.28,
     shadowRadius: 12,

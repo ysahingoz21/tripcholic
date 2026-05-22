@@ -1,7 +1,7 @@
-import { StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { theme } from '../../constants/theme';
 import Artwork from '@/components/ui/Artwork';
+import { Ionicons } from '@expo/vector-icons';
+import { StyleSheet, Text, View } from 'react-native';
+import { theme } from '../../constants/theme';
 
 type Props = {
   time: string;
@@ -9,6 +9,7 @@ type Props = {
   subtitle: string;
   icon?: keyof typeof Ionicons.glyphMap;
   imageUrl?: string | null;
+  category?: string | null;
 };
 
 export default function TimelineItem({
@@ -17,6 +18,7 @@ export default function TimelineItem({
   subtitle,
   icon = 'location',
   imageUrl,
+  category,
 }: Props) {
   return (
     <View style={styles.row}>
@@ -37,6 +39,7 @@ export default function TimelineItem({
           kind="poi"
           variant="thumbnail"
           label={title}
+          category={category}
         />
         <View style={styles.textContent}>
           <Text style={styles.title}>{title}</Text>
@@ -88,6 +91,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.border,
     borderRadius: theme.radius.lg,
+    overflow: 'hidden',
     padding: theme.spacing.md,
     flexDirection: 'row',
     alignItems: 'center',

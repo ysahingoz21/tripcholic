@@ -1,0 +1,931 @@
+import { useCallback, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
+import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
+import { Image } from 'expo-image';
+import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import AppHeader from '@/components/ui/AppHeader';
+import Artwork from '@/components/ui/Artwork';
+import FollowListModal from '@/components/ui/FollowListModal';
+import UserAvatar, { PROFILE_AVATAR_FRAME_INSET } from '@/components/ui/UserAvatar';
+import { theme } from '@/constants/theme';
+import { font, type } from '@/constants/typography';
+import { useAuth } from '@/context/AuthContext';
+import { getTrips, type TripListItem, type TripVisibility } from '@/services/trips';
+import { buildTripDetailParams } from '@/utils/tripNavigation';
+import { likePublicTrip, unlikePublicTrip, savePublicTrip, unsavePublicTrip } from '@/services/publicTrips';
+import { getMe } from '@/services/auth';
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const COVER_HEIGHT = 180;
+const AVATAR_SIZE = 80;
+const H_PAD = 20;
+const CARD_GAP = 12;
+
+const COVER_IMAGE = require('@/assets/images/profile/profile-cover.png');
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function getDisplayName(displayName: string | null | undefined, email: string) {
+  const trimmedDisplayName = displayName?.trim();
+  if (trimmedDisplayName) return trimmedDisplayName;
+  const localPart = email.split('@')[0]?.trim();
+  return localPart || 'Traveler';
+}
+
+function formatShortDate(date: string) {
+  return new Date(date).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+function cap(s: string) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function buildTagline(trips: TripListItem[]): string {
+  if (trips.length === 0) return 'Tripcholic Traveler';
+  const counts = new Map<string, number>();
+  for (const trip of trips) {
+    for (const cat of trip.categories) {
+      const n = cat.trim().toLowerCase();
+      if (n) counts.set(n, (counts.get(n) ?? 0) + 1);
+    }
+  }
+  const top = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 2)
+    .map(([cat]) => `${cap(cat)} Enthusiast`);
+  return top.length ? top.join(' • ') : 'Tripcholic Traveler';
+}
+
+// ── Visibility badge ──────────────────────────────────────────────────────────
+
+const VIS_CONFIG: Record<TripVisibility, { icon: string; label: string; color: string }> = {
+  PUBLIC: { icon: 'earth-outline', label: 'Public', color: theme.colors.primary },
+  PRIVATE: { icon: 'lock-closed-outline', label: 'Private', color: theme.colors.textSecondary },
+};
+
+function VisibilityBadge({ visibility }: { visibility: TripVisibility }) {
+  const cfg = VIS_CONFIG[visibility];
+  return (
+    <View style={badgeStyles.pill}>
+      <Ionicons name={cfg.icon as any} size={11} color={theme.colors.primaryDark} />
+      <Text style={badgeStyles.label}>{cfg.label}</Text>
+    </View>
+  );
+}
+
+const badgeStyles = StyleSheet.create({
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderRadius: 9999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  label: {
+    fontFamily: font.medium,
+    fontSize: 11,
+    color: theme.colors.primaryDark,
+    letterSpacing: 0.1,
+  },
+});
+
+// ── Journey card ──────────────────────────────────────────────────────────────
+
+function JourneyCard({
+  trip,
+  cardWidth,
+  showVisibility,
+  onPress,
+}: {
+  trip: TripListItem;
+  cardWidth: number;
+  showVisibility: boolean;
+  onPress: () => void;
+}) {
+  const imageUrl = trip.preview?.imageUrl?.trim() || null;
+  const imageHeight = Math.round(cardWidth * 1.3);
+
+  return (
+    <Pressable
+      style={({ pressed }) => [cardStyles.card, { width: cardWidth }, pressed && { opacity: 0.93 }]}
+      onPress={onPress}
+    >
+      <View style={[cardStyles.imageWrap, { height: imageHeight }]}>
+        <Artwork imageUrl={imageUrl} kind="trip" variant="cover" />
+        {showVisibility && (
+          <View style={cardStyles.badgeWrap}>
+            <VisibilityBadge visibility={trip.visibility} />
+          </View>
+        )}
+      </View>
+      <View style={cardStyles.content}>
+        <Text style={cardStyles.title} numberOfLines={2}>{trip.title}</Text>
+        <Text style={cardStyles.date}>{formatShortDate(trip.date)}</Text>
+        {trip.visibility !== 'PUBLIC' ? (
+          <View style={cardStyles.privateRow}>
+            <Ionicons name="lock-closed-outline" size={12} color={theme.colors.textSecondary} />
+            <Text style={cardStyles.privateText}>Private trip</Text>
+          </View>
+        ) : (
+          <View style={cardStyles.metricsRow}>
+            <View style={cardStyles.metricItem}>
+              <Ionicons
+                name={trip.engagement?.likedByMe ? 'heart' : 'heart-outline'}
+                size={14}
+                color={trip.engagement?.likedByMe ? '#EF4444' : theme.colors.textSecondary}
+              />
+              <Text style={cardStyles.metricText}>{trip.engagement?.likeCount ?? 0}</Text>
+            </View>
+            <View style={cardStyles.metricItem}>
+              <Ionicons name="chatbubble-outline" size={14} color={theme.colors.textSecondary} />
+              <Text style={cardStyles.metricText}>{trip.engagement?.commentCount ?? 0}</Text>
+            </View>
+            <View style={cardStyles.metricItem}>
+              <Ionicons
+                name={trip.engagement?.savedByMe ? 'bookmark' : 'bookmark-outline'}
+                size={14}
+                color={trip.engagement?.savedByMe ? theme.colors.primary : theme.colors.textSecondary}
+              />
+              <Text style={cardStyles.metricText}>{trip.engagement?.saveCount ?? 0}</Text>
+            </View>
+          </View>
+        )}
+      </View>
+    </Pressable>
+  );
+}
+
+const cardStyles = StyleSheet.create({
+  card: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    shadowColor: theme.colors.primaryDark,
+    shadowOpacity: 0.07,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  imageWrap: {
+    width: '100%',
+    position: 'relative',
+  },
+  badgeWrap: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+  },
+  content: {
+    padding: 10,
+    gap: 3,
+  },
+  title: {
+    fontFamily: font.bold,
+    fontSize: 13,
+    lineHeight: 18,
+    color: theme.colors.primaryDark,
+  },
+  date: {
+    fontFamily: font.regular,
+    fontSize: 11,
+    color: theme.colors.textSecondary,
+  },
+  metricsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 3,
+  },
+  metricItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  metricText: {
+    fontFamily: font.medium,
+    fontSize: 13,
+    color: theme.colors.textSecondary,
+  },
+  privateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 3,
+  },
+  privateText: {
+    fontFamily: font.regular,
+    fontSize: 11,
+    color: theme.colors.textSecondary,
+  },
+});
+
+// ── Journey list row ──────────────────────────────────────────────────────────
+
+function JourneyListRow({
+  trip,
+  token,
+  onPress,
+}: {
+  trip: TripListItem;
+  token: string | null;
+  onPress: () => void;
+}) {
+  const [likedByMe, setLikedByMe] = useState(trip.engagement?.likedByMe ?? false);
+  const [likeCount, setLikeCount] = useState(trip.engagement?.likeCount ?? 0);
+  const [savedByMe, setSavedByMe] = useState(trip.engagement?.savedByMe ?? false);
+  const [saveCount, setSaveCount] = useState(trip.engagement?.saveCount ?? 0);
+  const [likePending, setLikePending] = useState(false);
+  const [savePending, setSavePending] = useState(false);
+
+  const imageUrl = trip.preview?.imageUrl?.trim() || null;
+  const isPrivate = trip.visibility === 'PRIVATE';
+  const vis = VIS_CONFIG[trip.visibility];
+
+  const handleLike = async () => {
+    if (!token || likePending || isPrivate) return;
+    setLikePending(true);
+    const wasLiked = likedByMe;
+    setLikedByMe(!wasLiked);
+    setLikeCount((c) => (wasLiked ? c - 1 : c + 1));
+    try {
+      if (wasLiked) await unlikePublicTrip(trip.id, token);
+      else await likePublicTrip(trip.id, token);
+    } catch {
+      setLikedByMe(wasLiked);
+      setLikeCount((c) => (wasLiked ? c + 1 : c - 1));
+    } finally {
+      setLikePending(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!token || savePending || isPrivate) return;
+    setSavePending(true);
+    const wasSaved = savedByMe;
+    setSavedByMe(!wasSaved);
+    setSaveCount((c) => (wasSaved ? c - 1 : c + 1));
+    try {
+      if (wasSaved) await unsavePublicTrip(trip.id, token);
+      else await savePublicTrip(trip.id, token);
+    } catch {
+      setSavedByMe(wasSaved);
+      setSaveCount((c) => (wasSaved ? c + 1 : c - 1));
+    } finally {
+      setSavePending(false);
+    }
+  };
+
+  const categoryLine = trip.categories.length > 0
+    ? trip.categories.map(cap).slice(0, 3).join(', ')
+    : null;
+
+  return (
+    <Pressable
+      style={({ pressed }) => [listRowStyles.row, pressed && { opacity: 0.92 }]}
+      onPress={onPress}
+    >
+      <View style={listRowStyles.imageWrap}>
+        <Artwork imageUrl={imageUrl} kind="trip" variant="cover" />
+      </View>
+      <View style={listRowStyles.content}>
+        <Text style={listRowStyles.title} numberOfLines={2}>{trip.title}</Text>
+        <View style={listRowStyles.metaRow}>
+          <Ionicons name={vis.icon as any} size={11} color={vis.color} />
+          <Text style={[listRowStyles.metaText, { color: vis.color }]}>{vis.label}</Text>
+          <Text style={listRowStyles.metaDot}> · </Text>
+          <Text style={listRowStyles.metaText}>{formatShortDate(trip.date)}</Text>
+        </View>
+        {categoryLine ? (
+          <Text style={listRowStyles.metaText} numberOfLines={1}>{categoryLine}</Text>
+        ) : null}
+        {!isPrivate && (
+          <View style={listRowStyles.metricsRow}>
+            <Pressable style={listRowStyles.metricBtn} onPress={handleLike} hitSlop={4}>
+              <Ionicons
+                name={likedByMe ? 'heart' : 'heart-outline'}
+                size={14}
+                color={likedByMe ? '#EF4444' : theme.colors.textSecondary}
+              />
+              <Text style={listRowStyles.metricText}>{likeCount}</Text>
+            </Pressable>
+            <View style={listRowStyles.metricItem}>
+              <Ionicons name="chatbubble-outline" size={14} color={theme.colors.textSecondary} />
+              <Text style={listRowStyles.metricText}>{trip.engagement?.commentCount ?? 0}</Text>
+            </View>
+            <Pressable style={listRowStyles.metricBtn} onPress={handleSave} hitSlop={4}>
+              <Ionicons
+                name={savedByMe ? 'bookmark' : 'bookmark-outline'}
+                size={14}
+                color={savedByMe ? theme.colors.primary : theme.colors.textSecondary}
+              />
+              <Text style={listRowStyles.metricText}>{saveCount}</Text>
+            </Pressable>
+          </View>
+        )}
+      </View>
+    </Pressable>
+  );
+}
+
+const listRowStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: H_PAD,
+    paddingVertical: 10,
+  },
+  imageWrap: {
+    width: 90,
+    height: 116,
+    borderRadius: 12,
+    overflow: 'hidden',
+    flexShrink: 0,
+  },
+  content: {
+    flex: 1,
+    paddingVertical: 2,
+    gap: 5,
+  },
+  title: {
+    fontFamily: font.bold,
+    fontSize: 14,
+    lineHeight: 19,
+    color: theme.colors.primaryDark,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  metaText: {
+    fontFamily: font.regular,
+    fontSize: 11,
+    color: theme.colors.textSecondary,
+  },
+  metaDot: {
+    fontFamily: font.regular,
+    fontSize: 11,
+    color: theme.colors.textSecondary,
+  },
+  metricsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 2,
+  },
+  metricBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  metricItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  metricText: {
+    fontFamily: font.medium,
+    fontSize: 13,
+    color: theme.colors.textSecondary,
+  },
+});
+
+// ── Screen ────────────────────────────────────────────────────────────────────
+
+export default function ProfileScreen() {
+  const router = useRouter();
+  const { width: screenWidth } = useWindowDimensions();
+  const { signOut, user, token, isLoading: isAuthLoading, setUser } = useAuth();
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  const [journeyLayout, setJourneyLayout] = useState<'grid' | 'list'>('grid');
+  const [trips, setTrips] = useState<TripListItem[]>([]);
+  const [isTripsLoading, setIsTripsLoading] = useState(true);
+  const [tripsError, setTripsError] = useState<string | null>(null);
+  const [followerCount, setFollowerCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
+  const [followModal, setFollowModal] = useState<'followers' | 'following' | null>(null);
+
+  const loadTrips = useCallback(async () => {
+    if (isAuthLoading) return;
+    if (!token) {
+      setTrips([]);
+      setTripsError('Authentication required. Please sign in again.');
+      setIsTripsLoading(false);
+      return;
+    }
+    try {
+      setIsTripsLoading(true);
+      setTripsError(null);
+      setTrips(await getTrips(token));
+    } catch (error) {
+      setTrips([]);
+      setTripsError(error instanceof Error ? error.message : 'Unable to load your trips.');
+    } finally {
+      setIsTripsLoading(false);
+    }
+  }, [token, isAuthLoading]);
+
+  const loadSocialStats = useCallback(async () => {
+    if (!token) return;
+    try {
+      const me = await getMe(token);
+      setUser(me);
+      setFollowerCount(me.followerCount ?? 0);
+      setFollowingCount(me.followingCount ?? 0);
+    } catch { /* non-critical — counts stay at last known value */ }
+  }, [token, setUser]);
+
+  useFocusEffect(useCallback(() => {
+    void loadTrips();
+    void loadSocialStats();
+  }, [loadTrips, loadSocialStats]));
+
+  const handleLogout = async () => {
+    if (isSigningOut) return;
+    try {
+      setIsSigningOut(true);
+      await signOut();
+      router.replace('/login');
+    } finally {
+      setIsSigningOut(false);
+    }
+  };
+
+  const email = user?.email ?? 'Not signed in';
+  const profileName = getDisplayName(user?.displayName, email);
+  const tagline = buildTagline(trips);
+
+  const stats = useMemo(() => ({
+    trips: trips.length,
+    followers: followerCount,
+    following: followingCount,
+  }), [trips, followerCount, followingCount]);
+
+  const journeyTrips = useMemo(() => trips, [trips]);
+
+  const cardWidth = Math.floor((screenWidth - H_PAD * 2 - CARD_GAP) / 2);
+
+  return (
+    <View style={styles.root}>
+      <AppHeader />
+      <SafeAreaView style={styles.safe} edges={['left', 'right']}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
+          {/* ── Cover image ── */}
+          <View style={styles.coverWrap}>
+            <Image
+              source={user?.coverImageUrl ? { uri: user.coverImageUrl } : COVER_IMAGE}
+              style={styles.coverImage}
+              contentFit="cover"
+            />
+          </View>
+
+          {/* ── Avatar — overlaps lower edge of cover ── */}
+          <View style={styles.avatarAnchor}>
+            <UserAvatar
+              avatarUrl={user?.avatarUrl}
+              displayName={user?.displayName}
+              email={email}
+              size={AVATAR_SIZE}
+              variant="profile"
+            />
+          </View>
+
+          {/* ── Identity ── */}
+          <View style={styles.identitySection}>
+            <Text style={styles.name} numberOfLines={1}>{profileName}</Text>
+            {!isAuthLoading && user?.travelVibes && user.travelVibes.length > 0 ? (
+              <Text style={styles.vibes} numberOfLines={1}>{user.travelVibes.join(' • ')}</Text>
+            ) : null}
+            {!isAuthLoading && user?.bio ? (
+              <Text style={styles.bio} numberOfLines={3}>{user.bio}</Text>
+            ) : !isAuthLoading ? (
+              <Text style={styles.tagline} numberOfLines={2}>{tagline}</Text>
+            ) : null}
+          </View>
+
+          {/* ── Social stats row ── */}
+          <View style={styles.statsRow}>
+            {[
+              { label: 'Trips', value: stats.trips, tappable: false },
+              { label: 'Followers', value: stats.followers, tappable: true },
+              { label: 'Following', value: stats.following, tappable: true },
+            ].map(({ label, value, tappable }, index) => (
+              <View key={label} style={styles.statCell}>
+                {index > 0 && <View style={styles.statDivider} />}
+                {tappable ? (
+                  <Pressable
+                    style={({ pressed }) => [styles.statCellInner, pressed && { opacity: 0.6 }]}
+                    onPress={() => setFollowModal(label === 'Followers' ? 'followers' : 'following')}
+                  >
+                    <Text style={styles.statValue}>{value}</Text>
+                    <Text style={styles.statLabel}>{label}</Text>
+                  </Pressable>
+                ) : (
+                  <View style={styles.statCellInner}>
+                    <Text style={styles.statValue}>{value}</Text>
+                    <Text style={styles.statLabel}>{label}</Text>
+                  </View>
+                )}
+              </View>
+            ))}
+          </View>
+
+          {/* ── Action buttons ── */}
+          <View style={styles.actionRow}>
+            <Pressable
+              style={({ pressed }) => [styles.btnPrimary, pressed && { opacity: 0.88 }]}
+              onPress={() => router.push('/saved-trips' as any)}
+            >
+              <Ionicons name="bookmark" size={15} color="#FFFFFF" />
+              <Text style={styles.btnPrimaryText}>Saved Trips</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.btnSecondary, pressed && { opacity: 0.88 }]}
+              onPress={() => router.push('/edit-profile' as any)}
+            >
+              <Ionicons name="create-outline" size={15} color={theme.colors.primaryDark} />
+              <Text style={styles.btnSecondaryText}>Edit Profile</Text>
+            </Pressable>
+          </View>
+
+          {/* ── Journeys section header ── */}
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Journeys</Text>
+            <Pressable
+              hitSlop={8}
+              onPress={() => setJourneyLayout((l) => (l === 'grid' ? 'list' : 'grid'))}
+            >
+              <Ionicons
+                name={journeyLayout === 'grid' ? 'list-outline' : 'grid-outline'}
+                size={20}
+                color={theme.colors.textSecondary}
+              />
+            </Pressable>
+          </View>
+
+          {/* ── Journey grid / list ── */}
+          {isTripsLoading ? (
+            <View style={styles.stateCenter}>
+              <ActivityIndicator size="small" color={theme.colors.primary} />
+              <Text style={styles.stateText}>Loading journeys…</Text>
+            </View>
+          ) : tripsError ? (
+            <View style={styles.stateCenter}>
+              <View style={styles.stateIconWrap}>
+                <Ionicons name="alert-circle-outline" size={28} color={theme.colors.primary} />
+              </View>
+              <Text style={styles.stateTitle}>Couldn't load trips</Text>
+              <Text style={styles.stateText}>{tripsError}</Text>
+              <Pressable style={styles.actionBtn} onPress={() => void loadTrips()}>
+                <Text style={styles.actionBtnText}>Try again</Text>
+              </Pressable>
+            </View>
+          ) : journeyTrips.length > 0 ? (
+            journeyLayout === 'grid' ? (
+              <View style={styles.grid}>
+                {journeyTrips.map((trip) => (
+                  <JourneyCard
+                    key={trip.id}
+                    trip={trip}
+                    cardWidth={cardWidth}
+                    showVisibility
+                    onPress={() => router.push(buildTripDetailParams(trip.id, { source: 'profile' }))}
+                  />
+                ))}
+              </View>
+            ) : (
+              <View style={styles.list}>
+                {journeyTrips.map((trip, index) => (
+                  <View key={trip.id}>
+                    {index > 0 && <View style={styles.listDivider} />}
+                    <JourneyListRow
+                      trip={trip}
+                      token={token}
+                      onPress={() => router.push(buildTripDetailParams(trip.id, { source: 'profile' }))}
+                    />
+                  </View>
+                ))}
+              </View>
+            )
+          ) : (
+            <View style={styles.emptyState}>
+              <View style={styles.stateIconWrap}>
+                <Ionicons name="map-outline" size={28} color={theme.colors.primary} />
+              </View>
+              <Text style={styles.stateTitle}>No journeys yet</Text>
+              <Text style={styles.stateText}>
+                Trips you create will appear here. Plan your first one!
+              </Text>
+              <Pressable
+                style={styles.actionBtn}
+                onPress={() => router.push('/(tabs)/planner')}
+              >
+                <Text style={styles.actionBtnText}>Plan a trip</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {/* ── Sign out ── */}
+          <View style={styles.signOutWrap}>
+            <Pressable
+              style={({ pressed }) => [styles.signOutBtn, pressed && { opacity: 0.7 }]}
+              onPress={() => void handleLogout()}
+              disabled={isSigningOut}
+            >
+              <Ionicons name="log-out-outline" size={16} color={theme.colors.textSecondary} />
+              <Text style={[styles.signOutText, isSigningOut && { opacity: 0.45 }]}>
+                {isSigningOut ? 'Signing out…' : 'Sign out'}
+              </Text>
+            </Pressable>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+
+      <FollowListModal
+        visible={followModal !== null}
+        onClose={() => setFollowModal(null)}
+        type={followModal ?? 'followers'}
+        targetUserId={user?.id ?? ''}
+        isOwnProfile
+        token={token}
+        currentUserId={user?.id ?? null}
+        onFollowerCountChange={(delta) => setFollowerCount((c) => c + delta)}
+        onFollowingCountChange={(delta) => setFollowingCount((c) => c + delta)}
+      />
+    </View>
+  );
+}
+
+// ── Styles ────────────────────────────────────────────────────────────────────
+
+const AVATAR_TOTAL = AVATAR_SIZE + PROFILE_AVATAR_FRAME_INSET * 2;
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+  },
+  safe: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+  },
+  scrollContent: {
+    paddingBottom: 48,
+  },
+
+  // ── Cover ────────────────────────────────────────────────────────────────
+  coverWrap: {
+    height: COVER_HEIGHT,
+    backgroundColor: theme.colors.primaryDark,
+  },
+  coverImage: {
+    width: '100%',
+    height: COVER_HEIGHT,
+  },
+
+  // ── Avatar ───────────────────────────────────────────────────────────────
+  avatarAnchor: {
+    alignItems: 'center',
+    marginTop: -(AVATAR_TOTAL / 2),
+  },
+
+  // ── Identity ─────────────────────────────────────────────────────────────
+  identitySection: {
+    alignItems: 'center',
+    paddingHorizontal: H_PAD,
+    paddingTop: 12,
+    paddingBottom: 20,
+    gap: 5,
+  },
+  name: {
+    fontFamily: font.bold,
+    fontSize: 22,
+    lineHeight: 28,
+    letterSpacing: -0.3,
+    color: theme.colors.primaryDark,
+    textAlign: 'center',
+  },
+  tagline: {
+    ...type.bodySm,
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
+  },
+  bio: {
+    fontFamily: font.regular,
+    fontSize: 14,
+    lineHeight: 21,
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
+  },
+
+  // ── Stats row ────────────────────────────────────────────────────────────
+  statsRow: {
+    flexDirection: 'row',
+    marginHorizontal: H_PAD,
+    marginBottom: 20,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: theme.colors.border,
+    paddingVertical: 16,
+  },
+  statCell: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  statDivider: {
+    width: 1,
+    backgroundColor: theme.colors.border,
+    marginVertical: 4,
+  },
+  statCellInner: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 3,
+  },
+  statValue: {
+    fontFamily: font.bold,
+    fontSize: 28,
+    lineHeight: 32,
+    letterSpacing: -0.5,
+    color: theme.colors.primaryDark,
+  },
+  statLabel: {
+    fontFamily: font.medium,
+    fontSize: 11,
+    color: theme.colors.textSecondary,
+    letterSpacing: 0.2,
+  },
+
+  // ── Action buttons ────────────────────────────────────────────────────────
+  actionRow: {
+    flexDirection: 'row',
+    marginHorizontal: H_PAD,
+    gap: 12,
+    marginBottom: 28,
+  },
+  btnPrimary: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    backgroundColor: theme.colors.primary,
+    borderRadius: 14,
+    paddingVertical: 14,
+  },
+  btnPrimaryText: {
+    fontFamily: font.semiBold,
+    fontSize: 14,
+    color: '#FFFFFF',
+  },
+  btnSecondary: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    backgroundColor: '#DFF7F6',
+    borderRadius: 14,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
+  },
+  btnSecondaryText: {
+    fontFamily: font.semiBold,
+    fontSize: 14,
+    color: theme.colors.primaryDark,
+  },
+  vibes: {
+    fontFamily: font.medium,
+    fontSize: 13,
+    color: theme.colors.primary,
+    textAlign: 'center',
+  },
+
+  // ── Section header ────────────────────────────────────────────────────────
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: H_PAD,
+    marginBottom: 14,
+  },
+  sectionTitle: {
+    fontFamily: font.bold,
+    fontSize: 17,
+    lineHeight: 22,
+    letterSpacing: -0.2,
+    color: theme.colors.primaryDark,
+  },
+
+  // ── Journey grid / list ───────────────────────────────────────────────────
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: H_PAD,
+    gap: CARD_GAP,
+    marginBottom: 8,
+  },
+  list: {
+    marginBottom: 8,
+  },
+  listDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: theme.colors.border,
+    marginHorizontal: H_PAD,
+  },
+
+  // ── States: loading / error / empty ──────────────────────────────────────
+  stateCenter: {
+    alignItems: 'center',
+    paddingVertical: 36,
+    paddingHorizontal: H_PAD,
+    gap: 10,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 36,
+    paddingHorizontal: 24,
+    gap: 10,
+    marginHorizontal: H_PAD,
+    backgroundColor: theme.colors.surface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    marginBottom: 8,
+  },
+  stateIconWrap: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#DFF7F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  stateTitle: {
+    fontFamily: font.bold,
+    fontSize: 16,
+    color: theme.colors.primaryDark,
+    textAlign: 'center',
+  },
+  stateText: {
+    ...type.bodySm,
+    color: theme.colors.textSecondary,
+    textAlign: 'center',
+  },
+  actionBtn: {
+    backgroundColor: theme.colors.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 11,
+    borderRadius: 12,
+    marginTop: 2,
+  },
+  actionBtnText: {
+    fontFamily: font.semiBold,
+    fontSize: 14,
+    color: '#FFFFFF',
+  },
+
+  // ── Sign out ──────────────────────────────────────────────────────────────
+  signOutWrap: {
+    alignItems: 'center',
+    marginTop: 24,
+  },
+  signOutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  signOutText: {
+    fontFamily: font.medium,
+    fontSize: 13,
+    color: theme.colors.textSecondary,
+  },
+});

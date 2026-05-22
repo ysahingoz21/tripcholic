@@ -298,7 +298,9 @@ type ExploreTripRecord = Prisma.TripGetPayload<{
   include: {
     user: {
       select: {
+        id: true;
         displayName: true;
+        avatarUrl: true;
       };
     };
     stops: {
@@ -378,10 +380,24 @@ export class TripsService {
       },
     });
 
-    return trips.map((trip) => this.toTripListItem(trip as TripListRecord));
+    const tripIds = trips.map((trip) => trip.id);
+    const engagementByTripId = await this.getBatchEngagement(client, tripIds, userId);
+
+    return trips.map((trip) => ({
+      ...this.toTripListItem(trip as TripListRecord),
+      engagement: engagementByTripId.get(trip.id) ?? {
+        likeCount: 0,
+        commentCount: 0,
+        saveCount: 0,
+        completionCount: 0,
+        likedByMe: false,
+        savedByMe: false,
+        completedByMe: false,
+      },
+    }));
   }
 
-  async findExploreTrips(query: ExploreTripsQueryDto) {
+  async findExploreTrips(query: ExploreTripsQueryDto, userId: string | null = null) {
     const client = await this.prisma.getClient();
     const trimmedQuery = query.q?.trim();
     const normalizedQuery = trimmedQuery ? trimmedQuery : null;
@@ -392,6 +408,7 @@ export class TripsService {
     const where: Prisma.TripWhereInput = {
       visibility: 'PUBLIC',
       status: 'OPTIMIZED',
+      ...(query.creatorId && { userId: query.creatorId }),
       ...(normalizedQuery && {
         OR: [
           { title: { contains: normalizedQuery, mode: 'insensitive' } },
@@ -423,7 +440,9 @@ export class TripsService {
         include: {
           user: {
             select: {
+              id: true,
               displayName: true,
+              avatarUrl: true,
             },
           },
           stops: {
@@ -463,10 +482,22 @@ export class TripsService {
       ),
     ].sort((left, right) => left.localeCompare(right));
 
+    const tripIds = trips.map((trip) => trip.id);
+    const engagementByTripId = await this.getBatchEngagement(client, tripIds, userId);
+
     return {
-      items: trips.map((trip) =>
-        this.toExploreTripItem(trip as ExploreTripRecord),
-      ),
+      items: trips.map((trip) => ({
+        ...this.toExploreTripItem(trip as ExploreTripRecord),
+        engagement: engagementByTripId.get(trip.id) ?? {
+          likeCount: 0,
+          commentCount: 0,
+          saveCount: 0,
+          completionCount: 0,
+          likedByMe: false,
+          savedByMe: false,
+          completedByMe: false,
+        },
+      })),
       meta: {
         total,
         availableCategories,
@@ -479,6 +510,127 @@ export class TripsService {
         },
       },
     };
+  }
+
+  async findTrendingTrips(userId: string | null = null, limit = 8) {
+    const client = await this.prisma.getClient();
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+    const tripInclude = {
+      user: { select: { id: true, displayName: true, avatarUrl: true } },
+      stops: {
+        orderBy: { order: 'asc' as const },
+        include: {
+          poi: {
+            select: { category: true, district: true, imageUrl: true, lat: true, lng: true },
+          },
+        },
+      },
+    };
+
+    let trips = await client.trip.findMany({
+      where: {
+        visibility: 'PUBLIC',
+        status: 'OPTIMIZED',
+        OR: [
+          { optimizedAt: { gte: sevenDaysAgo } },
+          { createdAt: { gte: sevenDaysAgo } },
+        ],
+      },
+      orderBy: [{ optimizedAt: 'desc' }, { createdAt: 'desc' }],
+      take: limit * 2,
+      include: tripInclude,
+    });
+
+    let fallback = false;
+
+    if (trips.length === 0) {
+      fallback = true;
+      trips = await client.trip.findMany({
+        where: { visibility: 'PUBLIC', status: 'OPTIMIZED' },
+        orderBy: [{ optimizedAt: 'desc' }, { createdAt: 'desc' }],
+        take: limit * 4,
+        include: tripInclude,
+      });
+    }
+
+    const tripIds = trips.map((t) => t.id);
+    const engagementByTripId = await this.getBatchEngagement(client, tripIds, userId);
+
+    const defaultEngagement = {
+      likeCount: 0, commentCount: 0, saveCount: 0, completionCount: 0,
+      likedByMe: false, savedByMe: false, completedByMe: false,
+    };
+
+    const withEngagement = trips
+      .map((trip) => ({ trip, engagement: engagementByTripId.get(trip.id) ?? defaultEngagement }))
+      .sort((a, b) => {
+        const diff = b.engagement.likeCount - a.engagement.likeCount;
+        if (diff !== 0) return diff;
+        const aDate = new Date((a.trip.optimizedAt ?? a.trip.createdAt)!).getTime();
+        const bDate = new Date((b.trip.optimizedAt ?? b.trip.createdAt)!).getTime();
+        return bDate - aDate;
+      })
+      .slice(0, limit);
+
+    return {
+      items: withEngagement.map(({ trip, engagement }) => ({
+        ...this.toExploreTripItem(trip as ExploreTripRecord),
+        engagement,
+      })),
+      meta: { fallback },
+    };
+  }
+
+  private async getBatchEngagement(
+    client: any,
+    tripIds: string[],
+    userId: string | null,
+  ) {
+    if (tripIds.length === 0) {
+      return new Map<string, { likeCount: number; commentCount: number; saveCount: number; completionCount: number; likedByMe: boolean; savedByMe: boolean; completedByMe: boolean }>();
+    }
+
+    const [likes, comments, saves, completions, myLikes, mySaves, myCompletions] = await Promise.all([
+      client.tripLike.findMany({ where: { tripId: { in: tripIds } }, select: { tripId: true } }),
+      client.tripComment.findMany({ where: { tripId: { in: tripIds } }, select: { tripId: true } }),
+      client.savedTrip.findMany({ where: { tripId: { in: tripIds } }, select: { tripId: true } }),
+      client.tripCompletion.findMany({ where: { tripId: { in: tripIds } }, select: { tripId: true } }),
+      userId ? client.tripLike.findMany({ where: { tripId: { in: tripIds }, userId }, select: { tripId: true } }) : Promise.resolve([]),
+      userId ? client.savedTrip.findMany({ where: { tripId: { in: tripIds }, userId }, select: { tripId: true } }) : Promise.resolve([]),
+      userId ? client.tripCompletion.findMany({ where: { tripId: { in: tripIds }, userId }, select: { tripId: true } }) : Promise.resolve([]),
+    ]);
+
+    const countBy = (rows: Array<{ tripId: string }>) => {
+      const map = new Map<string, number>();
+      for (const { tripId } of rows) {
+        map.set(tripId, (map.get(tripId) ?? 0) + 1);
+      }
+      return map;
+    };
+
+    const likeCountMap = countBy(likes);
+    const commentCountMap = countBy(comments);
+    const saveCountMap = countBy(saves);
+    const completionCountMap = countBy(completions);
+    const likedSet = new Set<string>((myLikes as Array<{ tripId: string }>).map((r) => r.tripId));
+    const savedSet = new Set<string>((mySaves as Array<{ tripId: string }>).map((r) => r.tripId));
+    const completedSet = new Set<string>((myCompletions as Array<{ tripId: string }>).map((r) => r.tripId));
+
+    return new Map(
+      tripIds.map((tripId) => [
+        tripId,
+        {
+          likeCount: likeCountMap.get(tripId) ?? 0,
+          commentCount: commentCountMap.get(tripId) ?? 0,
+          saveCount: saveCountMap.get(tripId) ?? 0,
+          completionCount: completionCountMap.get(tripId) ?? 0,
+          likedByMe: likedSet.has(tripId),
+          savedByMe: savedSet.has(tripId),
+          completedByMe: completedSet.has(tripId),
+        },
+      ]),
+    );
   }
 
   async findOne(userId: string, id: string) {
@@ -538,6 +690,9 @@ export class TripsService {
         ...(payload.maxStops !== undefined && { maxPois: payload.maxStops }),
         ...(payload.visibility !== undefined && {
           visibility: payload.visibility,
+        }),
+        ...(payload.coverImageUrl !== undefined && {
+          coverImageUrl: payload.coverImageUrl ?? null,
         }),
       },
     });
@@ -1718,6 +1873,7 @@ export class TripsService {
       categories: trip.categories,
       routeTotalDurationMin: trip.routeTotalDurationMin,
       routeTotalCostTl: trip.routeTotalCostTl,
+      coverImageUrl: trip.coverImageUrl,
       stops: trip.stops.map((stop) => ({
         category: stop.poi.category.toLowerCase(),
         district: stop.poi.district,
@@ -1766,6 +1922,7 @@ export class TripsService {
       categories: trip.categories,
       routeTotalDurationMin: trip.routeTotalDurationMin,
       routeTotalCostTl: trip.routeTotalCostTl,
+      coverImageUrl: trip.coverImageUrl,
       stops: trip.stops.map((stop) => ({
         category: stop.poi.category.toLowerCase(),
         district: stop.poi.district,
@@ -1787,7 +1944,9 @@ export class TripsService {
       optimizedAt: trip.optimizedAt,
       preview,
       creator: {
+        id: trip.user?.id ?? null,
         displayName: trip.user?.displayName ?? null,
+        avatarUrl: trip.user?.avatarUrl ?? null,
       },
     };
   }
@@ -1833,6 +1992,7 @@ export class TripsService {
       categories: trip.categories,
       routeTotalDurationMin: trip.routeTotalDurationMin,
       routeTotalCostTl: trip.routeTotalCostTl,
+      coverImageUrl: trip.coverImageUrl,
       stops: stops.map((stop) => ({
         category: stop.poi.category,
         district: stop.poi.district,
@@ -1860,6 +2020,7 @@ export class TripsService {
         maxPois: trip.maxPois,
         status: trip.status,
         visibility: trip.visibility,
+        coverImageUrl: trip.coverImageUrl ?? null,
         createdAt: trip.createdAt,
         updatedAt: trip.updatedAt,
       },

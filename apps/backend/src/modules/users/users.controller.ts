@@ -1,9 +1,13 @@
 import {
+  Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   Param,
+  Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -17,13 +21,19 @@ import {
 } from '@nestjs/swagger';
 import { type Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
 import { type AuthenticatedUser } from '../auth/types/authenticated-user.type';
 import { CreatorFollowResponseDto } from './dto/creator-follow-response.dto';
 import { CurrentUserResponseDto } from './dto/current-user-response.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 import { UsersService } from './users.service';
 
 type AuthenticatedRequest = Request & {
   user: AuthenticatedUser;
+};
+
+type MaybeAuthenticatedRequest = Request & {
+  user?: AuthenticatedUser | null;
 };
 
 @ApiTags('users')
@@ -46,6 +56,51 @@ export class UsersController {
   @ApiNotFoundResponse({ description: 'Authenticated user no longer exists.' })
   async getMe(@Req() req: AuthenticatedRequest) {
     return this.usersService.getCurrentUser(req.user.id);
+  }
+
+  @Patch('me')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({
+    summary: 'Update current user profile',
+    description: 'Updates display name, bio, avatar, cover, travel vibes, and favorite categories.',
+  })
+  @ApiOkResponse({
+    description: 'Updated user profile.',
+    type: CurrentUserResponseDto,
+  })
+  @ApiUnauthorizedResponse({ description: 'Missing, invalid, or expired Bearer token.' })
+  async updateMe(@Req() req: AuthenticatedRequest, @Body() dto: UpdateUserDto) {
+    return this.usersService.updateCurrentUser(req.user.id, dto);
+  }
+
+  @Get('search')
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiOperation({
+    summary: 'Search users by display name',
+    description: 'Returns minimal public user data. isFollowedByMe requires a valid Bearer token.',
+  })
+  @ApiOkResponse({ description: 'Matched users.' })
+  async searchUsers(
+    @Query('q') q: string,
+    @Req() req: MaybeAuthenticatedRequest,
+  ) {
+    return this.usersService.searchUsers(req.user?.id ?? null, q ?? '');
+  }
+
+  @Get(':id')
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiOperation({
+    summary: 'Get public user profile',
+    description: 'Returns a public user profile. isFollowedByMe requires a valid Bearer token.',
+  })
+  @ApiOkResponse({ description: 'Public user profile.' })
+  @ApiNotFoundResponse({ description: 'User not found.' })
+  async getPublicUser(
+    @Req() req: MaybeAuthenticatedRequest,
+    @Param('id') id: string,
+  ) {
+    return this.usersService.getPublicUser(req.user?.id ?? null, id);
   }
 
   @Post(':id/follow')
@@ -87,5 +142,56 @@ export class UsersController {
     @Param('id') id: string,
   ) {
     return this.usersService.unfollowUser(req.user.id, id);
+  }
+
+  @Get(':id/followers')
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiOperation({
+    summary: 'Get followers list',
+    description: "Returns the list of users who follow the given user. isFollowedByMe requires a valid Bearer token.",
+  })
+  @ApiOkResponse({ description: 'Followers list.' })
+  @ApiNotFoundResponse({ description: 'User not found.' })
+  async getFollowers(
+    @Req() req: MaybeAuthenticatedRequest,
+    @Param('id') id: string,
+  ) {
+    return this.usersService.getFollowers(req.user?.id ?? null, id);
+  }
+
+  @Get(':id/following')
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiOperation({
+    summary: 'Get following list',
+    description: "Returns the list of users that the given user follows. isFollowedByMe requires a valid Bearer token.",
+  })
+  @ApiOkResponse({ description: 'Following list.' })
+  @ApiNotFoundResponse({ description: 'User not found.' })
+  async getFollowing(
+    @Req() req: MaybeAuthenticatedRequest,
+    @Param('id') id: string,
+  ) {
+    return this.usersService.getFollowing(req.user?.id ?? null, id);
+  }
+
+  @Delete(':id/followers/:followerId')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({
+    summary: 'Remove a follower',
+    description: 'Removes a user from the authenticated user\'s followers list. Only callable on your own profile.',
+  })
+  @ApiOkResponse({ description: 'Follower removed, updated follower count returned.' })
+  @ApiUnauthorizedResponse({ description: 'Missing, invalid, or expired Bearer token.' })
+  @ApiNotFoundResponse({ description: 'User not found.' })
+  async removeFollower(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Param('followerId') followerId: string,
+  ) {
+    if (req.user.id !== id) {
+      throw new ForbiddenException('You can only manage your own followers');
+    }
+    return this.usersService.removeFollower(req.user.id, followerId);
   }
 }

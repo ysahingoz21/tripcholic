@@ -9,6 +9,9 @@ import {
   type TripVisibility,
   type UpdateTripPayload,
 } from "@/services/trips";
+import { uploadImage } from "@/services/uploads";
+import ChangeCoverButton from "@/components/ui/ChangeCoverButton";
+import * as ImagePicker from "expo-image-picker";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
@@ -31,6 +34,7 @@ import {
 } from "react-native-safe-area-context";
 import Artwork from "@/components/ui/Artwork";
 import {
+  buildTripDetailParams,
   buildTripReturnTarget,
   getTripRouteSource,
 } from "@/utils/tripNavigation";
@@ -76,13 +80,6 @@ const BUDGET_OPTIONS = [
 ] as const;
 
 type BudgetKey = "low" | "medium" | "high" | "";
-type WeatherKey = "clear" | "cloudy" | "rainy" | "";
-
-const WEATHER_OPTIONS = [
-  { key: "clear" as const, label: "Clear", icon: "sunny-outline" as const },
-  { key: "cloudy" as const, label: "Cloudy", icon: "cloud-outline" as const },
-  { key: "rainy" as const, label: "Rainy", icon: "rainy-outline" as const },
-] as const;
 
 // Map existing numeric budgetTl → a BudgetKey
 function budgetTlToBudgetKey(tl: number | null): BudgetKey {
@@ -234,16 +231,16 @@ export default function EditTripScreen() {
 
   // Form state
   const [title, setTitle] = useState("");
+  const [destination, setDestination] = useState("");
   const [description, setDescription] = useState("");
   const [date, setDate] = useState("");
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [categories, setCategories] = useState<string[]>([]);
   const [budgetKey, setBudgetKey] = useState<BudgetKey>("");
-  const [budgetAmount, setBudgetAmount] = useState("");
   const [isPublic, setIsPublic] = useState(false);
   // Keep weather + maxWalkingDistanceKm + maxStops in state to preserve on save
-  const [weather, setWeather] = useState<WeatherKey>("");
+  const [weather, setWeather] = useState("");
   const [maxWalkingDistanceKm, setMaxWalkingDistanceKm] = useState<
     number | null
   >(null);
@@ -252,6 +249,10 @@ export default function EditTripScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showStartTimePicker, setShowStartTimePicker] = useState(false);
   const [showEndTimePicker, setShowEndTimePicker] = useState(false);
+
+  // Cover image upload state
+  const [pendingCoverUrl, setPendingCoverUrl] = useState<string | null>(null);
+  const [isUploadingCover, setIsUploadingCover] = useState(false);
 
   const tripReturnTarget = buildTripReturnTarget({ source, returnTripId });
   const routeSource = getTripRouteSource(source);
@@ -275,27 +276,18 @@ export default function EditTripScreen() {
         const data = await getTrip(token, id);
         setTripDetail(data);
         setTitle(data.trip.title);
+        setDestination(data.trip.destination ?? "");
         setDescription(data.trip.description ?? "");
         setDate(data.trip.date.slice(0, 10));
         setStartTime(data.trip.timeStart ?? "");
         setEndTime(data.trip.timeEnd ?? "");
         setCategories(data.trip.categories.map((c) => c.toLowerCase()));
         setBudgetKey(budgetTlToBudgetKey(data.trip.budgetTl));
-        setBudgetAmount(
-          data.trip.budgetTl !== null
-            ? String(Math.round(data.trip.budgetTl))
-            : "",
-        );
         setIsPublic(data.trip.visibility === "PUBLIC");
-        setWeather(
-          data.trip.weather === "clear" ||
-            data.trip.weather === "cloudy" ||
-            data.trip.weather === "rainy"
-            ? data.trip.weather
-            : "",
-        );
+        setWeather(data.trip.weather ?? "");
         setMaxWalkingDistanceKm(data.trip.walkingToleranceKm);
         setMaxStops(data.trip.maxPois);
+        setPendingCoverUrl(data.trip.coverImageUrl ?? null);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Unable to load trip.");
       } finally {
@@ -320,8 +312,10 @@ export default function EditTripScreen() {
     const orig = tripDetail.trip;
     const newCats = normalizeCategories(categories);
     const origCats = normalizeCategories(orig.categories);
-    const selectedBudget = resolveBudgetTl() ?? null;
+    const selectedBudget =
+      BUDGET_OPTIONS.find((b) => b.key === budgetKey)?.value ?? null;
     return (
+      destination.trim() !== (orig.destination ?? "").trim() ||
       date !== orig.date.slice(0, 10) ||
       startTime !== (orig.timeStart ?? "") ||
       endTime !== (orig.timeEnd ?? "") ||
@@ -333,33 +327,60 @@ export default function EditTripScreen() {
     );
   }, [
     tripDetail,
+    destination,
     date,
     startTime,
     endTime,
     categories,
-    budgetAmount,
     budgetKey,
-    weather,
-    maxWalkingDistanceKm,
-    maxStops,
   ]);
-
-  function resolveBudgetTl() {
-    const normalized = budgetAmount.replace(/[^\d.]/g, "");
-    const exactBudget = Number(normalized);
-    if (Number.isFinite(exactBudget) && exactBudget > 0) {
-      return Math.round(exactBudget);
-    }
-    return BUDGET_OPTIONS.find((b) => b.key === budgetKey)?.value;
-  }
 
   const primaryActionLabel = hasOptimizationChanges
     ? "Save & Re-optimize"
     : "Save Changes";
 
   const handleCancel = () => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    // Fallback for deep-linked entry with no back stack
     const tripId = tripDetail?.trip.id ?? (typeof id === "string" ? id : "");
-    router.replace(`/public-trip/${tripId}` as any);
+    router.navigate(
+      buildTripDetailParams(tripId, {
+        ...(routeSource ? { source: routeSource } : {}),
+        ...(typeof returnTripId === "string" ? { returnTripId } : {}),
+      }),
+    );
+  };
+
+  const handleChangeCover = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert("Permission required", "Allow photo library access to change the cover image.");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: false,
+      quality: 0.9,
+    });
+
+    if (result.canceled || !result.assets[0]) return;
+
+    const asset = result.assets[0];
+    if (!token) return;
+
+    try {
+      setIsUploadingCover(true);
+      const { url } = await uploadImage(token, asset.uri, asset.mimeType ?? "image/jpeg");
+      setPendingCoverUrl(url);
+    } catch (err) {
+      Alert.alert("Upload failed", err instanceof Error ? err.message : "Could not upload image. Please try again.");
+    } finally {
+      setIsUploadingCover(false);
+    }
   };
 
   const handleSave = async () => {
@@ -374,16 +395,22 @@ export default function EditTripScreen() {
       Alert.alert("Missing title", "Please enter a trip title.");
       return;
     }
+    if (!destination.trim()) {
+      Alert.alert("Missing destination", "Please enter a destination.");
+      return;
+    }
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       Alert.alert("Invalid date", "Please provide a valid trip date.");
       return;
     }
 
     const resolvedVisibility: TripVisibility = isPublic ? "PUBLIC" : "PRIVATE";
-    const resolvedBudget = resolveBudgetTl();
+    const resolvedBudget =
+      BUDGET_OPTIONS.find((b) => b.key === budgetKey)?.value ?? undefined;
 
     const payload: UpdateTripPayload = {
       title: title.trim(),
+      destination: destination.trim(),
       description: description.trim() || undefined,
       date,
       startTime: startTime || undefined,
@@ -394,6 +421,7 @@ export default function EditTripScreen() {
       maxStops: maxStops ?? undefined,
       weather: weather || undefined,
       visibility: resolvedVisibility,
+      coverImageUrl: pendingCoverUrl,
     };
 
     try {
@@ -405,7 +433,16 @@ export default function EditTripScreen() {
         router.replace({ pathname: "/results", params: { tripId: id } });
         return;
       }
-      router.replace(`/public-trip/${id}` as any);
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace(
+          buildTripDetailParams(typeof id === "string" ? id : "", {
+            ...(routeSource ? { source: routeSource } : {}),
+            ...(typeof returnTripId === "string" ? { returnTripId } : {}),
+          }),
+        );
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unable to save trip.";
       setError(msg);
@@ -449,7 +486,9 @@ export default function EditTripScreen() {
     );
   }
 
-  const coverImageUrl = tripDetail?.preview.imageUrl?.trim() || null;
+  // pendingCoverUrl is the Cloudinary URL set on upload (or seeded from trip.coverImageUrl).
+  // Fall back to the POI-derived preview image if no cover has been set.
+  const displayCoverUrl = pendingCoverUrl || tripDetail?.preview.imageUrl?.trim() || null;
 
   // ── Main render ────────────────────────────────────────────────────────────
 
@@ -479,9 +518,9 @@ export default function EditTripScreen() {
 
         {/* ── Cover image ────────────────────────────────────────────────── */}
         <View style={styles.coverContainer}>
-          {coverImageUrl ? (
+          {displayCoverUrl ? (
             <Image
-              source={{ uri: coverImageUrl }}
+              source={{ uri: displayCoverUrl }}
               style={styles.coverImage}
               contentFit="cover"
               transition={200}
@@ -495,16 +534,13 @@ export default function EditTripScreen() {
               />
             </View>
           )}
-          {/* Change Cover overlay — placeholder, non-functional */}
-          <View style={styles.changeCoverCenter}>
-            <View style={styles.changeCoverOverlay}>
-              <Ionicons
-                name="image-outline"
-                size={16}
-                color={theme.colors.primaryDark}
-              />
-              <Text style={styles.changeCoverText}>Change Cover</Text>
-            </View>
+          <View style={styles.coverScrim} />
+          <View style={styles.coverOverlay}>
+            <ChangeCoverButton
+              onPress={handleChangeCover}
+              isUploading={isUploadingCover}
+              disabled={isSaving}
+            />
           </View>
         </View>
 
@@ -515,44 +551,79 @@ export default function EditTripScreen() {
         </View>
 
         <View style={styles.card}>
+          {/* Trip Title */}
           <Text style={styles.fieldLabel}>Trip Title *</Text>
           <TextInput
             value={title}
             onChangeText={setTitle}
-            placeholder="Enter trip title"
+            placeholder="e.g. Weekend in Old Istanbul"
             placeholderTextColor="#94A3B8"
             style={styles.input}
+            maxLength={120}
+            returnKeyType="next"
+            autoCorrect={false}
           />
+          <Text style={styles.fieldHint}>
+            Give your trip a name — you'll see it in your saved trips list.
+          </Text>
 
           <View style={styles.fieldSep} />
 
+          {/* Destination */}
+          <Text style={styles.fieldLabel}>Destination *</Text>
+          <TextInput
+            value={destination}
+            onChangeText={setDestination}
+            placeholder="e.g. Kadıköy, Beşiktaş, Sultanahmet"
+            placeholderTextColor="#94A3B8"
+            style={styles.input}
+            returnKeyType="next"
+            autoCorrect={false}
+          />
+          <Text style={styles.fieldHint}>
+            We'll recommend places within ~10 km of your destination. Popular:
+            Kadıköy · Beşiktaş · Taksim · Sultanahmet · Balat
+          </Text>
+
+          <View style={styles.fieldSep} />
+
+          {/* Description */}
           <Text style={styles.fieldLabel}>Description</Text>
           <TextInput
             value={description}
             onChangeText={setDescription}
-            placeholder="Describe this trip…"
+            placeholder="A short note about what to expect on this trip…"
             placeholderTextColor="#94A3B8"
             multiline
             textAlignVertical="top"
             style={styles.textArea}
+            maxLength={500}
           />
+          <Text style={styles.fieldHint}>
+            Optional — visible to you and others if the trip is public.
+          </Text>
         </View>
 
         {/* Date + Time */}
         <View style={styles.card}>
+          {/* Date */}
           <Text style={styles.fieldLabel}>Date *</Text>
           <Pressable
-            style={styles.input}
+            style={styles.inputIconRow}
             onPress={() => setShowDatePicker(true)}
           >
+            <Ionicons
+              name="calendar-outline"
+              size={16}
+              color={date ? theme.colors.primaryDark : "#94A3B8"}
+            />
             <Text
-              style={{
-                fontFamily: font.regular,
-                fontSize: 15,
-                color: date ? theme.colors.text : "#94A3B8",
-              }}
+              style={[
+                styles.inputIconText,
+                !date && styles.inputIconPlaceholder,
+              ]}
             >
-              {date || "Select date"}
+              {date || "Select a date"}
             </Text>
           </Pressable>
           {showDatePicker ? (
@@ -566,37 +637,47 @@ export default function EditTripScreen() {
               }}
             />
           ) : null}
+          <Text style={styles.fieldHint}>Tap to open the calendar</Text>
 
           <View style={styles.fieldSep} />
 
+          {/* Available Time */}
           <Text style={styles.fieldLabel}>Available Time</Text>
           <View style={styles.timeRow}>
             <Pressable
-              style={[styles.input, styles.timeInput]}
+              style={[styles.inputIconRow, styles.timeInput]}
               onPress={() => setShowStartTimePicker(true)}
             >
+              <Ionicons
+                name="time-outline"
+                size={15}
+                color={startTime ? theme.colors.primaryDark : "#94A3B8"}
+              />
               <Text
-                style={{
-                  fontFamily: font.regular,
-                  fontSize: 15,
-                  color: startTime ? theme.colors.text : "#94A3B8",
-                }}
+                style={[
+                  styles.inputIconText,
+                  !startTime && styles.inputIconPlaceholder,
+                ]}
               >
-                {startTime || "Start time"}
+                {startTime || "Start"}
               </Text>
             </Pressable>
             <Pressable
-              style={[styles.input, styles.timeInput]}
+              style={[styles.inputIconRow, styles.timeInput]}
               onPress={() => setShowEndTimePicker(true)}
             >
+              <Ionicons
+                name="time-outline"
+                size={15}
+                color={endTime ? theme.colors.primaryDark : "#94A3B8"}
+              />
               <Text
-                style={{
-                  fontFamily: font.regular,
-                  fontSize: 15,
-                  color: endTime ? theme.colors.text : "#94A3B8",
-                }}
+                style={[
+                  styles.inputIconText,
+                  !endTime && styles.inputIconPlaceholder,
+                ]}
               >
-                {endTime || "End time"}
+                {endTime || "End"}
               </Text>
             </Pressable>
           </View>
@@ -622,14 +703,24 @@ export default function EditTripScreen() {
               }}
             />
           ) : null}
+          <Text style={styles.fieldHint}>
+            Most sites in Istanbul close between 17:00 – 19:00.
+          </Text>
         </View>
 
         {/* ── Visibility ──────────────────────────────────────────────────── */}
         <View style={styles.visibilityCard}>
+          <View style={styles.visibilityIconWrap}>
+            <Ionicons
+              name="eye-outline"
+              size={18}
+              color={theme.colors.primaryDark}
+            />
+          </View>
           <View style={styles.visibilityLeft}>
             <Text style={styles.visibilityLabel}>Public Visibility</Text>
             <Text style={styles.visibilityHint}>
-              Allow others to see and remix your trip
+              Allow others to discover and remix this trip
             </Text>
           </View>
           <Switch
@@ -644,7 +735,8 @@ export default function EditTripScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Interests</Text>
           <Text style={styles.sectionSub}>
-            Select the types of places you enjoy
+            Pick the types of places to include. Changes here will re-optimize
+            your trip.
           </Text>
         </View>
 
@@ -676,7 +768,10 @@ export default function EditTripScreen() {
         {/* ── Budget ──────────────────────────────────────────────────────── */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Budget</Text>
-          <Text style={styles.sectionSub}>Set your spending comfort level</Text>
+          <Text style={styles.sectionSub}>
+            Your spending comfort level — we'll prioritise stops that match.
+            Changes here will re-optimize your trip.
+          </Text>
         </View>
 
         <View style={styles.budgetList}>
@@ -690,10 +785,7 @@ export default function EditTripScreen() {
                   isSelected && styles.budgetCardSelected,
                   pressed && styles.budgetCardPressed,
                 ]}
-                onPress={() => {
-                  setBudgetKey(isSelected ? "" : key);
-                  setBudgetAmount(isSelected ? "" : String(value));
-                }}
+                onPress={() => setBudgetKey(isSelected ? "" : key)}
               >
                 <View
                   style={[
@@ -896,28 +988,14 @@ const styles = StyleSheet.create({
   coverImage: {
     ...StyleSheet.absoluteFillObject,
   },
-  changeCoverCenter: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+  coverScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(11,59,74,0.35)",
+  },
+  coverOverlay: {
+    ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
-  },
-  changeCoverOverlay: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "rgba(255,255,255,0.88)",
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-  changeCoverText: {
-    fontFamily: font.semiBold,
-    fontSize: 13,
-    color: theme.colors.primaryDark,
   },
 
   // Section headers
@@ -960,6 +1038,33 @@ const styles = StyleSheet.create({
     letterSpacing: 0.1,
     marginBottom: 8,
     marginTop: 4,
+  },
+  fieldHint: {
+    fontFamily: font.regular,
+    fontSize: 12,
+    color: theme.colors.textSecondary,
+    lineHeight: 17,
+    marginTop: 6,
+  },
+  inputIconRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E8ECF0",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  inputIconText: {
+    flex: 1,
+    fontFamily: font.regular,
+    fontSize: 15,
+    color: theme.colors.text,
+  },
+  inputIconPlaceholder: {
+    color: "#94A3B8",
   },
   fieldSep: {
     height: 1,
@@ -1004,6 +1109,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 16,
     gap: 12,
+  },
+  visibilityIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "#F1F5F9",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
   },
   visibilityLeft: { flex: 1, gap: 3 },
   visibilityLabel: {

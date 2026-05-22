@@ -80,6 +80,7 @@ function TripStopsMap({
   stops,
   height = DEFAULT_MAP_HEIGHT,
   title = "Trip Stop Map",
+  hideTitle = false,
   emptyTitle = "No route stops to map",
   emptySubtitle = "This trip does not have any persisted stop coordinates to display yet.",
   testID,
@@ -96,7 +97,7 @@ function TripStopsMap({
   if (!mapsModule) {
     return (
       <View style={styles.card} testID={testID}>
-        <Text style={styles.title}>{title}</Text>
+        {!hideTitle && <Text style={styles.title}>{title}</Text>}
         <View style={[styles.emptyState, { minHeight: height }]}>
           <Text style={styles.emptyTitle}>Map unavailable in this build</Text>
           <Text style={styles.emptySubtitle}>
@@ -111,7 +112,7 @@ function TripStopsMap({
   if (!region || markers.length === 0) {
     return (
       <View style={styles.card} testID={testID}>
-        <Text style={styles.title}>{title}</Text>
+        {!hideTitle && <Text style={styles.title}>{title}</Text>}
         <View style={[styles.emptyState, { minHeight: height }]}>
           <Text style={styles.emptyTitle}>{emptyTitle}</Text>
           <Text style={styles.emptySubtitle}>{emptySubtitle}</Text>
@@ -125,7 +126,7 @@ function TripStopsMap({
 
   return (
     <View style={styles.card} testID={testID}>
-      <Text style={styles.title}>{title}</Text>
+      {!hideTitle && <Text style={styles.title}>{title}</Text>}
       <MapView
         style={[styles.map, { height }]}
         initialRegion={region}

@@ -42,6 +42,7 @@ export type TripDetailResponse = {
     maxPois: number | null;
     status: string;
     visibility: TripVisibility;
+    coverImageUrl: string | null;
     createdAt: string;
     updatedAt: string;
   };
@@ -121,6 +122,15 @@ export type TripListItem = {
   _count: {
     stops: number;
   };
+  engagement?: {
+    likeCount: number;
+    commentCount: number;
+    saveCount: number;
+    completionCount: number;
+    likedByMe: boolean;
+    savedByMe: boolean;
+    completedByMe: boolean;
+  };
 };
 
 export type ExploreTripItem = {
@@ -133,7 +143,18 @@ export type ExploreTripItem = {
   optimizedAt: string | null;
   preview: TripPreview;
   creator: {
+    id: string | null;
     displayName: string | null;
+    avatarUrl?: string | null;
+  };
+  engagement?: {
+    likeCount: number;
+    commentCount: number;
+    saveCount: number;
+    completionCount: number;
+    likedByMe: boolean;
+    savedByMe: boolean;
+    completedByMe: boolean;
   };
 };
 
@@ -159,6 +180,7 @@ export type ExploreTripsQuery = {
   budgetMaxTl?: number;
   weather?: ExploreWeather;
   limit?: number;
+  creatorId?: string;
 };
 
 export type CreateTripPayload = {
@@ -188,6 +210,7 @@ export type UpdateTripPayload = {
   maxStops?: number;
   weather?: string;
   visibility?: TripVisibility;
+  coverImageUrl?: string | null;
 };
 
 function getErrorMessage(payload: unknown, fallback: string) {
@@ -295,7 +318,22 @@ export async function getTrips(token: string) {
   return parseApiResponse<TripListItem[]>(response, 'Failed to load trips');
 }
 
-export async function getExploreTrips(query: ExploreTripsQuery = {}) {
+export async function getTrendingTrips(
+  token?: string | null,
+  limit = 8,
+): Promise<{ items: ExploreTripItem[]; meta: { fallback: boolean } }> {
+  const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+  const response = await fetch(`${API_BASE_URL}/trips/trending?limit=${limit}`, {
+    method: 'GET',
+    headers,
+  });
+  return parseApiResponse<{ items: ExploreTripItem[]; meta: { fallback: boolean } }>(
+    response,
+    'Failed to load trending trips',
+  );
+}
+
+export async function getExploreTrips(query: ExploreTripsQuery = {}, token?: string) {
   const searchParams = new URLSearchParams();
 
   if (query.q?.trim()) {
@@ -322,11 +360,17 @@ export async function getExploreTrips(query: ExploreTripsQuery = {}) {
     searchParams.set('limit', String(query.limit));
   }
 
+  if (query.creatorId?.trim()) {
+    searchParams.set('creatorId', query.creatorId.trim());
+  }
+
   const queryString = searchParams.toString();
+  const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
   const response = await fetch(
     `${API_BASE_URL}/trips/explore${queryString ? `?${queryString}` : ''}`,
     {
       method: 'GET',
+      headers,
     }
   );
 
