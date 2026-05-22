@@ -1,6 +1,7 @@
 import { getSortedTripStops } from '@/components/trip/tripMapUtils';
 import Artwork, { PoiImageCard } from '@/components/ui/Artwork';
 import { buildTripDetailParams } from '@/utils/tripNavigation';
+import { formatDistanceKm } from '@/utils/format';
 import { theme } from '@/constants/theme';
 import { font } from '@/constants/typography';
 import { useAuth } from '@/context/AuthContext';
@@ -394,10 +395,13 @@ export default function ResultsScreen() {
 
   const { trip, optimization, preview, stops } = tripDetail;
   const coverImageUrl = preview.imageUrl?.trim() || null;
+  const isManualTrip = trip.creationMode === 'MANUAL';
 
   const routeDescription =
     optimization.routeExplanation?.trim() ||
-    `An AI-optimized route with ${optimization.stopCount} stop${optimization.stopCount === 1 ? '' : 's'} across Istanbul, built around your time and preferences.`;
+    (isManualTrip
+      ? `A hand-crafted route with ${optimization.stopCount} stop${optimization.stopCount === 1 ? '' : 's'} across Istanbul.`
+      : `An AI-optimized route with ${optimization.stopCount} stop${optimization.stopCount === 1 ? '' : 's'} across Istanbul, built around your time and preferences.`);
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -431,11 +435,11 @@ export default function ResultsScreen() {
           {/* Dark scrim over the lower portion */}
           <View style={styles.heroScrim} />
 
-          {/* AI badge + description */}
+          {/* Route badge + description */}
           <View style={styles.heroContent}>
             <View style={styles.aiPill}>
-              <Ionicons name="flash" size={12} color="#FFFFFF" />
-              <Text style={styles.aiPillText}>AI RECOMMENDED</Text>
+              <Ionicons name={isManualTrip ? 'pencil' : 'flash'} size={12} color="#FFFFFF" />
+              <Text style={styles.aiPillText}>{isManualTrip ? 'YOUR ROUTE' : 'AI RECOMMENDED'}</Text>
             </View>
             <Text style={styles.heroDesc} numberOfLines={4}>
               {routeDescription}
@@ -472,9 +476,7 @@ export default function ResultsScreen() {
                 icon: 'walk-outline' as const,
                 label: 'Distance',
                 value:
-                  optimization.routeTotalDistanceKm !== null
-                    ? `${optimization.routeTotalDistanceKm} km`
-                    : '—',
+                  formatDistanceKm(optimization.routeTotalDistanceKm),
               },
             ] as const
           ).map(({ icon, label, value }) => (

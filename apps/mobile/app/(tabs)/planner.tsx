@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -105,25 +104,13 @@ export default function PlannerEntryScreen() {
             </View>
           </Pressable>
 
-          {/* Manual trip — visual only, coming soon */}
+          {/* Manual trip — fully wired */}
           <Pressable
-            style={styles.card}
-            onPress={() =>
-              Alert.alert(
-                'Coming soon',
-                'Manual trip creation will be available in a future update.'
-              )
-            }
+            style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+            onPress={() => router.push('/manual-trip-wizard' as any)}
           >
             <View style={styles.cardImageWrap}>
               <Image source={MANUAL_IMG} style={styles.cardImage} contentFit="cover" />
-              <View style={styles.cardImageDim} />
-              <View style={styles.badgeOverlay}>
-                <View style={styles.soonBadge}>
-                  <Ionicons name="time-outline" size={10} color={theme.colors.textSecondary} />
-                  <Text style={styles.soonText}>Coming soon</Text>
-                </View>
-              </View>
             </View>
 
             <View style={styles.cardContent}>
@@ -132,9 +119,9 @@ export default function PlannerEntryScreen() {
                 Hand-pick every stop and craft your perfect itinerary from
                 scratch — entirely on your terms.
               </Text>
-              <View style={styles.secondaryBtn}>
-                <Ionicons name="lock-closed-outline" size={14} color={theme.colors.textSecondary} />
-                <Text style={styles.secondaryBtnText}>Available soon</Text>
+              <View style={styles.primaryBtn}>
+                <Text style={styles.primaryBtnText}>Build trip</Text>
+                <Ionicons name="arrow-forward" size={15} color="#fff" />
               </View>
             </View>
           </Pressable>
