@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import math
 
 from ortools.sat.python import cp_model
 
@@ -52,7 +53,11 @@ def _is_outdoor(poi: POI) -> bool:
 _TIME_SCALE = 1          # 1 unit = 1 minute (no scaling needed here)
 _COST_SCALE = 100        # 1 unit = 0.01 TL  (keeps integers manageable)
 _SOLVER_TIMEOUT_SEC = 3  # wall-clock limit; INFEASIBLE on timeout (no fallback)
-_CATEGORY_COVERAGE_BONUS = 10_000
+_ORDER_OPTIMIZER_TIMEOUT_SEC = 1
+_MAX_SOLVER_STOPS = 20
+_CATEGORY_COVERAGE_BONUS = 350
+_PRIMARY_DESTINATION_BONUS = 700
+_TRAVEL_TIME_PENALTY_PER_MIN = 2
 
 
 def generate_route(request: OptimizeRequest) -> OptimizeResponse:
@@ -74,7 +79,10 @@ def generate_route(request: OptimizeRequest) -> OptimizeResponse:
     start_min = _to_minutes(prefs.time_start)
     end_min   = _resolve_end_minute(start_min, prefs.time_end)
     budget_units = int(prefs.budget_tl * _COST_SCALE)
-    max_pois  = prefs.max_pois or 6
+    max_pois = min(
+        prefs.max_pois or len(request.candidate_pois),
+        _MAX_SOLVER_STOPS,
+    )
 
     # ── 1. Use candidate POIs as-is — backend already filtered by DB query ───
     candidates = list(request.candidate_pois)
@@ -107,18 +115,20 @@ def generate_route(request: OptimizeRequest) -> OptimizeResponse:
             )
 
     # ── 2. Travel-time matrix ────────────────────────────────────────────────
-    matrix, routing_source_str = build_travel_matrix(candidates)
+    matrix, routing_source_str = build_travel_matrix(
+        candidates,
+        walking_tolerance_km=prefs.walking_tolerance_km,
+    )
     routing_source = RoutingSource(routing_source_str)
-    if routing_source == RoutingSource.HAVERSINE:
+    if routing_source == RoutingSource.MULTIMODAL_ESTIMATE:
         diagnostics.append(
-            "OSRM unavailable; using Haversine straight-line distance at 5 km/h "
-            "(travel times may be optimistic)."
+            "OSRM unavailable; using distance-based Istanbul transfer estimates "
+            "for legs beyond the walking tolerance."
         )
 
     # ── 3. Pre-flight constraint conflict checks ─────────────────────────────
     diagnostics.extend(_preflight_diagnostics(
         candidates=candidates,
-        matrix=matrix,
         start_min=start_min,
         end_min=end_min,
         budget_tl=prefs.budget_tl,
@@ -138,7 +148,6 @@ def generate_route(request: OptimizeRequest) -> OptimizeResponse:
         end_min=end_min,
         budget_units=budget_units,
         max_pois=max_pois,
-        walking_tolerance_km=prefs.walking_tolerance_km,
         preferred_categories=prefs.categories,
     )
 
@@ -161,6 +170,15 @@ def generate_route(request: OptimizeRequest) -> OptimizeResponse:
             routing_source=routing_source,
             diagnostics=diagnostics,
         )
+
+    selected_indices, start_times = _optimise_selected_order(
+        candidates=candidates,
+        matrix=matrix,
+        selected_indices=selected_indices,
+        original_start_times=start_times,
+        start_min=start_min,
+        end_min=end_min,
+    )
 
     # ── 6. Build response ────────────────────────────────────────────────────
     return _build_response(
@@ -185,7 +203,6 @@ def _solve_cpsat(
     end_min: int,
     budget_units: int,
     max_pois: int,
-    walking_tolerance_km: float,
     preferred_categories: list,
 ) -> tuple[list[int], dict[int, int], SolverStatus]:
     """
@@ -209,9 +226,12 @@ def _solve_cpsat(
       C2  Budget: sum cost[i]*x[i] <= budget.
       C3  Time window per visited POI: open[i] <= arrival[i], arrival[i]+dur[i] <= close[i].
       C4  Travel time: arrival[j] >= arrival[i] + dur[i] + travel[i][j] if arc[i][j].
-      C5  Walking tolerance: arcs exceeding max_travel_min are forced off.
+      C5  Travel feasibility: longer legs remain possible as transit-style
+          transfers, so walking_tolerance controls the local walking/transfer
+          split in the routing matrix rather than disabling citywide arcs.
 
-    Objective: maximise category coverage first, then sum(score[i] * x[i]).
+    Objective: maximise POI score with a moderate category-coverage bonus,
+    then penalise inter-stop travel so equal-quality routes come out compact.
     """
     n = len(candidates)
     if n == 0:
@@ -219,8 +239,6 @@ def _solve_cpsat(
 
     model = cp_model.CpModel()
     depot = n
-    _WALK_SPEED_KMH_LOCAL = 5.0
-    max_travel_min = int(walking_tolerance_km / _WALK_SPEED_KMH_LOCAL * 60)
 
     # ── Arc variables ─────────────────────────────────────────────────────────
     # Self-loops for skipped POI nodes
@@ -268,27 +286,22 @@ def _solve_cpsat(
         model.add(arrival[i] >= max(open_i, start_min)).only_enforce_if(not_skip)
         model.add(arrival[i] + dur_i <= min(close_i, end_min)).only_enforce_if(not_skip)
 
-    # ── C4 + C5: Travel propagation and walking tolerance ─────────────────────
+    # ── C4: Travel propagation ────────────────────────────────────────────────
     for i in range(n):
         dur_i = candidates[i].visit_duration_minutes
         for j in range(n):
             if i == j:
                 continue
-            travel_ij = int(matrix[i][j]) + 1  # ceiling to guarantee progress
+            travel_ij = _travel_minutes(matrix, i, j)
             arc_ij = arc[(i, j)]
-
-            if travel_ij - 1 > max_travel_min:
-                model.add(arc_ij == 0)          # C5: too far, disable arc
-            else:
-                model.add(                       # C4: propagate time
-                    arrival[j] >= arrival[i] + dur_i + travel_ij
-                ).only_enforce_if(arc_ij)
+            model.add(
+                arrival[j] >= arrival[i] + dur_i + travel_ij
+            ).only_enforce_if(arc_ij)
 
     # ── Soft category coverage ────────────────────────────────────────────────
-    # Selected categories are user intent, so covering more of them should beat
-    # picking another same-category POI with a slightly better individual score.
-    # This remains soft: if time/budget/walking constraints make a category
-    # impossible, CP-SAT can still return the best feasible partial route.
+    # Selected categories are user intent, so coverage receives a moderate
+    # bonus. It should break close calls, not overpower route quality and
+    # proximity by orders of magnitude.
     cover_vars: list[cp_model.IntVar] = []
     requested_categories = list(dict.fromkeys(preferred_categories or []))
     for category in requested_categories:
@@ -307,9 +320,16 @@ def _solve_cpsat(
         cover_vars.append(covered)
 
     # ── Objective ─────────────────────────────────────────────────────────────
+    travel_penalty = sum(
+        _travel_minutes(matrix, i, j) * arc[(i, j)]
+        for i in range(n)
+        for j in range(n)
+        if i != j
+    )
     model.maximize(
         sum(_CATEGORY_COVERAGE_BONUS * covered for covered in cover_vars)
         + sum(scores[i] * skip[i].negated() for i in range(n))
+        - _TRAVEL_TIME_PENALTY_PER_MIN * travel_penalty
     )
 
     # ── Solve ─────────────────────────────────────────────────────────────────
@@ -335,6 +355,118 @@ def _solve_cpsat(
     return ordered, arrival_minutes, solver_status
 
 
+def _optimise_selected_order(
+    candidates: list[POI],
+    matrix: list[list[float]],
+    selected_indices: list[int],
+    original_start_times: dict[int, int],
+    start_min: int,
+    end_min: int,
+) -> tuple[list[int], dict[int, int]]:
+    """
+    Second-pass route ordering for the fixed selected stop set.
+
+    The first CP-SAT solve decides which POIs are worth visiting under all
+    constraints. This pass keeps that set and minimizes only the inter-stop
+    travel time, then schedules the resulting order as early as possible.
+    """
+    if len(selected_indices) <= 1:
+        schedule = _schedule_order_earliest(
+            selected_indices,
+            candidates,
+            matrix,
+            start_min,
+            end_min,
+        )
+        return selected_indices, schedule or original_start_times
+
+    m = len(selected_indices)
+    model = cp_model.CpModel()
+    depot = m
+
+    arc: dict[tuple[int, int], cp_model.IntVar] = {}
+    for i in range(m + 1):
+        for j in range(m + 1):
+            if i != j:
+                arc[(i, j)] = model.new_bool_var(f"order_arc_{i}_{j}")
+
+    model.add_circuit([(i, j, v) for (i, j), v in arc.items()])
+
+    arrival = [model.new_int_var(start_min, end_min, f"order_arr_{i}") for i in range(m)]
+
+    for local_i, global_i in enumerate(selected_indices):
+        poi = candidates[global_i]
+        open_i, close_i = _opening_window_for_trip(
+            poi.opening_hours.open,
+            poi.opening_hours.close,
+            start_min,
+            end_min,
+        )
+        model.add(arrival[local_i] >= max(open_i, start_min))
+        model.add(arrival[local_i] + poi.visit_duration_minutes <= min(close_i, end_min))
+
+    for local_i, global_i in enumerate(selected_indices):
+        dur_i = candidates[global_i].visit_duration_minutes
+        for local_j, global_j in enumerate(selected_indices):
+            if local_i == local_j:
+                continue
+            model.add(
+                arrival[local_j]
+                >= arrival[local_i] + dur_i + _travel_minutes(matrix, global_i, global_j)
+            ).only_enforce_if(arc[(local_i, local_j)])
+
+    model.minimize(
+        sum(
+            _travel_minutes(matrix, global_i, global_j) * arc[(local_i, local_j)]
+            for local_i, global_i in enumerate(selected_indices)
+            for local_j, global_j in enumerate(selected_indices)
+            if local_i != local_j
+        )
+    )
+
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = _ORDER_OPTIMIZER_TIMEOUT_SEC
+    solver.parameters.num_workers = 1
+    status = solver.solve(model)
+
+    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        schedule = _schedule_order_earliest(
+            selected_indices,
+            candidates,
+            matrix,
+            start_min,
+            end_min,
+        )
+        return selected_indices, schedule or original_start_times
+
+    local_order = _extract_order(solver, arc, depot, m)
+    if len(local_order) != m:
+        schedule = _schedule_order_earliest(
+            selected_indices,
+            candidates,
+            matrix,
+            start_min,
+            end_min,
+        )
+        return selected_indices, schedule or original_start_times
+
+    ordered_indices = [selected_indices[local_i] for local_i in local_order]
+    schedule = _schedule_order_earliest(
+        ordered_indices,
+        candidates,
+        matrix,
+        start_min,
+        end_min,
+    )
+    if schedule is None:
+        return ordered_indices, {
+            selected_indices[local_i]: solver.value(arrival[local_i])
+            for local_i in local_order
+        }
+
+    return ordered_indices, schedule
+
+
 def _extract_order(
     solver: cp_model.CpSolver,
     arc: dict[tuple[int, int], cp_model.IntVar],
@@ -358,11 +490,51 @@ def _extract_order(
     return order
 
 
+def _schedule_order_earliest(
+    ordered_indices: list[int],
+    candidates: list[POI],
+    matrix: list[list[float]],
+    start_min: int,
+    end_min: int,
+) -> dict[int, int] | None:
+    """Return the earliest feasible schedule for an already-ordered route."""
+    schedule: dict[int, int] = {}
+    cursor = start_min
+    previous_idx: int | None = None
+
+    for idx in ordered_indices:
+        if previous_idx is not None:
+            cursor += candidates[previous_idx].visit_duration_minutes
+            cursor += _travel_minutes(matrix, previous_idx, idx)
+
+        poi = candidates[idx]
+        open_i, close_i = _opening_window_for_trip(
+            poi.opening_hours.open,
+            poi.opening_hours.close,
+            start_min,
+            end_min,
+        )
+        arrival = max(cursor, open_i, start_min)
+        if arrival + poi.visit_duration_minutes > min(close_i, end_min):
+            return None
+
+        schedule[idx] = arrival
+        cursor = arrival
+        previous_idx = idx
+
+    return schedule
+
+
+def _travel_minutes(matrix: list[list[float]], i: int, j: int) -> int:
+    if i == j:
+        return 0
+    return max(1, math.ceil(matrix[i][j]))
+
+
 # ── Pre-flight diagnostics ────────────────────────────────────────────────────
 
 def _preflight_diagnostics(
     candidates: list[POI],
-    matrix: list[list[float]],
     start_min: int,
     end_min: int,
     budget_tl: float,
@@ -420,21 +592,41 @@ def _preflight_diagnostics(
             "requested time window — consider widening it for more options."
         )
 
-    # 4. Walking tolerance vs nearest inter-POI travel time
+    # 4. Walking tolerance vs nearest inter-POI straight-line distance
     if len(candidates) >= 2:
-        max_travel_min = walking_tolerance_km / _WALK_SPEED_KMH * 60
-        nearest = min(
-            matrix[i][j]
+        nearest_km = min(
+            _haversine_km(
+                candidates[i].location.lat,
+                candidates[i].location.lng,
+                candidates[j].location.lat,
+                candidates[j].location.lng,
+            )
             for i in range(len(candidates))
             for j in range(len(candidates))
             if i != j
         )
-        if nearest > max_travel_min:
-            nearest_km = nearest / 60 * _WALK_SPEED_KMH
+        longest_local_transfer = any(
+            _haversine_km(
+                candidates[i].location.lat,
+                candidates[i].location.lng,
+                candidates[j].location.lat,
+                candidates[j].location.lng,
+            ) > walking_tolerance_km
+            for i in range(len(candidates))
+            for j in range(len(candidates))
+            if i != j
+        )
+        if nearest_km > walking_tolerance_km:
             notes.append(
                 f"Walking tolerance {walking_tolerance_km:.1f} km is below the "
-                f"closest pair distance ({nearest_km:.1f} km) — solver may be "
-                "forced to a single stop."
+                f"closest pair distance ({nearest_km:.1f} km); inter-stop legs "
+                "will be treated as transfer-style travel instead of walking."
+            )
+        elif longest_local_transfer:
+            notes.append(
+                f"Candidate pool spans beyond the {walking_tolerance_km:.1f} km "
+                "walking tolerance; longer feasible legs will use transfer-style "
+                "travel times."
             )
 
     # 5. Category mismatch
@@ -457,7 +649,8 @@ def _compute_scores(
     destination_anchor=None,
 ) -> list[int]:
     """
-    Score = category match bonus + visit_duration bonus + proximity bonus.
+    Score = category match bonus + primary-destination bonus + visit_duration
+    bonus + proximity bonus.
 
     Proximity bonus rewards POIs geographically close to the user's destination
     anchor (district centroid). Acts as a tie-breaker between same-category POIs
@@ -470,11 +663,23 @@ def _compute_scores(
     scores = []
     for poi in candidates:
         score = 200 if poi.category in preferred_set else 100
+        score += _destination_relevance_bonus(poi)
         # Small bonus for longer/richer experiences (max +50)
         duration_bonus = min(50, poi.visit_duration_minutes // 6)
         proximity_bonus = _proximity_bonus(poi, destination_anchor)
         scores.append(score + duration_bonus + proximity_bonus)
     return scores
+
+
+def _destination_relevance_bonus(poi: POI) -> int:
+    """
+    Keep the trip centered on the requested destination without making nearby
+    expansion impossible when primary POIs are closed, over budget, or already
+    exhausted.
+    """
+    if poi.destination_relevance == "primary":
+        return _PRIMARY_DESTINATION_BONUS
+    return 0
 
 
 def _proximity_bonus(poi: POI, anchor) -> int:
@@ -530,9 +735,6 @@ def _format_categories(categories: list) -> str:
 
 # ── Response builders ─────────────────────────────────────────────────────────
 
-_WALK_SPEED_KMH = 5.0
-
-
 def _build_response(
     request: OptimizeRequest,
     candidates: list[POI],
@@ -561,9 +763,29 @@ def _build_response(
         ))
         total_cost += cost
 
-    _backfill_travel(stops, candidates, matrix)
+    _backfill_travel(
+        stops,
+        candidates,
+        matrix,
+        walking_tolerance_km=request.preferences.walking_tolerance_km,
+    )
+    transfer_leg_count = _count_transfer_legs(
+        selected_indices,
+        candidates,
+        request.preferences.walking_tolerance_km,
+    )
+    if transfer_leg_count > 0:
+        diagnostics.append(
+            f"Route includes {transfer_leg_count} leg(s) longer than the "
+            f"{request.preferences.walking_tolerance_km:.1f} km walking tolerance; "
+            "those legs use transfer-style travel estimates."
+        )
 
-    requested_max = request.preferences.max_pois or 6
+    requested_max = min(
+        request.preferences.max_pois or len(candidates),
+        len(candidates),
+        _MAX_SOLVER_STOPS,
+    )
     status = OptimizeStatus.OK if len(stops) >= requested_max else OptimizeStatus.PARTIAL
     if status == OptimizeStatus.PARTIAL:
         diagnostics.append(
@@ -607,6 +829,7 @@ def _build_response(
         request,
         stops,
         total_cost,
+        _route_distance_km(selected_indices, candidates),
         start_min,
         algorithm=ALGORITHM_VERSION,
         status=status,
@@ -620,25 +843,70 @@ def _backfill_travel(
     stops: list[ScheduledPOI],
     candidates: list[POI],
     matrix: list[list[float]],
+    walking_tolerance_km: float,
 ) -> None:
     """Fill travel_time_to_next_minutes for all stops except the last."""
     if len(stops) < 2:
         return
-    idx_map = {s.poi_id: next(i for i, c in enumerate(candidates) if c.poi_id == s.poi_id)
-               for s in stops}
+    idx_map = {
+        s.poi_id: next(i for i, c in enumerate(candidates) if c.poi_id == s.poi_id)
+        for s in stops
+    }
     for k in range(len(stops) - 1):
         i = idx_map[stops[k].poi_id]
         j = idx_map[stops[k + 1].poi_id]
-        travel = matrix[i][j]
-        stops[k] = stops[k].model_copy(
-            update={"travel_time_to_next_minutes": max(1, int(travel))}
+        travel_mode = (
+            "walk"
+            if _leg_distance_km(candidates[i], candidates[j]) <= walking_tolerance_km
+            else "transfer"
         )
+        stops[k] = stops[k].model_copy(
+            update={
+                "travel_time_to_next_minutes": _travel_minutes(matrix, i, j),
+                "travel_mode_to_next": travel_mode,
+            }
+        )
+
+
+def _count_transfer_legs(
+    selected_indices: list[int],
+    candidates: list[POI],
+    walking_tolerance_km: float,
+) -> int:
+    count = 0
+    for k in range(len(selected_indices) - 1):
+        if _leg_distance_km(
+            candidates[selected_indices[k]],
+            candidates[selected_indices[k + 1]],
+        ) > walking_tolerance_km:
+            count += 1
+    return count
+
+
+def _route_distance_km(selected_indices: list[int], candidates: list[POI]) -> float:
+    total = 0.0
+    for k in range(len(selected_indices) - 1):
+        total += _leg_distance_km(
+            candidates[selected_indices[k]],
+            candidates[selected_indices[k + 1]],
+        )
+    return total
+
+
+def _leg_distance_km(origin: POI, destination: POI) -> float:
+    return _haversine_km(
+        origin.location.lat,
+        origin.location.lng,
+        destination.location.lat,
+        destination.location.lng,
+    )
 
 
 def _finalise_response(
     request: OptimizeRequest,
     stops: list[ScheduledPOI],
     total_cost: float,
+    total_distance_km: float,
     start_min: int,
     algorithm: str,
     status: OptimizeStatus,
@@ -651,14 +919,9 @@ def _finalise_response(
         last_dep_min += 24 * 60
     total_duration = last_dep_min - start_min
 
-    total_travel_min = sum(
-        s.travel_time_to_next_minutes for s in stops if s.travel_time_to_next_minutes
-    )
-    total_distance_km = round(total_travel_min / 60 * _WALK_SPEED_KMH, 2)
-
     route = DailyRoute(
         route_name=f"Istanbul Day Trip — {request.date}",
-        total_distance_km=max(total_distance_km, 0.0),
+        total_distance_km=max(round(total_distance_km, 2), 0.0),
         total_cost_tl=round(total_cost, 2),
         total_duration_minutes=max(total_duration, 0),
         stops=stops,

@@ -26,3 +26,11 @@ class POI(BaseModel):
             "category-based heuristic (SCENIC and NATURE treated as outdoor)."
         ),
     )
+    destination_relevance: str | None = Field(
+        default=None,
+        description=(
+            "'primary' for POIs inside the requested destination, 'nearby' for "
+            "close expansion candidates, or 'fallback' when no destination match "
+            "was available."
+        ),
+    )

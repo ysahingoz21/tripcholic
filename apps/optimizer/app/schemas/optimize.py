@@ -24,6 +24,7 @@ class SolverStatus(str, Enum):
 class RoutingSource(str, Enum):
     OSRM = "osrm"
     HAVERSINE = "haversine"
+    MULTIMODAL_ESTIMATE = "multimodal_estimate"
     NONE = "none"
 
 
@@ -35,6 +36,10 @@ class ScheduledPOI(BaseModel):
     travel_time_to_next_minutes: int | None = Field(
         default=None,
         description="Travel time to the next stop in minutes. Null for the last stop.",
+    )
+    travel_mode_to_next: str | None = Field(
+        default=None,
+        description="'walk' for local walking legs, 'transfer' for longer city travel. Null for the last stop.",
     )
     estimated_cost_tl: float = Field(
         ge=0,
@@ -107,8 +112,9 @@ class OptimizeResponse(BaseModel):
     routing_source: RoutingSource = Field(
         description=(
             "Source of the travel-time matrix used during optimization. "
-            "'osrm' = real road network via OSRM Table API, "
-            "'haversine' = straight-line fallback at 5 km/h, "
+            "'osrm' = OSRM-backed local walking plus longer transfer estimates, "
+            "'haversine' = legacy straight-line fallback, "
+            "'multimodal_estimate' = distance-based walking/transit-style estimate, "
             "'none' = matrix not built (e.g. empty candidates)."
         )
     )

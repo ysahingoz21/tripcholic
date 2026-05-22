@@ -11,6 +11,7 @@ Run from apps/optimizer:
     source venv/bin/activate && python test_robustness.py
 """
 
+import math
 import time
 
 from app.schemas.common import BudgetRange, Location, OpeningHours, POICategory
@@ -24,6 +25,7 @@ from app.services.optimizer_service import generate_route
 
 def poi(
     pid, name, lat, lng, category, op, cl, lo, hi, dur, *, is_outdoor=None,
+    destination_relevance=None,
 ) -> POI:
     return POI(
         poi_id=pid,
@@ -34,6 +36,7 @@ def poi(
         budget=BudgetRange(min_tl=lo, max_tl=hi),
         visit_duration_minutes=dur,
         is_outdoor=is_outdoor,
+        destination_relevance=destination_relevance,
     )
 
 
@@ -114,7 +117,7 @@ def _print_response(elapsed: float, resp, candidates: list[POI]):
         print("  ROUTE:")
         for i, s in enumerate(resp.route.stops, 1):
             travel = (
-                f"  → +{s.travel_time_to_next_minutes} min walk"
+                f"  → +{s.travel_time_to_next_minutes} min {s.travel_mode_to_next or 'travel'}"
                 if s.travel_time_to_next_minutes
                 else "  [last stop]"
             )
@@ -136,6 +139,23 @@ def _expect(label: str, ok: bool, detail: str = ""):
         line += f"  ({detail})"
     print(line)
     return ok
+
+
+def _distance_km(a: POI, b: POI) -> float:
+    r = 6371.0
+    p1, p2 = math.radians(a.location.lat), math.radians(b.location.lat)
+    dp = math.radians(b.location.lat - a.location.lat)
+    dl = math.radians(b.location.lng - a.location.lng)
+    h = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * r * math.asin(math.sqrt(h))
+
+
+def _route_distance_from_candidates(resp, candidates: list[POI]) -> float:
+    by_id = {p.poi_id: p for p in candidates}
+    total = 0.0
+    for left, right in zip(resp.route.stops, resp.route.stops[1:]):
+        total += _distance_km(by_id[left.poi_id], by_id[right.poi_id])
+    return total
 
 
 # ── Realistic scenarios ───────────────────────────────────────────────────────
@@ -478,16 +498,179 @@ def scenario_picky_walker():
     _print_response(time.perf_counter() - t0, resp, candidates)
     print()
     print("  CHECKS:")
-    max_leg_min = int(0.5 / 5.0 * 60)
+    max_walk_leg_min = int(0.5 / 5.0 * 60)
+    walking_legs = [
+        s for s in resp.route.stops
+        if s.travel_time_to_next_minutes and s.travel_mode_to_next == "walk"
+    ]
     ok = [
         _expect("status is ok or partial", resp.status in {OptimizeStatus.OK, OptimizeStatus.PARTIAL}),
         _expect("max_pois respected", len(resp.route.stops) <= 4),
-        _expect("each walking leg respects 500 m tolerance",
+        _expect("each local walking leg respects 500 m tolerance",
                 all(
-                    (s.travel_time_to_next_minutes or 0) <= max_leg_min
-                    for s in resp.route.stops
+                    (s.travel_time_to_next_minutes or 0) <= max_walk_leg_min
+                    for s in walking_legs
                 ),
-                f"limit {max_leg_min} min at 5 km/h"),
+                f"limit {max_walk_leg_min} min at 5 km/h"),
+    ]
+    return all(ok)
+
+
+def scenario_compact_ordering():
+    """
+    Candidate order is deliberately shuffled. The route should still visit the
+    line of POIs in geographic order, not bounce A → D → B → C just because
+    that was the incoming candidate order.
+    """
+    candidates = [
+        poi("line_a", "Line A", 41.0000, 29.0000, "historical", "09:00", "20:00", 0, 0, 20),
+        poi("line_d", "Line D", 41.0000, 29.0300, "historical", "09:00", "20:00", 0, 0, 20),
+        poi("line_b", "Line B", 41.0000, 29.0100, "historical", "09:00", "20:00", 0, 0, 20),
+        poi("line_c", "Line C", 41.0000, 29.0200, "historical", "09:00", "20:00", 0, 0, 20),
+    ]
+    req = OptimizeRequest(
+        trip_id="compact_order",
+        date="2026-05-06",
+        preferences=UserPreferences(
+            categories=[POICategory.HISTORICAL],
+            time_start="09:00", time_end="14:00",
+            budget_tl=1000, max_pois=4, walking_tolerance_km=5.0,
+        ),
+        candidate_pois=candidates,
+    )
+    _print_scenario_header(
+        "COMPACT ORDERING — shuffled candidates should not zigzag",
+        "9am–2pm · same category/score · max 4 stops",
+    )
+    t0 = time.perf_counter()
+    resp = generate_route(req)
+    _print_response(time.perf_counter() - t0, resp, candidates)
+    print()
+    print("  CHECKS:")
+    positions = {"Line A": 0, "Line B": 1, "Line C": 2, "Line D": 3}
+    names = [s.name for s in resp.route.stops]
+    position_steps = [
+        abs(positions[right] - positions[left])
+        for left, right in zip(names, names[1:])
+    ]
+    total_distance = _route_distance_from_candidates(resp, candidates)
+    ok = [
+        _expect("all four line POIs selected", len(resp.route.stops) == 4, f"{names}"),
+        _expect("route moves to adjacent POIs instead of zigzagging",
+                all(step == 1 for step in position_steps),
+                f"order: {names}"),
+        _expect("route distance stays compact",
+                total_distance < 3.0,
+                f"{total_distance:.2f} km"),
+    ]
+    return all(ok)
+
+
+def scenario_implicit_max_allows_ten_stops():
+    """
+    When the user did not set max_pois, the optimizer should not silently cap
+    the route at six stops. The solver can still stop earlier if time, budget,
+    opening hours, or travel make more stops infeasible.
+    """
+    candidates = [
+        poi(
+            f"ten_{i}",
+            f"Ten Stop {i + 1}",
+            41.0000,
+            29.0000 + i * 0.001,
+            "historical",
+            "09:00",
+            "20:00",
+            0,
+            0,
+            20,
+        )
+        for i in range(10)
+    ]
+    req = OptimizeRequest(
+        trip_id="implicit_max_ten",
+        date="2026-05-06",
+        preferences=UserPreferences(
+            categories=[POICategory.HISTORICAL],
+            time_start="09:00", time_end="15:00",
+            budget_tl=1000, walking_tolerance_km=5.0,
+        ),
+        candidate_pois=candidates,
+    )
+    _print_scenario_header(
+        "IMPLICIT MAX — no hidden 6-stop cap",
+        "9am–3pm · 10 nearby stops · max_pois omitted",
+    )
+    t0 = time.perf_counter()
+    resp = generate_route(req)
+    _print_response(time.perf_counter() - t0, resp, candidates)
+    print()
+    print("  CHECKS:")
+    ok = [
+        _expect("all ten POIs can be selected", len(resp.route.stops) == 10),
+        _expect("max_pois remained omitted", req.preferences.max_pois is None),
+    ]
+    return all(ok)
+
+
+def scenario_primary_destination_preferred():
+    """
+    Nearby expansion POIs should not beat primary-destination POIs just because
+    they appear earlier in the candidate list or are similarly close.
+    """
+    candidates = [
+        poi(
+            "nearby_gallery",
+            "Nearby Gallery",
+            41.0005,
+            29.0005,
+            "historical",
+            "09:00",
+            "20:00",
+            0,
+            0,
+            45,
+            destination_relevance="nearby",
+        ),
+        poi(
+            "primary_museum",
+            "Primary Museum",
+            41.0000,
+            29.0000,
+            "historical",
+            "09:00",
+            "20:00",
+            0,
+            0,
+            45,
+            destination_relevance="primary",
+        ),
+    ]
+    req = OptimizeRequest(
+        trip_id="primary_destination_preferred",
+        date="2026-05-06",
+        destination_anchor={"lat": 41.0000, "lng": 29.0000},
+        preferences=UserPreferences(
+            categories=[POICategory.HISTORICAL],
+            time_start="09:00", time_end="12:00",
+            budget_tl=1000, max_pois=1, walking_tolerance_km=5.0,
+        ),
+        candidate_pois=candidates,
+    )
+    _print_scenario_header(
+        "PRIMARY DESTINATION — nearby expansion should not win too early",
+        "9am–12pm · max 1 stop · primary and nearby candidates both feasible",
+    )
+    t0 = time.perf_counter()
+    resp = generate_route(req)
+    _print_response(time.perf_counter() - t0, resp, candidates)
+    print()
+    print("  CHECKS:")
+    selected_names = [stop.name for stop in resp.route.stops]
+    ok = [
+        _expect("selected the primary destination POI",
+                selected_names == ["Primary Museum"],
+                f"{selected_names}"),
     ]
     return all(ok)
 
@@ -530,6 +713,9 @@ if __name__ == "__main__":
         scenario_quick_lunch_window,
         scenario_full_day_marathon,
         scenario_picky_walker,
+        scenario_compact_ordering,
+        scenario_implicit_max_allows_ten_stops,
+        scenario_primary_destination_preferred,
         scenario_backend_oversized_request,
     ]
 

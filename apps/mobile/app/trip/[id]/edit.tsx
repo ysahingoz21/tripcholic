@@ -320,7 +320,10 @@ export default function EditTripScreen() {
       startTime !== (orig.timeStart ?? "") ||
       endTime !== (orig.timeEnd ?? "") ||
       JSON.stringify(newCats) !== JSON.stringify(origCats) ||
-      selectedBudget !== orig.budgetTl
+      selectedBudget !== orig.budgetTl ||
+      weather !== (orig.weather ?? "") ||
+      maxWalkingDistanceKm !== orig.walkingToleranceKm ||
+      maxStops !== orig.maxPois
     );
   }, [
     tripDetail,
@@ -772,7 +775,7 @@ export default function EditTripScreen() {
         </View>
 
         <View style={styles.budgetList}>
-          {BUDGET_OPTIONS.map(({ key, label, sub, icon, desc }) => {
+          {BUDGET_OPTIONS.map(({ key, label, sub, icon, desc, value }) => {
             const isSelected = budgetKey === key;
             return (
               <Pressable
@@ -819,6 +822,59 @@ export default function EditTripScreen() {
                     ]}
                   />
                 </View>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <Text style={styles.fieldLabel}>Exact budget</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="e.g. 1250"
+          placeholderTextColor="#94A3B8"
+          value={budgetAmount}
+          onChangeText={(value) => {
+            setBudgetAmount(value);
+            setBudgetKey("");
+          }}
+          keyboardType="numeric"
+          returnKeyType="done"
+        />
+
+        {/* ── Weather ─────────────────────────────────────────────────────── */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Weather</Text>
+          <Text style={styles.sectionSub}>
+            Rainy routes avoid outdoor stops when indoor alternatives fit
+          </Text>
+        </View>
+
+        <View style={styles.weatherRow}>
+          {WEATHER_OPTIONS.map(({ key, label, icon }) => {
+            const isSelected = weather === key;
+            return (
+              <Pressable
+                key={key}
+                style={({ pressed }) => [
+                  styles.weatherChip,
+                  isSelected && styles.weatherChipSelected,
+                  pressed && styles.weatherChipPressed,
+                ]}
+                onPress={() => setWeather(isSelected ? "" : key)}
+              >
+                <Ionicons
+                  name={icon}
+                  size={16}
+                  color={isSelected ? "#FFFFFF" : theme.colors.primaryDark}
+                />
+                <Text
+                  style={[
+                    styles.weatherChipText,
+                    isSelected && styles.weatherChipTextSelected,
+                  ]}
+                >
+                  {label}
+                </Text>
               </Pressable>
             );
           })}
@@ -1155,6 +1211,33 @@ const styles = StyleSheet.create({
   budgetCardCheckSlot: { width: 24, alignItems: "center" },
   budgetCardCheck: {},
   budgetCardCheckHidden: { opacity: 0 },
+  weatherRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  weatherChip: {
+    flex: 1,
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E8ECF0",
+    backgroundColor: "#FFFFFF",
+  },
+  weatherChipSelected: {
+    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.primary,
+  },
+  weatherChipPressed: { opacity: 0.82 },
+  weatherChipText: {
+    fontFamily: font.semiBold,
+    fontSize: 12,
+    color: theme.colors.primaryDark,
+  },
+  weatherChipTextSelected: { color: "#FFFFFF" },
 
   // Error row
   errorRow: {

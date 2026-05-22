@@ -37,6 +37,7 @@ export type OptimizerOptimizeRequest = {
       max_tl: number;
     };
     visit_duration_minutes: number;
+    destination_relevance?: 'primary' | 'nearby' | 'fallback';
   }>;
 };
 
@@ -54,6 +55,7 @@ export type OptimizerOptimizeResponse = {
       arrival_time: string;
       departure_time: string;
       travel_time_to_next_minutes: number | null;
+      travel_mode_to_next?: 'walk' | 'transfer' | null;
       estimated_cost_tl: number;
     }>;
   };
