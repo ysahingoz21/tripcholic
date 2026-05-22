@@ -41,7 +41,7 @@ import {
   type PublicTripEngagement,
 } from "@/services/publicTrips";
 import { followUser, unfollowUser } from "@/services/users";
-import { addRecentlyViewedTrip } from "@/services/recentlyViewedTrips";
+import { addRecentlyViewedTrip, removeRecentlyViewedTrip } from "@/services/recentlyViewedTrips";
 import { formatDistanceKm } from "@/utils/format";
 import TripStopsMap from "../../components/trip/TripStopsMap";
 import TripDescriptionSection from "../../components/ui/TripDescriptionSection";
@@ -946,22 +946,25 @@ export default function PublicTripDetailScreen() {
           savedByMe: detail.engagement.savedByMe,
         },
         viewedAt: new Date().toISOString(),
-      });
+      }, user?.id ?? null);
       setSelectedFeedbackSignals(detail.feedback.mine);
     } catch (loadError) {
       setTripDetail(null);
       setComments([]);
       setEngagement(null);
       setSelectedFeedbackSignals([]);
-      setScreenError(
+      const msg =
         loadError instanceof Error
           ? loadError.message
-          : "Unable to load public trip.",
-      );
+          : "Unable to load public trip.";
+      setScreenError(msg);
+      if (msg.toLowerCase().includes("not found") && typeof id === "string") {
+        void removeRecentlyViewedTrip(id, user?.id ?? null);
+      }
     } finally {
       setIsLoading(false);
     }
-  }, [id, isAuthLoading, token]);
+  }, [id, isAuthLoading, token, user?.id]);
 
   useEffect(() => {
     void loadPublicTrip();

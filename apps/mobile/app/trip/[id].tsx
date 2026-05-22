@@ -46,7 +46,7 @@ import {
   buildTripReturnTarget,
   getTripRouteSource,
 } from "@/utils/tripNavigation";
-import { addRecentlyViewedTrip } from "@/services/recentlyViewedTrips";
+import { addRecentlyViewedTrip, removeRecentlyViewedTrip } from "@/services/recentlyViewedTrips";
 import { formatDistanceKm } from "@/utils/format";
 import TripStopsMap from "../../components/trip/TripStopsMap";
 import TripDescriptionSection from "../../components/ui/TripDescriptionSection";
@@ -829,7 +829,7 @@ export default function OwnerTripDetailScreen() {
         optimizedAt: data.optimization.optimizedAt,
         engagement: { likeCount: 0, commentCount: 0, saveCount: 0, likedByMe: false, savedByMe: false },
         viewedAt: new Date().toISOString(),
-      });
+      }, user?.id ?? null);
       if (data.trip.visibility === "PUBLIC") {
         setIsPublicTrip(true);
         try {
@@ -841,11 +841,15 @@ export default function OwnerTripDetailScreen() {
         }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to load trip.");
+      const msg = err instanceof Error ? err.message : "Unable to load trip.";
+      setError(msg);
+      if (msg.toLowerCase().includes("not found") && typeof id === "string") {
+        void removeRecentlyViewedTrip(id, user?.id ?? null);
+      }
     } finally {
       setIsLoading(false);
     }
-  }, [id, isAuthLoading, token]);
+  }, [id, isAuthLoading, token, user?.id]);
 
   useFocusEffect(
     useCallback(() => {

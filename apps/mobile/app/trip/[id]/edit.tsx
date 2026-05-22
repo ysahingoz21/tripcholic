@@ -81,6 +81,12 @@ const BUDGET_OPTIONS = [
 
 type BudgetKey = "low" | "medium" | "high" | "";
 
+const WEATHER_OPTIONS = [
+  { key: "clear", label: "Clear", icon: "sunny-outline" as const },
+  { key: "cloudy", label: "Cloudy", icon: "cloud-outline" as const },
+  { key: "rainy", label: "Rainy", icon: "rainy-outline" as const },
+] as const;
+
 // Map existing numeric budgetTl → a BudgetKey
 function budgetTlToBudgetKey(tl: number | null): BudgetKey {
   if (tl === null) return "";
@@ -238,6 +244,7 @@ export default function EditTripScreen() {
   const [endTime, setEndTime] = useState("");
   const [categories, setCategories] = useState<string[]>([]);
   const [budgetKey, setBudgetKey] = useState<BudgetKey>("");
+  const [budgetAmount, setBudgetAmount] = useState("");
   const [isPublic, setIsPublic] = useState(false);
   // Keep weather + maxWalkingDistanceKm + maxStops in state to preserve on save
   const [weather, setWeather] = useState("");
@@ -283,6 +290,7 @@ export default function EditTripScreen() {
         setEndTime(data.trip.timeEnd ?? "");
         setCategories(data.trip.categories.map((c) => c.toLowerCase()));
         setBudgetKey(budgetTlToBudgetKey(data.trip.budgetTl));
+        setBudgetAmount(data.trip.budgetTl != null ? String(data.trip.budgetTl) : "");
         setIsPublic(data.trip.visibility === "PUBLIC");
         setWeather(data.trip.weather ?? "");
         setMaxWalkingDistanceKm(data.trip.walkingToleranceKm);
@@ -405,8 +413,13 @@ export default function EditTripScreen() {
     }
 
     const resolvedVisibility: TripVisibility = isPublic ? "PUBLIC" : "PRIVATE";
+    const presetBudget = BUDGET_OPTIONS.find((b) => b.key === budgetKey)?.value;
     const resolvedBudget =
-      BUDGET_OPTIONS.find((b) => b.key === budgetKey)?.value ?? undefined;
+      presetBudget !== undefined
+        ? presetBudget
+        : budgetAmount.trim()
+          ? Number(budgetAmount.trim()) || undefined
+          : undefined;
 
     const payload: UpdateTripPayload = {
       title: title.trim(),

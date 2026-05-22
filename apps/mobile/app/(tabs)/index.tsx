@@ -19,9 +19,9 @@ import { DEFAULT_COLLECTION_COVER } from '@/components/saved/collectionCovers';
 import { theme } from '@/constants/theme';
 import { type, font } from '@/constants/typography';
 import { useAuth } from '@/context/AuthContext';
-import { getTrips, getTrendingTrips, type TripListItem, type ExploreTripItem } from '@/services/trips';
-import { getSavedTripCollectionSummaries, type SavedTripCollectionSummary, likePublicTrip, unlikePublicTrip, savePublicTrip, unsavePublicTrip } from '@/services/publicTrips';
-import { getRecentlyViewedTrips, type RecentlyViewedTrip } from '@/services/recentlyViewedTrips';
+import { getTrip, getTrips, getTrendingTrips, type TripListItem, type ExploreTripItem } from '@/services/trips';
+import { getSavedTripCollectionSummaries, type SavedTripCollectionSummary, likePublicTrip, unlikePublicTrip, savePublicTrip, unsavePublicTrip, getPublicTrip } from '@/services/publicTrips';
+import { getRecentlyViewedTrips, pruneStaleRecentlyViewedTrips, type RecentlyViewedTrip } from '@/services/recentlyViewedTrips';
 
 const H_PAD = 20;
 
@@ -519,8 +519,11 @@ export default function HomeScreen() {
   const loadAll = useCallback(async () => {
     if (isAuthLoading) return;
 
-    // Recently viewed (AsyncStorage — fast)
-    void getRecentlyViewedTrips().then(setRecentlyViewed).catch(() => {});
+    const userId = user?.id ?? null;
+
+    // Recently viewed (AsyncStorage — render immediately, then validate in background)
+    const stored = await getRecentlyViewedTrips(userId);
+    setRecentlyViewed(stored);
 
     if (!token) {
       setMyTripsLoading(false);
@@ -528,6 +531,31 @@ export default function HomeScreen() {
       setCollectionsLoading(false);
       return;
     }
+
+    // Background: validate the displayed recently viewed trips against backend
+    // to auto-remove stale IDs after a DB reset/reseed.
+    void (async () => {
+      if (stored.length === 0) return;
+      const toCheck = stored.slice(0, 4);
+      const results = await Promise.allSettled(
+        toCheck.map((trip) =>
+          trip.isOwnTrip
+            ? getTrip(token, trip.id)
+            : getPublicTrip(trip.id, token),
+        ),
+      );
+      const staleIds: string[] = [];
+      results.forEach((result, i) => {
+        if (result.status === 'rejected') staleIds.push(toCheck[i].id);
+      });
+      if (staleIds.length > 0) {
+        await pruneStaleRecentlyViewedTrips(staleIds, userId);
+        setRecentlyViewed((prev) => {
+          const staleSet = new Set(staleIds);
+          return prev.filter((t) => !staleSet.has(t.id));
+        });
+      }
+    })();
 
     // Parallel loads
     void (async () => {
@@ -556,7 +584,7 @@ export default function HomeScreen() {
       } catch { setCollections([]); }
       finally { setCollectionsLoading(false); }
     })();
-  }, [token, isAuthLoading]);
+  }, [token, isAuthLoading, user?.id]);
 
   useFocusEffect(useCallback(() => { void loadAll(); }, [loadAll]));
 
