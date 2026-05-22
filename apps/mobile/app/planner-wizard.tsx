@@ -20,7 +20,11 @@ import CategoryCard from '@/components/ui/CategoryCard';
 import { theme } from '@/constants/theme';
 import { font, type } from '@/constants/typography';
 import { useAuth } from '@/context/AuthContext';
-import { createTrip, optimizeTrip, type CreateTripPayload } from '@/services/trips';
+import { createTrip, optimizeTrip } from '@/services/trips';
+import {
+  buildTripPayloadFromPlannerState,
+  type PlannerBudgetStyle,
+} from '@/utils/tripPlanningPayload';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -79,8 +83,6 @@ const BUDGET_OPTIONS = [
   },
 ] as const;
 
-type BudgetKey = 'low' | 'medium' | 'high' | '';
-
 // ── Screen ─────────────────────────────────────────────────────────────────
 
 export default function PlannerWizardScreen() {
@@ -106,7 +108,7 @@ export default function PlannerWizardScreen() {
   ]);
 
   // Step 3 — Budget
-  const [budgetStyle, setBudgetStyle] = useState<BudgetKey>('');
+  const [budgetStyle, setBudgetStyle] = useState<PlannerBudgetStyle>('');
 
   // Submit
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -135,19 +137,6 @@ export default function PlannerWizardScreen() {
     const hours   = String(value.getHours()).padStart(2, '0');
     const minutes = String(value.getMinutes()).padStart(2, '0');
     return `${hours}:${minutes}`;
-  };
-
-  const parseTimeRange = (value: string) => {
-    const match = value.trim().match(/^(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})$/);
-    if (!match) return {};
-    return { startTime: match[1], endTime: match[2] };
-  };
-
-  const parseBudgetTl = (value: BudgetKey) => {
-    if (value === 'low')    return 2000;
-    if (value === 'medium') return 6000;
-    if (value === 'high')   return 20000;
-    return undefined;
   };
 
   const getStartTimeValue = () => {
@@ -251,17 +240,14 @@ export default function PlannerWizardScreen() {
 
     if (isSubmitting) return;
 
-    const parsedTimeRange = parseTimeRange(availableTime);
-    const parsedBudgetTl  = parseBudgetTl(budgetStyle);
-
-    const payload: CreateTripPayload = {
-      title:       title.trim(),
-      destination: destination.trim(),
-      date:        date.trim(),
-      categories:  selectedCategories,
-      ...(parsedBudgetTl !== undefined && { budgetTl: parsedBudgetTl }),
-      ...parsedTimeRange,
-    };
+    const payload = buildTripPayloadFromPlannerState({
+      title,
+      destination,
+      date,
+      availableTime,
+      categories: selectedCategories,
+      budgetStyle,
+    });
 
     try {
       setIsSubmitting(true);
